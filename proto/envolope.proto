@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
+
+message Envelope {
+  string type = 1;
+  string topic = 2;
+  map<string, string> payload = 3;
+}
+
+service GoblinStream {
+  rpc Communicate(stream Envelope) returns (stream Envelope);
+}

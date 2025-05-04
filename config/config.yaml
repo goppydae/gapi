@@ -1,0 +1,5 @@
+transport:
+  type: quic
+  address: "localhost:4242"
+  certFile: "config/certs/server.crt"
+  keyFile: "config/certs/server.key"

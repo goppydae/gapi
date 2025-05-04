@@ -1,0 +1,94 @@
+# IDE files (Goland/JetBrains IDE)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Go binaries and build output
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Go environment files
+vendor/
+Godeps/
+_go-build/
+
+# Protobuf generated files
+proto/*.pb.go
+proto/*.pb.py
+proto/*_pb2.py
+proto/*_pb2_grpc.py
+
+# Python environment and build files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env/
+.venv/
+env/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Temporary files and directories
+tmp/
+*.log
+
+# Database files
+*.db
+*.sqlite
+
+# Schema hash file
+.schema_hash
+
+# Air live reload temporary files
+.air/
+
+# Generated documentation
+docs/_build/
+docs/build/
+docs/generated/
+
+# Mage build artifacts
+mage_output/
+
+# Nix build outputs
+result/
+flake.lock
+
+# Config backups and local overrides
+config/*.local.*
+config/*.backup.*
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor backup files
+*~
+
+# VSCode editor files (if needed later)
+.vscode/
+
+# Test outputs and coverage reports
+cover.out
+coverage.txt
+coverage.xml
+test-results.xml
+
+# Generated artifacts by buf/protobuf tools
+buf.lock
+buf.gen.yaml.lock
+.bufbuild/
+
+# Ignore local environment configuration files
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
