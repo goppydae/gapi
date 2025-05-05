@@ -7,7 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/version"
+	"github.com/goppydae/gapi/internal/eventbus"
 	"github.com/goppydae/gapi/internal/transport"
 )
 
@@ -21,7 +22,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version info",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("gapictl v0.1.0")
+		fmt.Print(version.Summary())
 	},
 }
 
@@ -54,17 +55,4 @@ var statusCmd = &cobra.Command{
 
 		<-done
 	},
-}
-
-func Execute() error {
-	return rootCmd.Execute()
-}
-
-func RootCmd() *cobra.Command {
-	return rootCmd
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(statusCmd)
 }

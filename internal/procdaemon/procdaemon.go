@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/goppydae/gapi/core/eventbus"
-	pb "github.com/goppydae/gapi/internal/proto"
 	"google.golang.org/grpc"
+
+	"github.com/goppydae/gapi/internal/eventbus"
+	pb "github.com/goppydae/gapi/internal/proto"
 )
 
 type ProcDaemon struct {
@@ -73,6 +74,10 @@ func (p *ProcDaemon) Start() error {
 func (p *ProcDaemon) Stop() error {
 	p.status = "stopped"
 	return p.sendLifecycle("stop")
+}
+
+func (p *ProcDaemon) Restart() error {
+	return p.sendLifecycle("restart")
 }
 
 func (p *ProcDaemon) Reload() error {

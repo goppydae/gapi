@@ -7,10 +7,11 @@ import (
 	"log"
 	"sync"
 
-	"github.com/goppydae/gapi/core/eventbus"
-	pb "github.com/goppydae/gapi/internal/proto"
 	quicgo "github.com/quic-go/quic-go"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/goppydae/gapi/internal/eventbus"
+	pb "github.com/goppydae/gapi/internal/proto"
 )
 
 type QUICTransport struct {
@@ -52,10 +53,11 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUICTransport, error) {
 		conn: conn,
 	}
 
-	go qt.clientStreamLoop()
+	go qt.clientStreamLoop() // Ensure this method is defined below
 	return qt, nil
 }
 
+// Added back missing clientStreamLoop
 func (qt *QUICTransport) clientStreamLoop() {
 	for {
 		stream, err := qt.conn.AcceptStream(context.Background())
@@ -71,6 +73,10 @@ func (qt *QUICTransport) acceptLoop() {
 	for {
 		conn, err := qt.listener.Accept(context.Background())
 		if err != nil {
+			if err.Error() == "listener closed" {
+				log.Println("Listener closed gracefully.")
+				return
+			}
 			log.Println("QUIC accept error:", err)
 			continue
 		}
@@ -163,4 +169,27 @@ func (qt *QUICTransport) Broadcast(e eventbus.Event) error {
 
 func (qt *QUICTransport) OnRemoteEvent(fn func(eventbus.Event)) {
 	qt.onEvent = fn
+}
+
+// Close method for graceful shutdown
+func (qt *QUICTransport) Close() error {
+	qt.lock.Lock()
+	defer qt.lock.Unlock()
+
+	var err error
+
+	if qt.listener != nil {
+		err = qt.listener.Close()
+		qt.listener = nil
+	}
+
+	if qt.conn != nil {
+		closeErr := qt.conn.CloseWithError(0, "shutdown")
+		if err == nil {
+			err = closeErr
+		}
+		qt.conn = nil
+	}
+
+	return err
 }

@@ -104,7 +104,7 @@ func Gen() error {
 	}
 
 	fmt.Println("Stamping schema hash...")
-	hashCmd := exec.Command("sh", "-c", "git ls-files proto | xargs cat | shasum -a 256 | awk '{print $1}' > .schema_hash")
+	hashCmd := exec.Command("sh", "-c", "git ls-files proto | xargs cat | shasum -a 256 | awk '{print $1}' > build/.schema_hash")
 	hashCmd.Stdout = os.Stdout
 	hashCmd.Stderr = os.Stderr
 	return hashCmd.Run()

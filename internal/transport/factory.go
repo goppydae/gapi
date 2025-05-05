@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/internal/eventbus"
 )
 
 type Config struct {

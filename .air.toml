@@ -6,9 +6,9 @@ tmp_dir = "tmp"
 [build]
 # cmd = "go build -tags dev -o tmp/gapid ./cmd/gapid && go build -tags dev -o tmp/gapictl ./cmd/gapictl && chmod +x tmp/gapictl"
 cmd = "./build/scripts/devbuild.sh"
-bin = "tmp/gapid"
+bin = "./bin/gapid"
 include_ext = ["go"]
-exclude_dir = ["proto", "docs", "test", "build"]
+exclude_dir = ["proto", "docs", "test", "build", "bin"]
 exclude_file = ["mage_output_file.go"]
 full_bin = "true"
 delay = 1000

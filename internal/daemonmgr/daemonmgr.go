@@ -4,9 +4,9 @@ import (
 	"log"
 	"sync"
 
-	"github.com/goppydae/gapi/core/eventbus"
-	"github.com/goppydae/gapi/core/lifecycle"
-	"github.com/goppydae/gapi/core/procdaemon"
+	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/internal/lifecycle"
+	"github.com/goppydae/gapi/internal/procdaemon"
 )
 
 type DaemonManager struct {
@@ -45,25 +45,51 @@ func (dm *DaemonManager) RegisterDaemon(d lifecycle.Daemon) error {
 
 	// Bind control topic listeners
 	_ = dm.bus.Subscribe(scope, root+"/control.start", func(e eventbus.Event) {
-		_ = d.Start()
+		if err := d.Start(); err != nil {
+			log.Printf("Error starting daemon [%s]: %v", id, err)
+		}
 	})
 	_ = dm.bus.Subscribe(scope, root+"/control.stop", func(e eventbus.Event) {
-		_ = d.Stop()
+		if err := d.Stop(); err != nil {
+			log.Printf("Error stopping daemon [%s]: %v", id, err)
+		}
 	})
 	_ = dm.bus.Subscribe(scope, root+"/control.reload", func(e eventbus.Event) {
-		_ = d.Reload()
+		if err := d.Reload(); err != nil {
+			log.Printf("Error reloading daemon [%s]: %v", id, err)
+		}
 	})
 
 	return nil
 }
 
-// StopAll sends stop signals to all registered daemons
+// StopAll sends stop signals to all registered daemons and closes transports if applicable
 func (dm *DaemonManager) StopAll() {
 	dm.mu.RLock()
 	defer dm.mu.RUnlock()
-	for _, d := range dm.daemons {
-		_ = d.Stop()
+
+	var wg sync.WaitGroup
+	for id, d := range dm.daemons {
+		wg.Add(1)
+		go func(id string, d lifecycle.Daemon) {
+			defer wg.Done()
+
+			if err := d.Stop(); err != nil {
+				log.Printf("Error stopping daemon [%s]: %v", id, err)
+			}
+
+			// Check if daemon implements Closeable transport interface and close if applicable
+			if tc, ok := d.(interface{ Close() error }); ok {
+				if err := tc.Close(); err != nil {
+					log.Printf("Error closing transport for daemon [%s]: %v", id, err)
+				} else {
+					log.Printf("Transport closed gracefully for daemon [%s]", id)
+				}
+			}
+		}(id, d)
 	}
+	wg.Wait()
+	log.Println("All daemons stopped and transports closed gracefully.")
 }
 
 // Describe returns summaries of all registered daemons

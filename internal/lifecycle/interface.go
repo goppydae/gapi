@@ -6,6 +6,7 @@ type Daemon interface {
 	Type() string
 	Start() error
 	Stop() error
+	Restart() error
 	Reload() error
 	Describe() map[string]string
 }
