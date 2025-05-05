@@ -10,8 +10,8 @@ import (
 // Injected at build time via -ldflags
 var (
 	GAPIVersion      = "dev"
-	GoSDKVersion     = "dev"
-	PythonSDKVersion = "dev"
+	GoDDKVersion     = "dev"
+	PythonDDKVersion = "dev"
 	BuildTag         = "dev"
 	SchemaHash       = "unknown"
 	Commit           = "unknown"
@@ -42,6 +42,17 @@ func init() {
 		GoVersion: runtime.Version(),
 		Platform:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
+}
+
+// BinaryVersion returns the registered version string for the current binary.
+func BinaryVersion() string {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	if active.Version != "" {
+		return active.Version
+	}
+	return GAPIVersion // fallback from linker flags
 }
 
 // SetBinaryNameAndVersion lets a binary like gapictl override the top-level label
@@ -95,8 +106,8 @@ func Summary() string {
 		fmt.Fprintf(&out, "GAPI Core:  %s\n", GAPIVersion)
 	}
 
-	fmt.Fprintf(&out, "Go DDK:     %s\n", GoSDKVersion)
-	fmt.Fprintf(&out, "Python DDK: %s\n", PythonSDKVersion)
+	fmt.Fprintf(&out, "Go DDK:     %s\n", GoDDKVersion)
+	fmt.Fprintf(&out, "Python DDK: %s\n", PythonDDKVersion)
 	fmt.Fprintf(&out, "Protobuf Schema Hash: %s\n", SchemaHash)
 	fmt.Fprintf(&out, "Go Version: %s\n", active.GoVersion)
 	fmt.Fprintf(&out, "Platform:   %s\n", active.Platform)

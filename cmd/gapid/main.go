@@ -1,25 +1,21 @@
 package main
 
 import (
-	"fmt"
-	"os"
-
+	"github.com/rs/zerolog"
+	
 	"github.com/goppydae/gapi/core/version"
+	"github.com/goppydae/gapi/internal/logging/logcore"
 )
 
-func Execute() error {
-	return rootCmd.Execute()
-}
-
 func init() {
+	logcore.Init(zerolog.InfoLevel)
 	rootCmd.AddCommand(versionCmd)
 
 	version.SetBinaryNameAndVersion("gapid", "0.1.0")
 }
 
 func main() {
-	if err := Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+	if err := rootCmd.Execute(); err != nil {
+		logcore.Fatal().Err(err).Msg("command execution failed")
 	}
 }
