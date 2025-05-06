@@ -38,7 +38,3 @@ jobs:
           else
             echo "No tests found. Skipping go test step."
           fi
-
-      - name: Upload coverage (optional)
-        if: success()
-        run: go test -coverprofile=coverage.out ./...
