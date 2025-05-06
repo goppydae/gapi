@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Build & Test
+    name: Build via Mage
     runs-on: ubuntu-latest
 
     steps:
@@ -20,19 +20,25 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Verify module cache
+      - name: Install Mage
+        run: go install github.com/magefile/mage@latest
+
+      - name: Tidy Go modules
         run: go mod tidy
 
-      - name: Build daemons and tools
-        run: |
-          go build ./cmd/gapid
-          go build ./cmd/gapictl
+      - name: Build all targets
+        run: mage buildAll
 
-      - name: Run tests
-        run: go test ./... -v
+      - name: Conditionally run tests
+        run: |
+          echo "Checking for test files..."
+          if find . -name '*_test.go' | grep -q .; then
+            echo "Tests found. Running go test..."
+            go test ./...
+          else
+            echo "No tests found. Skipping go test step."
+          fi
 
       - name: Upload coverage (optional)
         if: success()
         run: go test -coverprofile=coverage.out ./...
-
-      # Add your own steps for bindings or DDK builds here
