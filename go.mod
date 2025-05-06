@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/quic-go/quic-go v0.51.0
 	github.com/rs/zerolog v1.34.0
-	github.com/spf13/cobra v1.8.1
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	go.etcd.io/bbolt v1.4.0
 	google.golang.org/grpc v1.72.0
