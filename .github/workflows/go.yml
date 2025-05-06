@@ -27,7 +27,6 @@ jobs:
         run: |
           go build ./cmd/gapid
           go build ./cmd/gapictl
-          go build ./...
 
       - name: Run tests
         run: go test ./... -v
