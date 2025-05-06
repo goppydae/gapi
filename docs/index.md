@@ -8,6 +8,9 @@ These documents are foundational and evolving. They are not static pages—they 
 
 ## Core Documents
 
+- [**arch.md**](./arch.md)  
+  Partial architectural overview.
+
 - [**lore.md**](./lore.md)  
   Origin, etymology, and philosophical grounding of the ecosystem.
 
