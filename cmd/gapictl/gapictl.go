@@ -48,7 +48,7 @@ var statusCmd = &cobra.Command{
 			close(done)
 		})
 
-		err = bus.Publish(eventbus.NewEvent("user", "system/ping", "gapictl", map[string]string{"status": "ping"}, false))
+		err = bus.Publish(eventbus.NewEvent("user", "system/ping", "gapictl", map[string]string{"status": "ping"}, true))
 		if err != nil {
 			log.Fatalf("failed to send ping: %v", err)
 		}

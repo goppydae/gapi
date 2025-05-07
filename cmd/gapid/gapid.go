@@ -51,9 +51,29 @@ func runSupervisor() {
 	manager := daemonmgr.NewDaemonManager(bus)
 
 	bus.SubscribePrefix("user", "system/ping", func(e eventbus.Event) {
+		logger.Info().
+			Str("event", "handling_ping").
+			Str("event_id", e.ID).
+			Msg("received ping, preparing pong")
+
 		logevent.Lifecycle(logger, "gapid", "handle_ping", "gapid", version.BinaryVersion())
-		response := eventbus.NewEvent("user", "system/pong", "gapid", map[string]string{"status": "pong"}, false)
-		_ = bus.Publish(response)
+
+		response := eventbus.NewEvent("user", "system/pong", "gapid", map[string]string{
+			"status": "pong",
+		}, true) // ensure broadcast
+
+		if err := bus.Publish(response); err != nil {
+			logger.Error().
+				Err(err).
+				Str("topic", response.Topic).
+				Str("event_id", response.ID).
+				Msg("failed to publish pong event")
+		} else {
+			logger.Info().
+				Str("event", "pong_sent").
+				Str("event_id", response.ID).
+				Msg("pong published")
+		}
 	})
 
 	bus.SubscribePrefix("user", "example/", func(e eventbus.Event) {

@@ -5,6 +5,7 @@ import (
 )
 
 type Event struct {
+	ID      string      `json:"id"`
 	Type    string      `json:"type"`             // e.g., "lifecycle", "eventbus", "status"
 	Source  string      `json:"source,omitempty"` // e.g., "goblin.scheduler"
 	Payload interface{} `json:"payload,omitempty"`

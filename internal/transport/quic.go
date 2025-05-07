@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"io"
 	"log"
 	"sync"
 
@@ -53,7 +54,9 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUICTransport, error) {
 		conn: conn,
 	}
 
-	go qt.clientStreamLoop() // Ensure this method is defined below
+	// Handle inbound streams from server
+	go qt.handleConn(conn)
+
 	return qt, nil
 }
 
@@ -101,14 +104,14 @@ func (qt *QUICTransport) handleConn(conn quicgo.Connection) {
 
 func (qt *QUICTransport) handleStream(stream quicgo.Stream) {
 	lenBuf := make([]byte, 4)
-	if _, err := stream.Read(lenBuf); err != nil {
+	if _, err := io.ReadFull(stream, lenBuf); err != nil {
 		log.Println("Read length error:", err)
 		return
 	}
 	length := binary.BigEndian.Uint32(lenBuf)
 
 	data := make([]byte, length)
-	if _, err := stream.Read(data); err != nil {
+	if _, err := io.ReadFull(stream, data); err != nil {
 		log.Println("Read data error:", err)
 		return
 	}
@@ -119,9 +122,19 @@ func (qt *QUICTransport) handleStream(stream quicgo.Stream) {
 		return
 	}
 
-	e := eventbus.NewEvent("user", env.Topic, "quic-peer", env.Payload, false)
+	e := eventbus.Event{
+		ID:      env.Id,
+		Scope:   "user",
+		Topic:   env.Topic,
+		Source:  env.Source,
+		Payload: env.Payload,
+	}
+
 	if qt.onEvent != nil {
+		log.Printf("Dispatching remote event id=%s topic=%s", e.ID, e.Topic)
 		qt.onEvent(e)
+	} else {
+		log.Printf("No event handler registered. Dropping event id=%s", e.ID)
 	}
 }
 
@@ -130,6 +143,7 @@ func (qt *QUICTransport) PublishRemote(e eventbus.Event) error {
 	defer qt.lock.Unlock()
 
 	if qt.conn == nil {
+		log.Println("QUICTransport: conn is nil in PublishRemote")
 		return nil
 	}
 
@@ -140,8 +154,10 @@ func (qt *QUICTransport) PublishRemote(e eventbus.Event) error {
 	defer stream.Close()
 
 	env := &pb.Envelope{
-		Type:    e.Topic,
+		Id:      e.ID,
+		Type:    "event", // Or e.Type if you separate types
 		Topic:   e.Topic,
+		Source:  e.Source,
 		Payload: e.Payload,
 	}
 
@@ -160,6 +176,7 @@ func (qt *QUICTransport) PublishRemote(e eventbus.Event) error {
 		return err
 	}
 
+	log.Printf("QUICTransport: sent envelope id=%s topic=%s to peer", e.ID, e.Topic)
 	return nil
 }
 

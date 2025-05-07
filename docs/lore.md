@@ -37,6 +37,26 @@ This isn’t just a toolkit—it’s a **composable stack** with clear lines of 
 
 ---
 
+## The GOPPY Stack
+
+The **GOPPY stack** is the nucleus of the GoPPydae ecosystem—a deliberate blend of systems engineering, message discipline, and scripting flexibility:
+
+- **Go** offers a strong type system, concurrency model, and static binaries—ideal for event-driven orchestration, lifecycle control, and high-performance execution.
+- **Protobuf** brings schema-based messaging and versioned contracts between agents, control surfaces, and operators.
+- **Python** provides accessible, expressive control logic for agents. It serves as the declarative domain for agent behavior, configuration, and orchestration logic.
+
+The name *GOPPY* isn’t just an acronym; it marks the **canonical triad** of supervised execution. It stands in contrast to other stacks like LAMP or MEAN—where GOPPY is designed not for content or UI delivery, but for orchestrating processes, supervising daemons, and encoding contracts for coordination.
+
+Where traditional stacks solve **application problems**, GOPPY solves **agent problems**.
+
+These tools aren’t glued together by chance. They’re aligned by:
+
+- **Determinism** — consistent behavior across languages
+- **Clarity** — introspection, self-description, and structured logs
+- **Discipline** — each daemon and tool adheres to lifecycle protocols and metadata conventions
+
+The GOPPY stack is foundational. GoPPydae is what emerges when that foundation becomes a world.
+
 ## Design Philosophy
 
 GoPPydae was never intended as a traditional software platform. Its goal is supervision—not services; orchestration—not abstraction. Every component is structured with lifecycle awareness, clear boundaries, and introspection baked in.

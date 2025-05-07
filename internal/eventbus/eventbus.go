@@ -6,6 +6,9 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+
+	"github.com/goppydae/gapi/internal/logging/logcore"
+	"github.com/goppydae/gapi/internal/logging/logevent"
 )
 
 type Event struct {
@@ -97,13 +100,46 @@ func (bus *EventBus) SubscribePrefix(scope string, topicPrefix string, fn Handle
 
 func (bus *EventBus) Publish(e Event) error {
 	if err := ValidateEvent(e); err != nil {
+		logcore.Warn().
+			Str("event", "reject").
+			Str("event_id", e.ID).
+			Str("topic", e.Topic).
+			Str("scope", e.Scope).
+			Msg("rejected invalid event")
 		return err
 	}
 
+	logevent.Log(logcore.With().Str("module", "eventbus").Logger(), logevent.Event{
+		ID:     e.ID,
+		Type:   "publish",
+		Source: e.Source,
+		Payload: logevent.BusPayload{
+			Topic:   e.Topic,
+			Payload: fmt.Sprintf("%v", e.Payload),
+		},
+	})
+
 	if e.Broadcast && bus.transport != nil {
-		_ = bus.transport.Broadcast(e)
+		if err := bus.transport.Broadcast(e); err != nil {
+			logcore.Error().
+				Err(err).
+				Str("event_id", e.ID).
+				Str("topic", e.Topic).
+				Msg("transport.Broadcast failed")
+		}
 	} else if bus.transport != nil {
-		_ = bus.transport.PublishRemote(e)
+		if err := bus.transport.PublishRemote(e); err != nil {
+			logcore.Error().
+				Err(err).
+				Str("event_id", e.ID).
+				Str("topic", e.Topic).
+				Msg("transport.PublishRemote failed")
+		}
+	} else {
+		logcore.Warn().
+			Str("event_id", e.ID).
+			Str("topic", e.Topic).
+			Msg("no transport available for publish")
 	}
 
 	return bus.dispatch(e)
@@ -111,6 +147,17 @@ func (bus *EventBus) Publish(e Event) error {
 
 func (bus *EventBus) dispatch(e Event) error {
 	fullKey := e.Scope + "/" + e.Topic
+
+	logevent.Log(logcore.With().Str("module", "eventbus").Logger(), logevent.Event{
+		ID:     e.ID,
+		Type:   "dispatch",
+		Source: e.Source,
+		Payload: logevent.BusPayload{
+			Topic:   e.Topic,
+			Payload: fmt.Sprintf("%v", e.Payload),
+		},
+	})
+
 	bus.mu.RLock()
 	defer bus.mu.RUnlock()
 
@@ -120,6 +167,15 @@ func (bus *EventBus) dispatch(e Event) error {
 		}
 	}
 
+	logcore.Info().
+		Str("dispatch_key", fullKey).
+		Int("subs_len", len(bus.subs)).
+		Msg("checking topic subscriptions for prefix match")
+
+	for topic := range bus.subs {
+		logcore.Info().Str("sub_key", topic).Msg("registered subscription")
+	}
+	
 	for topic, handlers := range bus.subs {
 		if strings.HasPrefix(topic, "__MATCH:") {
 			base := strings.TrimPrefix(topic, "__MATCH:")

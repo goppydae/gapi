@@ -8,9 +8,10 @@ import "google/protobuf/any.proto";
 // Envelope for all structured events.
 // This is the top-level type passed through logs, IPC, or audit systems.
 message Event {
-  string type = 1;          // e.g., "lifecycle", "eventbus", "status"
-  string source = 2;        // e.g., "goblin.daemon"
-  google.protobuf.Any payload = 3; // Event-specific payload (see below)
+  string id = 1;
+  string type = 2;          // e.g., "lifecycle", "eventbus", "status"
+  string source = 3;        // e.g., "goblin.daemon"
+  google.protobuf.Any payload = 4; // Event-specific payload (see below)
 }
 
 // Payload for lifecycle transitions.
