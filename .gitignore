@@ -32,7 +32,6 @@ __pycache__/
 .venv/
 env/
 venv/
-build/
 dist/
 *.egg-info/
 
@@ -43,9 +42,6 @@ tmp/
 # Database files
 *.db
 *.sqlite
-
-# Schema hash file
-.schema_hash
 
 # Air live reload temporary files
 .air/
@@ -92,3 +88,6 @@ buf.gen.yaml.lock
 *.env.development.local
 *.env.test.local
 *.env.production.local
+
+# Ephemeral build data
+build/meta/*

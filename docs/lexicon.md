@@ -9,7 +9,7 @@ This lexicon documents terminology, metaphors, and internal language used across
 ## A–C
 
 **Agent**  
-A supervised daemon. Self-describing, lifecycle-aware, and coordinated through GAPI. Agents are the core executable units of behavior in GoPPydae.
+A long-running process supervised by GAPI. Agents are self-describing, lifecycle-aware, and serve as the primary executable units in the GoPPydae ecosystem.
 
 **Crystal**  
 The symbolic object held by the Goblin. Represents insight, integrity, and structured truth. Often used metaphorically to refer to clarity in system introspection or logging.
@@ -19,7 +19,7 @@ The symbolic object held by the Goblin. Represents insight, integrity, and struc
 ## D–F
 
 **Daemon**  
-A long-running background process governed by a supervisor. In GoPPydae, daemons are referred to as agents when they comply with lifecycle and introspection interfaces.
+The long-running background process of the supervisor. In GoPPydae, conventional daemons are referred to as agents when they comply with lifecycle and introspection interfaces.
 
 **Deviling** *(verb)*  
 The act of engaging in active development work—particularly around daemons, agents, or the ecosystem itself. Derived from the traditional `devel/` SVN naming convention, reframed as a Goblin cultural term.

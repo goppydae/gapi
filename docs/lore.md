@@ -61,7 +61,7 @@ The GOPPY stack is foundational. GoPPydae is what emerges when that foundation b
 
 GoPPydae was never intended as a traditional software platform. Its goal is supervision—not services; orchestration—not abstraction. Every component is structured with lifecycle awareness, clear boundaries, and introspection baked in.
 
-* Daemons are not passive scripts—they are autonomous entities with identity, phases, and state.
+* Agents are not passive scripts—they are autonomous entities with identity, phases, and state.
 * Clarity is prioritized over cleverness.
 * Logging is structured, deterministic, and inspectable—no mysteries, no guesswork.
 * Configuration follows convention, not ceremony.
@@ -75,10 +75,10 @@ The project draws from UNIX lineage, aquatic metaphors, and tactical system desi
 
 * **GAPI** — the core runtime and control system (Go-based API)
 * **Goblin** — the multi-node cluster orchestrator daemon; symbolic and literal overseer
-* **DDK** — Daemon Development Kits (replacing the traditional “SDK” term); specialized by language (e.g., Python DDK, Go DDK)
+* **ADK** — Agent Development Kits (replacing the traditional “SDK” term); specialized by language (e.g., Python ADK, Go ADK)
 * `dae` **suffixes** — symbolic taxonomy of agents and utilities, such as `gapictl` (the control interface), or future agents like `netmon.py.daemon`
 
-The choice to avoid “SDK” in favor of **DDK** signals a departure from user-level application logic toward low-level lifecycle management and event-driven coordination.
+The choice to avoid “SDK” in favor of **ADK** signals a departure from user-level application logic toward low-level lifecycle management and event-driven coordination.
 
 ---
 
@@ -88,9 +88,9 @@ GoPPydae is divided into key components:
 
 * **`gapid`** — the master daemon, responsible for supervising and coordinating sub-agents
 * **`gapictl`** — the control surface for operator interaction, modeled after systemctl
-* **DDKs** — per-language kits for writing well-behaved daemons with lifecycle compliance
-* **Structured Logging** — Zerolog-powered in Go, eventually mirrored across all DDKs
-* **Version Awareness** — Every binary embeds build-time metadata, including schema hash, commit hash, and DDK versions
+* **ADKs** — per-language kits for writing well-behaved daemons with lifecycle compliance
+* **Structured Logging** — Zerolog-powered in Go, eventually mirrored across all ADKs
+* **Version Awareness** — Every binary embeds build-time metadata, including schema hash, commit hash, and ADK versions
 * **Event Bus** — Core messaging infrastructure, using Protobuf over QUIC, with room for event stream multiplexing
 
 ---
@@ -109,3 +109,13 @@ This lore file is not a spec. It is a **cultural artifact**. A log of how this s
 
 If you're reading this, you're either operating GoPPydae...  
 Or it’s operating *you*.
+
+---
+
+## Addendum: Evolution of Terminology
+
+The GoPPydae system has undergone deliberate terminology refinements as its architecture matured. One key evolution was the shift from *Daemon Development Kits (DDKs)* to *Agent Development Kits (ADKs)*.
+
+Originally, “DDK” was chosen to reflect the system’s focus on lifecycle-managed daemons. However, as the project evolved, the term “agent” became the preferred designation for supervised processes that implement introspection and lifecycle protocols. This distinction emphasizes the intentional, compliant nature of these entities within the ecosystem.
+
+By renaming the kits to **ADKs**, GoPPydae aligns its terminology with its core philosophy: agents are not merely daemons—they are structured participants in a cooperative orchestration model.

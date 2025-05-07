@@ -19,7 +19,7 @@ const (
 	goSDKVersion     = "0.1.0"
 	pythonSDKVersion = "0.1.0"
 	buildTag         = "dev"
-	schemaHashFile   = ".schema_hash"
+	schemaHashFile   = "build/meta/.schema_hash"
 )
 
 // BuildAll compiles both binaries with embedded version info.
@@ -104,7 +104,7 @@ func Gen() error {
 	}
 
 	fmt.Println("Stamping schema hash...")
-	hashCmd := exec.Command("sh", "-c", "git ls-files proto | xargs cat | shasum -a 256 | awk '{print $1}' > build/.schema_hash")
+	hashCmd := exec.Command("sh", "-c", "git ls-files proto | xargs cat | shasum -a 256 | awk '{print $1}' > build/meta/.schema_hash")
 	hashCmd.Stdout = os.Stdout
 	hashCmd.Stderr = os.Stderr
 	return hashCmd.Run()
@@ -162,7 +162,7 @@ type BuildMetadata struct {
 	OutputBinary     string `json:"output_binary"`
 }
 
-// writeBuildMeta outputs metadata as JSON in buildmeta/<binary>.json
+// writeBuildMeta outputs metadata as JSON in build/meta/<binary>.json
 func writeBuildMeta(meta BuildMetadata) error {
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
