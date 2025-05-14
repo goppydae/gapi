@@ -4,12 +4,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+
+	"github.com/goppydae/gapi/core/crypto"
 )
 
 var Default = BuildAll
@@ -104,10 +108,33 @@ func Gen() error {
 	}
 
 	fmt.Println("Stamping schema hash...")
-	hashCmd := exec.Command("sh", "-c", "git ls-files proto | xargs cat | shasum -a 256 | awk '{print $1}' > build/meta/.schema_hash")
-	hashCmd.Stdout = os.Stdout
-	hashCmd.Stderr = os.Stderr
-	return hashCmd.Run()
+	var allProto bytes.Buffer
+
+	err := filepath.Walk("proto", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".proto") {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			allProto.Write(data)
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("collecting proto files: %w", err)
+	}
+
+	full, _ := crypto.Blake3.Hash(allProto.Bytes())
+	err = os.WriteFile("build/meta/.schema_hash", []byte(full), 0644)
+	if err != nil {
+		return fmt.Errorf("writing schema hash: %w", err)
+	}
+
+	fmt.Printf("Schema hash: %s\n", full)
+	return nil
 }
 
 // Tls generates self-signed TLS certs.

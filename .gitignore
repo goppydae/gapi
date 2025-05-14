@@ -18,10 +18,10 @@ Godeps/
 _go-build/
 
 # Protobuf generated files
-proto/*.pb.go
-proto/*.pb.py
-proto/*_pb2.py
-proto/*_pb2_grpc.py
+internal/proto/*.pb.go
+internal/proto/*.pb.py
+internal/proto/*_pb2.py
+internal/proto/*_pb2_grpc.py
 
 # Python environment and build files
 __pycache__/

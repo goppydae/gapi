@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
+
+message PingStatus {
+  string status = 1;
+}

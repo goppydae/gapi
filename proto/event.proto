@@ -10,14 +10,14 @@ import "google/protobuf/any.proto";
 message Event {
   string id = 1;
   string type = 2;          // e.g., "lifecycle", "eventbus", "status"
-  string source = 3;        // e.g., "goblin.daemon"
+  string source = 3;        // e.g., "goblin.agent"
   google.protobuf.Any payload = 4; // Event-specific payload (see below)
 }
 
 // Payload for lifecycle transitions.
 message LifecycleEvent {
-  string action = 1;     // e.g., "start", "stop", "reload"
-  string daemon_id = 2;
+  string action = 1;     // e.g., "start", "stop", "restart"
+  string agent_id = 2;
   string version = 3;
 }
 

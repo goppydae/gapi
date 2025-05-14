@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/goppydae/gapi/internal/logging/logcore"
 	"github.com/goppydae/gapi/internal/logging/logevent"
@@ -15,12 +16,12 @@ type Event struct {
 	ID        string
 	Scope     string // "user", "system", "admin"
 	Topic     string // e.g. "enqack/strategy.signal"
-	Payload   map[string]string
+	Payload   *anypb.Any
 	Source    string
 	Broadcast bool
 }
 
-func NewEvent(scope, topic, source string, payload map[string]string, broadcast bool) Event {
+func NewEvent(scope, topic, source string, payload *anypb.Any, broadcast bool) Event {
 	return Event{
 		ID:        uuid.New().String(),
 		Scope:     scope,
@@ -32,12 +33,6 @@ func NewEvent(scope, topic, source string, payload map[string]string, broadcast 
 }
 
 type Handler func(Event)
-
-type Transport interface {
-	PublishRemote(Event) error
-	Broadcast(Event) error
-	OnRemoteEvent(func(Event))
-}
 
 type EventBus struct {
 	subs      map[string][]Handler
@@ -175,7 +170,7 @@ func (bus *EventBus) dispatch(e Event) error {
 	for topic := range bus.subs {
 		logcore.Info().Str("sub_key", topic).Msg("registered subscription")
 	}
-	
+
 	for topic, handlers := range bus.subs {
 		if strings.HasPrefix(topic, "__MATCH:") {
 			base := strings.TrimPrefix(topic, "__MATCH:")

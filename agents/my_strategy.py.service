@@ -1,0 +1,46 @@
+# my_strategy.py.service
+
+from goppy.sdk import lifecycle
+
+# Identity and metadata
+id = "arb-strategy"
+version = "1.0.0"
+capabilities = ["arbitrage", "eth", "usdt"]
+
+@lifecycle.initialize
+def initialize():
+    print("Initializing arbitrage engine...")
+    # Setup resources, warm up caches
+    return {"status": "ok"}
+
+@lifecycle.start
+def start():
+    print("Starting strategy loop.")
+    # Enter main loop or trigger state machine
+    while True:
+        # Simulate signal logic
+        signal = "buy"  # placeholder
+        print(f"Signal: {signal}")
+        lifecycle.sleep(10)  # cooperative yield
+
+@lifecycle.stop
+def stop():
+    print("Shutting down strategy.")
+    # Cleanup resources, flush logs
+    return {"status": "stopped"}
+
+@lifecycle.reload
+def reload():
+    print("Reloading config.")
+    # Refresh config or state
+    return {"reloaded": True}
+
+@lifecycle.describe
+def describe():
+    return {
+        "id": id,
+        "version": version,
+        "capabilities": capabilities,
+        "lifecycle": ["initialize", "start", "stop", "reload"],
+        "hash": lifecycle.compute_hash(__file__),
+    }

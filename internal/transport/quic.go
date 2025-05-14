@@ -12,7 +12,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/goppydae/gapi/internal/eventbus"
-	pb "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/internal/proto"
 )
 
 type QUICTransport struct {
@@ -103,6 +103,8 @@ func (qt *QUICTransport) handleConn(conn quicgo.Connection) {
 }
 
 func (qt *QUICTransport) handleStream(stream quicgo.Stream) {
+	defer stream.Close() // Ensure the stream is fully closed
+
 	lenBuf := make([]byte, 4)
 	if _, err := io.ReadFull(stream, lenBuf); err != nil {
 		log.Println("Read length error:", err)
@@ -116,7 +118,7 @@ func (qt *QUICTransport) handleStream(stream quicgo.Stream) {
 		return
 	}
 
-	var env pb.Envelope
+	var env protopkg.Envelope
 	if err := proto.Unmarshal(data, &env); err != nil {
 		log.Println("Unmarshal error:", err)
 		return
@@ -153,7 +155,7 @@ func (qt *QUICTransport) PublishRemote(e eventbus.Event) error {
 	}
 	defer stream.Close()
 
-	env := &pb.Envelope{
+	env := &protopkg.Envelope{
 		Id:      e.ID,
 		Type:    "event", // Or e.Type if you separate types
 		Topic:   e.Topic,

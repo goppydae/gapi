@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
 	"go.etcd.io/bbolt"
+
+	dbpkg "github.com/goppydae/gapi/internal/db"
 )
 
 type Node struct {
@@ -41,8 +42,8 @@ type Graph struct {
 	handlers map[string]func(map[string]string)
 }
 
-func NewGraph(path string) (*Graph, error) {
-	db, err := bbolt.Open(path, 0600, nil)
+func New() (*Graph, error) {
+	db, err := dbpkg.NewInMemoryDB()
 	if err != nil {
 		return nil, err
 	}
@@ -64,19 +65,8 @@ func NewGraph(path string) (*Graph, error) {
 	return g, err
 }
 
-// Close cleanly shuts down the underlying DB
 func (g *Graph) Close() error {
 	return g.db.Close()
-}
-
-// UpsertAgent stores an agent node into the graph with type "agent"
-func (g *Graph) UpsertAgent(scope, id string, props map[string]string) error {
-	node := Node{
-		ID:     fmt.Sprintf("%s/%s", scope, id),
-		Type:   "agent",
-		Labels: props,
-	}
-	return g.AddNode(node)
 }
 
 func (g *Graph) AddNode(n Node) error {
@@ -118,21 +108,6 @@ func (g *Graph) Neighbors(id string, kind string) ([]Edge, error) {
 		return nil
 	})
 	return result, err
-}
-
-func (g *Graph) RegisterEventHandler(eventType string, handler func(map[string]string)) {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
-	g.handlers[eventType] = handler
-}
-
-func (g *Graph) EmitEvent(eventType string, data map[string]string) {
-	g.mutex.Lock()
-	handler, exists := g.handlers[eventType]
-	g.mutex.Unlock()
-	if exists {
-		go handler(data)
-	}
 }
 
 func (g *Graph) ShortestPath(start, end, kind string, ttl int64) ([]string, int, error) {
@@ -217,25 +192,6 @@ func (g *Graph) GetStoredPath(start, end, kind string) (*Path, error) {
 	return &path, err
 }
 
-// Initialize auto-refresh event logic
-func (g *Graph) InitAutoRefreshHandler(ttl int64) {
-	g.RegisterEventHandler("graph.path.recompute", func(data map[string]string) {
-		start := data["start"]
-		end := data["end"]
-		kind := data["kind"]
-		if start == "" || end == "" || kind == "" {
-			log.Println("Invalid path recompute event data")
-			return
-		}
-		path, cost, err := g.ShortestPath(start, end, kind, ttl)
-		if err != nil {
-			log.Printf("Path recompute failed: %v", err)
-		} else {
-			log.Printf("Recomputed path from %s to %s [%s]: %v (cost: %d)", start, end, kind, path, cost)
-		}
-	})
-}
-
 type PriorityQueue []*Item
 
 type Item struct {
@@ -247,24 +203,20 @@ type Item struct {
 }
 
 func (pq PriorityQueue) Len() int { return len(pq) }
-
 func (pq PriorityQueue) Less(i, j int) bool {
 	return pq[i].Priority < pq[j].Priority
 }
-
 func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 	pq[i].Index = i
 	pq[j].Index = j
 }
-
 func (pq *PriorityQueue) Push(x interface{}) {
 	n := len(*pq)
 	item := x.(*Item)
 	item.Index = n
 	*pq = append(*pq, item)
 }
-
 func (pq *PriorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
