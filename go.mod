@@ -8,7 +8,7 @@ require (
 	filippo.io/age v1.2.1
 	github.com/go-python/gpython v0.2.0
 	github.com/google/uuid v1.6.0
-	github.com/quic-go/quic-go v0.51.0
+	github.com/quic-go/quic-go v0.52.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
