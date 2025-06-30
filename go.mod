@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
 	github.com/zeebo/blake3 v0.2.4
-	go.etcd.io/bbolt v1.4.0
+	go.etcd.io/bbolt v1.4.2
 	google.golang.org/protobuf v1.36.6
 )
 
