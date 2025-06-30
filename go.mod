@@ -8,7 +8,7 @@ require (
 	filippo.io/age v1.2.1
 	github.com/go-python/gpython v0.2.0
 	github.com/google/uuid v1.6.0
-	github.com/quic-go/quic-go v0.51.0
+	github.com/quic-go/quic-go v0.53.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.20.1
@@ -19,15 +19,11 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
-	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
-	github.com/onsi/ginkgo/v2 v2.9.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.3 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
