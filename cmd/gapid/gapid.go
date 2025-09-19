@@ -16,6 +16,7 @@ import (
 	"github.com/goppydae/gapi/internal/agentmgr"
 	"github.com/goppydae/gapi/internal/agentreg"
 	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/internal/lifecycle"
 	"github.com/goppydae/gapi/internal/logging/logcore"
 	"github.com/goppydae/gapi/internal/logging/logevent"
 	protopkg "github.com/goppydae/gapi/internal/proto"
@@ -40,7 +41,6 @@ var versionCmd = &cobra.Command{
 
 func runSupervisor() {
 	logger := logcore.With().Str("module", "gapid").Logger()
-
 	logger.Info().Msg("initializing supervisor")
 
 	cfg, err := config.Load()
@@ -55,6 +55,7 @@ func runSupervisor() {
 
 	bus := eventbus.NewEventBus(t)
 	manager := agentmgr.NewAgentManager(bus)
+
 	raw, err := store.Open(store.Hybrid)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to open database")
@@ -70,28 +71,45 @@ func runSupervisor() {
 		logger.Error().Err(err).Msg("Failed to create agent registry")
 	}
 
-	discovered, err := manager.DiscoverFromPath("agents")
-	if err != nil {
-		logger.Error().Err(err).Msg("Agent discovery failed")
-	}
-	for _, desc := range discovered {
-		ad := &agentreg.AgentDescription{
-			ID:       desc["id"],
-			Path:     desc["path"],
-			Type:     desc["type"],
-			Language: desc["language"],
-			Version:  desc["version"],
-			Hash:     desc["hash"],
-			Tags:     splitCSV(desc["tags"]),
-			Requires: splitCSV(desc["requires"]),
-			Wants:    splitCSV(desc["wants"]),
+	host, _ := os.Hostname()
+	agentFSMs := make(map[string]*lifecycle.LifecycleStateMachine)
+
+	setupAgents := func() {
+		logger.Info().Msg("performing agent discovery and FSM setup")
+
+		discovered, err := manager.DiscoverFromPath("agents")
+		if err != nil {
+			logger.Error().Err(err).Msg("Agent discovery failed")
+			return
 		}
-		if err := registry.Register(ad); err != nil {
-			logger.Error().Err(err).
-				Str("agent_id", ad.ID).
-				Msg("failed to register discovered agent")
+
+		for _, desc := range discovered {
+			ad := &agentreg.AgentDescription{
+				ID:       desc["id"],
+				Path:     desc["path"],
+				Type:     desc["type"],
+				Language: desc["language"],
+				Version:  desc["version"],
+				Hash:     desc["hash"],
+				Tags:     splitCSV(desc["tags"]),
+				Requires: splitCSV(desc["requires"]),
+				Wants:    splitCSV(desc["wants"]),
+			}
+			if err := registry.Register(ad); err != nil {
+				logger.Error().Err(err).
+					Str("agent_id", ad.ID).
+					Msg("failed to register discovered agent")
+			}
+			fsm := lifecycle.NewLifecycleStateMachine(ad.ID, host, bus)
+			fmt.Printf("FSM candidate ID: %q (from desc: %+v)\n", ad.ID, desc)
+			agentFSMs[ad.ID] = fsm
 		}
+
+		logger.Info().Int("fsm_count", len(agentFSMs)).Msg("agent setup complete")
 	}
+
+	setupAgents()
+	controller := lifecycle.NewLifecycleController(agentFSMs, manager, bus, host)
 
 	bus.SubscribePrefix("user", "system/ping", func(e eventbus.Event) {
 		logger.Info().
@@ -104,24 +122,12 @@ func runSupervisor() {
 		pong := &protopkg.PingStatus{Status: "pong"}
 		anyPayload, err := anypb.New(pong)
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to pack pong payload as Any")
+			logger.Error().Err(err).Msg("failed to pack pong payload")
 			return
 		}
 
 		response := eventbus.NewEvent("user", "system/pong", "gapid", anyPayload, true)
-
-		if err := bus.Publish(response); err != nil {
-			logger.Error().
-				Err(err).
-				Str("topic", response.Topic).
-				Str("event_id", response.ID).
-				Msg("failed to publish pong event")
-		} else {
-			logger.Info().
-				Str("event", "pong_sent").
-				Str("event_id", response.ID).
-				Msg("pong published")
-		}
+		_ = bus.Publish(response)
 	})
 
 	bus.SubscribePrefix("user", "system/agents", func(e eventbus.Event) {
@@ -149,20 +155,38 @@ func runSupervisor() {
 		}
 
 		response := eventbus.NewEvent("user", "system/agents.reply", "gapid", anyPayload, true)
+		_ = bus.Publish(response)
+	})
 
-		if err := bus.Publish(response); err != nil {
-			logger.Error().Err(err).Str("event_id", e.ID).Msg("failed to publish agent status")
+	bus.Subscribe("user", "system/agent.reload", func(e eventbus.Event) {
+		logger.Info().Str("event_id", e.ID).Msg("received agent reload request")
+
+		agentFSMs = make(map[string]*lifecycle.LifecycleStateMachine)
+		setupAgents()
+	})
+
+	bus.SubscribePrefix("user", "agent/lifecycle.control", func(e eventbus.Event) {
+		logger.Info().
+			Str("event_id", e.ID).
+			Str("topic", e.Topic).
+			Msg("received lifecycle control event")
+
+		var cmd protopkg.LifecycleControl
+		if err := e.UnmarshalPayload(&cmd); err != nil {
+			logger.Error().Err(err).Msg("failed to decode LifecycleControl")
+			return
 		}
+
+		controller.Handle(&cmd)
 	})
 
 	logger.Info().Msg("supervisor running")
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
 	sig := <-sigs
-	logger.Warn().Str("signal", sig.String()).Msg("received shutdown signal")
 
+	logger.Warn().Str("signal", sig.String()).Msg("received shutdown signal")
 	manager.StopAll()
 
 	logevent.Lifecycle(logger, "gapid", "stop", "gapid", version.BinaryVersion())

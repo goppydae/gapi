@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
+
+message LifecycleControl {
+  string agent_id = 1;
+
+  // Enum for supported lifecycle actions
+  Action action = 2;
+
+  enum Action {
+    ACTION_UNSPECIFIED = 0;
+    INITIALIZE = 1;
+    START = 2;
+    STOP = 3;
+    RESTART = 4;
+    RELOAD = 5;
+  }
+}

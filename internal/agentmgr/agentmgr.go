@@ -2,6 +2,7 @@ package agentmgr
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"path/filepath"
@@ -29,26 +30,29 @@ func NewAgentManager(bus *eventbus.EventBus) *AgentManager {
 
 // RegisterFromFile parses the filename and dispatches to the appropriate agent constructor
 func (am *AgentManager) RegisterFromFile(filePath string) error {
-	base := filepath.Base(filePath)
-	parts := strings.Split(base, ".")
+	parts := strings.Split(filepath.Base(filePath), ".")
 
 	if len(parts) < 3 {
-		return errors.New("filename must follow format <name>.<lang>.<type>")
+		return fmt.Errorf("invalid filename: expected format <name>.<lang>.<type>, got %s", filePath)
 	}
 
-	id := parts[0]
-	lang := parts[1]
-	typ := parts[2]
-	scope := "system"     // default for now
-	topicRoot := "/" + id // default topic
+	typ := strings.ToLower(strings.TrimSpace(parts[len(parts)-1]))
 
 	var agent lifecycle.Agent
 
 	switch typ {
 	case "timer":
-		agent = timer.NewTimerAgent(id, scope, topicRoot, filePath, lang, 10, am.bus)
+		var err error
+		agent, err = timer.NewTimerAgent(filePath)
+		if err != nil {
+			return err
+		}
 	case "service":
-		agent = service.NewServiceAgent(id, scope, topicRoot, filePath, lang, am.bus)
+		var err error
+		agent, err = service.NewServiceAgent(filePath)
+		if err != nil {
+			return err
+		}
 	default:
 		return errors.New("unsupported agent type: " + typ)
 	}
@@ -120,7 +124,16 @@ func (am *AgentManager) Describe() []map[string]string {
 
 	var out []map[string]string
 	for _, a := range am.agents {
-		out = append(out, a.Describe())
+		info := a.Describe()
+		out = append(out, map[string]string{
+			"id":          info.ID,
+			"name":        info.Name,
+			"version":     info.Version,
+			"type":        info.Type,
+			"description": info.Description,
+			"enabled":     fmt.Sprintf("%v", info.Enabled),
+			"interval":    fmt.Sprintf("%d", info.Interval),
+		})
 	}
 	return out
 }
@@ -149,7 +162,16 @@ func (am *AgentManager) DiscoverFromPath(path string) ([]map[string]string, erro
 		id := strings.Split(d.Name(), ".")[0]
 		agent := am.Get(id)
 		if agent != nil {
-			out = append(out, agent.Describe())
+			info := agent.Describe()
+			out = append(out, map[string]string{
+				"id":          info.ID,
+				"name":        info.Name,
+				"version":     info.Version,
+				"type":        info.Type,
+				"description": info.Description,
+				"enabled":     fmt.Sprintf("%v", info.Enabled),
+				"interval":    fmt.Sprintf("%d", info.Interval),
+			})
 		}
 		return nil
 	})

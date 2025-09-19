@@ -1,4 +1,5 @@
-# heartbeat.py.service
+import threading
+import time
 
 ID = "heartbeat"
 NAME = "Heartbeat Monitor"
@@ -7,14 +8,39 @@ TYPE = "service"
 DESCRIPTION = "Periodically logs a heartbeat signal for monitoring."
 ENABLED = True
 
+# Internal control flag and thread
+_running = False
+_thread = None
+
+def _heartbeat_loop():
+    while _running:
+        print(f"[heartbeat] 💓 heartbeat at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        time.sleep(5)
+
 def initialize():
     print("[heartbeat] initialize called")
 
 def start():
+    global _running, _thread
+    if _running:
+        print("[heartbeat] already running")
+        return
     print("[heartbeat] start called")
+    _running = True
+    _thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    _thread.start()
 
 def stop():
+    global _running, _thread
+    if not _running:
+        print("[heartbeat] already stopped")
+        return
     print("[heartbeat] stop called")
+    _running = False
+    if _thread:
+        _thread.join(timeout=6)
+        _thread = None
+    print("[heartbeat] stopped")
 
 def restart():
     print("[heartbeat] restart called")

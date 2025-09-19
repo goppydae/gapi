@@ -14,12 +14,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(pingCmd)
 	rootCmd.AddCommand(agentReloadCmd)
-
-	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(startCmd)
-	rootCmd.AddCommand(stopCmd)
-	rootCmd.AddCommand(restartCmd)
-	rootCmd.AddCommand(reloadCmd)
+	rootCmd.AddCommand(agentStatusCmd)
 
 	version.SetBinaryNameAndVersion("gapictl", "0.1.0")
 }

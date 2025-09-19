@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
+
+import "google/protobuf/timestamp.proto";
+
+message LifecycleTransition {
+  string agent_id = 1;
+  string from = 2;
+  string to = 3;
+  string hostname = 4;
+  google.protobuf.Timestamp time = 5;
+}

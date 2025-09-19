@@ -2,110 +2,69 @@ package service
 
 import (
 	"fmt"
-	"log"
-	"os/exec"
-	"path/filepath"
-	"sync"
 
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/adk"
+	"github.com/goppydae/gapi/core/adk/loader"
+	"github.com/goppydae/gapi/core/adk/meta"
 )
 
+// ServiceAgent wraps a Python agent for service-type behavior.
 type ServiceAgent struct {
-	id        string
-	scope     string
-	topicRoot string
-	script    string
-	lang      string
-	cmd       *exec.Cmd
-	status    string
-	bus       *eventbus.EventBus
-	mu        sync.Mutex
+	adk.Agent
+	path string
 }
 
-func NewServiceAgent(id, scope, topicRoot, scriptPath, lang string, bus *eventbus.EventBus) *ServiceAgent {
-	return &ServiceAgent{
-		id:        id,
-		scope:     scope,
-		topicRoot: topicRoot,
-		script:    scriptPath,
-		lang:      lang,
-		status:    "initialized",
-		bus:       bus,
+// NewServiceAgent creates a new service agent from a Python file.
+func NewServiceAgent(path string) (*ServiceAgent, error) {
+	agent, err := loader.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load service agent: %w", err)
 	}
+	return &ServiceAgent{
+		Agent: agent,
+		path:  path,
+	}, nil
 }
 
-func (s *ServiceAgent) ID() string    { return s.id }
-func (s *ServiceAgent) Scope() string { return s.scope }
-func (s *ServiceAgent) Type() string  { return "service" }
+func (s *ServiceAgent) ID() string {
+	return s.Agent.Info().ID
+}
+
+func (s *ServiceAgent) Type() string {
+	return s.Agent.Info().Type
+}
+
+func (s *ServiceAgent) Scope() string {
+	return "system" // or read from file metadata if needed
+}
+
+func (s *ServiceAgent) Describe() *meta.AgentInfo {
+	return s.Agent.Info()
+}
+
+// Optionally override lifecycle methods
 
 func (s *ServiceAgent) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.cmd != nil && s.cmd.Process != nil {
-		return nil
-	}
-
-	cmd, err := s.buildCmd()
-	if err != nil {
-		log.Printf("[%s] buildCmd error: %v", s.id, err)
-		return err
-	}
-
-	s.cmd = cmd
-	if err := s.cmd.Start(); err != nil {
-		log.Printf("[%s] failed to start service: %v", s.id, err)
-		return err
-	}
-
-	s.status = "running"
-	log.Printf("[%s] service agent started (%s)", s.id, filepath.Base(s.script))
-	return nil
+	fmt.Println("[service] starting:", s.path)
+	return s.Agent.Start()
 }
 
 func (s *ServiceAgent) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.cmd == nil || s.cmd.Process == nil {
-		return nil
-	}
-
-	err := s.cmd.Process.Kill()
-	s.cmd = nil
-	s.status = "stopped"
-	log.Printf("[%s] service agent stopped", s.id)
-	return err
+	fmt.Println("[service] stopping:", s.path)
+	return s.Agent.Stop()
 }
 
-func (s *ServiceAgent) Restart() error { return s.Reload() }
+func (s *ServiceAgent) Restart() error {
+	fmt.Println("[service] restarting:", s.path)
+	if hooks, ok := s.Agent.(adk.OptionalHooks); ok {
+		return hooks.Restart()
+	}
+	return nil // not an error if not implemented
+}
 
 func (s *ServiceAgent) Reload() error {
-	if err := s.Stop(); err != nil {
-		return err
+	if hooks, ok := s.Agent.(adk.OptionalHooks); ok {
+		return hooks.Reload()
 	}
-	return s.Start()
-}
-
-func (s *ServiceAgent) Describe() map[string]string {
-	return map[string]string{
-		"id":     s.id,
-		"scope":  s.scope,
-		"type":   "service",
-		"lang":   s.lang,
-		"status": s.status,
-	}
-}
-
-func (s *ServiceAgent) buildCmd() (*exec.Cmd, error) {
-	switch s.lang {
-	case "py":
-		return exec.Command("python3", s.script), nil
-	case "sh":
-		return exec.Command("sh", s.script), nil
-	case "go":
-		return exec.Command(s.script), nil
-	default:
-		return nil, fmt.Errorf("[%s] unknown or unsupported language: %s", s.id, s.lang)
-	}
+	return nil // Not implemented, silently skip
 }

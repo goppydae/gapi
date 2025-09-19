@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "go_sdk": "0.1.0",
+  "python_sdk": "0.1.0",
+  "schema_hash": "5ee2606abe321ec9ac241a2a0b8a47fd76f4518204f82f7145a3b09ee6a490f4",
+  "build_tag": "dev",
+  "commit": "92c7afbb970e3a38e91009092cd61ad05107ee6a",
+  "date": "2025-09-17T16:34:22Z",
+  "built_by": "sysop",
+  "output_binary": "bin/gapid"
+}

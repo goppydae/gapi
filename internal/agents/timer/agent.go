@@ -2,163 +2,69 @@ package timer
 
 import (
 	"fmt"
-	"log"
-	"os/exec"
-	"path/filepath"
-	"sync"
-	"time"
 
-	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/structpb"
-
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/adk"
+	"github.com/goppydae/gapi/core/adk/loader"
+	"github.com/goppydae/gapi/core/adk/meta"
 )
 
+// TimerAgent wraps a Python agent for timer-triggered behavior.
 type TimerAgent struct {
-	id        string
-	scope     string
-	topicRoot string
-	script    string
-	lang      string
-	interval  time.Duration
-	bus       *eventbus.EventBus
-
-	mu     sync.Mutex
-	ticker *time.Ticker
-	stop   chan struct{}
-	status string
+	adk.Agent
+	path string
 }
 
-func NewTimerAgent(id, scope, topicRoot, scriptPath, lang string, intervalSec int, bus *eventbus.EventBus) *TimerAgent {
-	return &TimerAgent{
-		id:        id,
-		scope:     scope,
-		topicRoot: topicRoot,
-		script:    scriptPath,
-		lang:      lang,
-		interval:  time.Duration(intervalSec) * time.Second,
-		bus:       bus,
-		status:    "initialized",
+// NewTimerAgent creates a new timer agent from a Python file.
+func NewTimerAgent(path string) (*TimerAgent, error) {
+	agent, err := loader.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load timer agent: %w", err)
 	}
+	return &TimerAgent{
+		Agent: agent,
+		path:  path,
+	}, nil
 }
 
-func (t *TimerAgent) ID() string    { return t.id }
-func (t *TimerAgent) Scope() string { return t.scope }
-func (t *TimerAgent) Type() string  { return "timer" }
+func (t *TimerAgent) ID() string {
+	return t.Agent.Info().ID
+}
+
+func (t *TimerAgent) Type() string {
+	return t.Agent.Info().Type
+}
+
+func (t *TimerAgent) Scope() string {
+	return "system"
+}
+
+func (t *TimerAgent) Describe() *meta.AgentInfo {
+	return t.Agent.Info()
+}
+
+// Optionally override lifecycle methods
 
 func (t *TimerAgent) Start() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.ticker != nil {
-		return nil
-	}
-
-	t.status = "running"
-	t.ticker = time.NewTicker(t.interval)
-	t.stop = make(chan struct{})
-
-	log.Printf("[%s] timer agent started (%s every %v)", t.id, filepath.Base(t.script), t.interval)
-
-	go func() {
-		for {
-			select {
-			case <-t.ticker.C:
-				t.fire()
-			case <-t.stop:
-				return
-			}
-		}
-	}()
-
-	return nil
+	fmt.Println("[timer] starting:", t.path)
+	return t.Agent.Start()
 }
 
 func (t *TimerAgent) Stop() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.ticker == nil {
-		return nil
-	}
-
-	t.ticker.Stop()
-	close(t.stop)
-	t.ticker = nil
-	t.stop = nil
-	t.status = "stopped"
-
-	log.Printf("[%s] timer agent stopped", t.id)
-	return nil
+	fmt.Println("[timer] stopping:", t.path)
+	return t.Agent.Stop()
 }
 
-func (t *TimerAgent) Restart() error { return t.Reload() }
+func (t *TimerAgent) Restart() error {
+	fmt.Println("[timer] restarting:", t.path)
+	if hooks, ok := t.Agent.(adk.OptionalHooks); ok {
+		return hooks.Restart()
+	}
+	return nil // not an error if not implemented
+}
 
 func (t *TimerAgent) Reload() error {
-	if err := t.Stop(); err != nil {
-		return err
+	if hooks, ok := t.Agent.(adk.OptionalHooks); ok {
+		return hooks.Reload()
 	}
-	return t.Start()
-}
-func (t *TimerAgent) Describe() map[string]string {
-	return map[string]string{
-		"id":     t.id,
-		"scope":  t.scope,
-		"type":   "timer",
-		"lang":   t.lang,
-		"status": t.status,
-	}
-}
-
-func (t *TimerAgent) fire() {
-	cmd, err := t.buildCmd()
-	if err != nil {
-		log.Printf("[%s] buildCmd error: %v", t.id, err)
-		return
-	}
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("[%s] error during timer execution: %v", t.id, err)
-		return
-	}
-
-	log.Printf("[%s] timer tick: %s", t.id, string(output))
-
-	// Convert map to Struct
-	structPayload, err := structpb.NewStruct(map[string]interface{}{
-		"output": string(output),
-	})
-	if err != nil {
-		log.Printf("[%s] struct conversion error: %v", t.id, err)
-		return
-	}
-
-	// Wrap in Any
-	anyPayload, err := anypb.New(structPayload)
-	if err != nil {
-		log.Printf("[%s] packing into Any failed: %v", t.id, err)
-		return
-	}
-
-	t.bus.Publish(eventbus.Event{
-		Scope:     t.scope,
-		Topic:     t.topicRoot + "/tick",
-		Payload:   anyPayload,
-		Source:    t.id,
-		Broadcast: false,
-	})
-}
-
-func (t *TimerAgent) buildCmd() (*exec.Cmd, error) {
-	switch t.lang {
-	case "py":
-		return exec.Command("python3", t.script), nil
-	case "sh":
-		return exec.Command("sh", t.script), nil
-	case "go":
-		return exec.Command(t.script), nil
-	default:
-		return nil, fmt.Errorf("[%s] unknown or unsupported language: %s", t.id, t.lang) // assume binary
-	}
+	return nil
 }

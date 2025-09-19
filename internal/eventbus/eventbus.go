@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/goppydae/gapi/internal/logging/logcore"
@@ -91,6 +92,40 @@ func (bus *EventBus) SubscribePrefix(scope string, topicPrefix string, fn Handle
 	defer bus.mu.Unlock()
 	bus.subs[key] = append(bus.subs[key], fn)
 	return nil
+}
+
+func (bus *EventBus) SubscribeOnce(scope, topic string, handler Handler) {
+	var once sync.Once
+	var wrapper Handler
+
+	wrapper = func(e Event) {
+		once.Do(func() {
+			handler(e)
+			bus.Unsubscribe(scope, topic, wrapper)
+		})
+	}
+
+	bus.Subscribe(scope, topic, wrapper)
+}
+
+func (bus *EventBus) Unsubscribe(scope, topic string, target Handler) {
+	key := fmt.Sprintf("%s/%s", scope, topic)
+
+	bus.mu.Lock()
+	defer bus.mu.Unlock()
+
+	handlers := bus.subs[key]
+	for i, h := range handlers {
+		if fmt.Sprintf("%p", h) == fmt.Sprintf("%p", target) {
+			bus.subs[key] = append(handlers[:i], handlers[i+1:]...)
+			break
+		}
+	}
+
+	// Optional cleanup if no more subscribers
+	if len(bus.subs[key]) == 0 {
+		delete(bus.subs, key)
+	}
 }
 
 func (bus *EventBus) Publish(e Event) error {
@@ -190,3 +225,10 @@ type LocalTransport struct{}
 func (t *LocalTransport) PublishRemote(e Event) error  { return nil }
 func (t *LocalTransport) Broadcast(e Event) error      { return nil }
 func (t *LocalTransport) OnRemoteEvent(fn func(Event)) {}
+
+func (e *Event) UnmarshalPayload(target proto.Message) error {
+	if e.Payload == nil {
+		return fmt.Errorf("event has no payload")
+	}
+	return e.Payload.UnmarshalTo(target)
+}

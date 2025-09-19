@@ -47,7 +47,26 @@ export OUTPUT_FILE=gapid
 # Conditionally run gapid if not in build-only mode
 if [ "$BUILD_ONLY" = false ]; then
     echo "Launching gapid..."
-    exec ./bin/gapid
+
+    # Define shutdown procedure
+    shutdown() {
+        echo "Received termination signal. Shutting down gapid..."
+        if [[ -n "$GAPID_PID" ]]; then
+            kill "$GAPID_PID"
+            wait "$GAPID_PID"
+        fi
+        echo "gapid has been shut down."
+    }
+
+    # Set trap for SIGINT and SIGTERM
+    trap shutdown SIGINT SIGTERM
+
+    # Start gapid in background
+    ./bin/gapid &
+    GAPID_PID=$!
+
+    # Wait for background process to finish
+    wait "$GAPID_PID"
 else
     echo "Build completed successfully (build-only mode)."
 fi
