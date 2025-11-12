@@ -6,209 +6,205 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
+	"reflect"
+	"strings"
 	"sync"
-
-	quicgo "github.com/quic-go/quic-go"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/internal/proto"
+	quicgo "github.com/quic-go/quic-go"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
-type QUICTransport struct {
+type QUIC[T proto.Message] struct {
 	listener *quicgo.Listener
 	conn     quicgo.Connection
-	onEvent  func(eventbus.Event)
-	lock     sync.Mutex
+
+	onRemote func(eventbus.Event[T])
+	mu       sync.Mutex
 }
 
-func NewQUICServer(addr string, cert tls.Certificate) (*QUICTransport, error) {
+// Server: listens and accepts inbound connections/streams.
+func NewQUICServer[T proto.Message](addr string, cert tls.Certificate) (*QUIC[T], error) {
 	tlsConf := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{"gapi-quic"},
 	}
-
-	listener, err := quicgo.ListenAddr(addr, tlsConf, nil)
+	ln, err := quicgo.ListenAddr(addr, tlsConf, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	qt := &QUICTransport{listener: listener}
-	go qt.acceptLoop()
-	return qt, nil
+	q := &QUIC[T]{listener: ln}
+	go q.acceptLoop()
+	return q, nil
 }
 
-func NewQUICClient(addr string, cert *tls.Certificate) (*QUICTransport, error) {
+// Client: dials a remote QUIC endpoint.
+func NewQUICClient[T proto.Message](addr string, cert *tls.Certificate) (*QUIC[T], error) {
 	tlsConf := &tls.Config{
 		Certificates:       []tls.Certificate{*cert},
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // tune per your trust model
 		NextProtos:         []string{"gapi-quic"},
 	}
-
 	conn, err := quicgo.DialAddr(context.Background(), addr, tlsConf, nil)
 	if err != nil {
 		return nil, err
 	}
-
-	qt := &QUICTransport{
-		conn: conn,
-	}
-
-	// Handle inbound streams from server
-	go qt.handleConn(conn)
-
-	return qt, nil
+	q := &QUIC[T]{conn: conn}
+	go q.handleConn(conn)
+	return q, nil
 }
 
-// Added back missing clientStreamLoop
-func (qt *QUICTransport) clientStreamLoop() {
+func (q *QUIC[T]) acceptLoop() {
 	for {
-		stream, err := qt.conn.AcceptStream(context.Background())
+		conn, err := q.listener.Accept(context.Background())
 		if err != nil {
-			log.Println("client stream error:", err)
+			log.Println("QUIC accept:", err)
 			return
 		}
-		go qt.handleStream(stream)
+		go q.handleConn(conn)
 	}
 }
 
-func (qt *QUICTransport) acceptLoop() {
+func (q *QUIC[T]) handleConn(conn quicgo.Connection) {
+	q.mu.Lock()
+	q.conn = conn
+	q.mu.Unlock()
 	for {
-		conn, err := qt.listener.Accept(context.Background())
+		s, err := conn.AcceptStream(context.Background())
 		if err != nil {
-			if err.Error() == "listener closed" {
-				log.Println("Listener closed gracefully.")
-				return
-			}
-			log.Println("QUIC accept error:", err)
-			continue
-		}
-		go qt.handleConn(conn)
-	}
-}
-
-func (qt *QUICTransport) handleConn(conn quicgo.Connection) {
-	qt.lock.Lock()
-	qt.conn = conn
-	qt.lock.Unlock()
-
-	for {
-		stream, err := conn.AcceptStream(context.Background())
-		if err != nil {
-			log.Println("AcceptStream error:", err)
+			log.Println("AcceptStream:", err)
 			return
 		}
-		go qt.handleStream(stream)
+		go q.handleStream(s)
 	}
 }
 
-func (qt *QUICTransport) handleStream(stream quicgo.Stream) {
-	defer stream.Close() // Ensure the stream is fully closed
+func (q *QUIC[T]) handleStream(s quicgo.Stream) {
+	defer s.Close()
 
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(stream, lenBuf); err != nil {
-		log.Println("Read length error:", err)
+	var lenBuf [4]byte
+	if _, err := io.ReadFull(s, lenBuf[:]); err != nil {
+		log.Println("read len:", err)
 		return
 	}
-	length := binary.BigEndian.Uint32(lenBuf)
+	n := binary.BigEndian.Uint32(lenBuf[:])
 
-	data := make([]byte, length)
-	if _, err := io.ReadFull(stream, data); err != nil {
-		log.Println("Read data error:", err)
+	data := make([]byte, n)
+	if _, err := io.ReadFull(s, data); err != nil {
+		log.Println("read payload:", err)
 		return
 	}
 
 	var env protopkg.Envelope
 	if err := proto.Unmarshal(data, &env); err != nil {
-		log.Println("Unmarshal error:", err)
+		log.Println("unmarshal:", err)
 		return
 	}
 
-	e := eventbus.Event{
-		ID:      env.Id,
-		Scope:   "user",
-		Topic:   env.Topic,
-		Source:  env.Source,
-		Payload: env.Payload,
+	msg := allocT[T]()
+	if env.Payload != nil {
+		if err := env.Payload.UnmarshalTo(msg); err != nil {
+			log.Println("unmarshal payload:", err)
+			return
+		}
 	}
 
-	if qt.onEvent != nil {
-		log.Printf("Dispatching remote event id=%s topic=%s", e.ID, e.Topic)
-		qt.onEvent(e)
-	} else {
-		log.Printf("No event handler registered. Dropping event id=%s", e.ID)
+	sc := ""
+	tp := env.Topic
+	if i := strings.IndexByte(env.Topic, '/'); i > 0 {
+		sc = env.Topic[:i]
+		tp = env.Topic[i+1:]
+	}
+
+	e := eventbus.Event[T]{
+		ID:      env.Id,
+		Scope:   sc, // <- restore scope
+		Topic:   tp, // <- topic without scope prefix
+		Source:  env.Source,
+		Payload: msg,
+	}
+
+	if q.onRemote != nil {
+		q.onRemote(e)
 	}
 }
 
-func (qt *QUICTransport) PublishRemote(e eventbus.Event) error {
-	qt.lock.Lock()
-	defer qt.lock.Unlock()
+func allocT[T proto.Message]() T {
+	var zero T
+	typ := reflect.TypeOf(zero)
+	if typ.Kind() == reflect.Ptr {
+		return reflect.New(typ.Elem()).Interface().(T)
+	}
+	return zero
+}
 
-	if qt.conn == nil {
-		log.Println("QUICTransport: conn is nil in PublishRemote")
-		return nil
+func (q *QUIC[T]) PublishRemote(e eventbus.Event[T]) error {
+	q.mu.Lock()
+	conn := q.conn
+	q.mu.Unlock()
+	if conn == nil {
+		return io.ErrUnexpectedEOF
 	}
 
-	stream, err := qt.conn.OpenStreamSync(context.Background())
+	s, err := conn.OpenStreamSync(context.Background())
 	if err != nil {
 		return err
 	}
-	defer stream.Close()
+	defer s.Close()
 
+	anyPayload, err := anypb.New(e.Payload)
+	if err != nil {
+		return err
+	}
+	wireTopic := e.Topic
+	if e.Scope != "" {
+		wireTopic = e.Scope + "/" + e.Topic
+	}
 	env := &protopkg.Envelope{
 		Id:      e.ID,
-		Type:    "event", // Or e.Type if you separate types
-		Topic:   e.Topic,
+		Topic:   wireTopic,
 		Source:  e.Source,
-		Payload: e.Payload,
+		Type:    "event",
+		Payload: anyPayload,
 	}
 
-	data, err := proto.Marshal(env)
+	b, err := proto.Marshal(env)
 	if err != nil {
 		return err
 	}
 
-	lenBuf := make([]byte, 4)
-	binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+	var lenBuf [4]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(b)))
 
-	if _, err := stream.Write(lenBuf); err != nil {
+	if _, err := s.Write(lenBuf[:]); err != nil {
 		return err
 	}
-	if _, err := stream.Write(data); err != nil {
+	if _, err := s.Write(b); err != nil {
 		return err
 	}
-
-	log.Printf("QUICTransport: sent envelope id=%s topic=%s to peer", e.ID, e.Topic)
 	return nil
 }
 
-func (qt *QUICTransport) Broadcast(e eventbus.Event) error {
-	return qt.PublishRemote(e)
+func (q *QUIC[T]) Broadcast(e eventbus.Event[T]) error {
+	// Single-conn implementation; if you maintain multiple peers, iterate them here.
+	return q.PublishRemote(e)
 }
 
-func (qt *QUICTransport) OnRemoteEvent(fn func(eventbus.Event)) {
-	qt.onEvent = fn
-}
+func (q *QUIC[T]) OnRemoteEvent(fn func(eventbus.Event[T])) { q.onRemote = fn }
 
-// Close method for graceful shutdown
-func (qt *QUICTransport) Close() error {
-	qt.lock.Lock()
-	defer qt.lock.Unlock()
-
+func (q *QUIC[T]) Close() error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	var err error
-
-	if qt.listener != nil {
-		err = qt.listener.Close()
-		qt.listener = nil
+	if q.listener != nil {
+		err = q.listener.Close()
+		q.listener = nil
 	}
-
-	if qt.conn != nil {
-		closeErr := qt.conn.CloseWithError(0, "shutdown")
-		if err == nil {
-			err = closeErr
-		}
-		qt.conn = nil
+	if q.conn != nil {
+		_ = q.conn.CloseWithError(0, "shutdown")
+		q.conn = nil
 	}
-
 	return err
 }

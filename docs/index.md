@@ -1,15 +1,15 @@
 # GoPPydae Documentation Index
 
-This documentation outlines the structure, principles, and language of the GoPPydae ecosystem. It is not a user manual. It is a reference environment—a place for design artifacts, architectural context, and internal vocabulary.
+This documentation outlines the structure, principles, and language of the GoPPydae ecosystem. It is not a user manual. It is a reference environment - a place for design artifacts, architectural context, and internal vocabulary.
 
-These documents are foundational and evolving. They are not static pages—they are surfaces of the system.
+These documents are foundational and evolving. They are not static pages - they are surfaces of the system.
 
 ---
 
 ## Core Documents
 
-- [**arch.md**](./arch.md)  
-  Partial architectural overview.
+- [**gapi_design_document.md**](./gapi_design_document.md)
+  Ever evolving source of truth for system design.
 
 - [**lore.md**](./lore.md)  
   Origin, etymology, and philosophical grounding of the ecosystem.

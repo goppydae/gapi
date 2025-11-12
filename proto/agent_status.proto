@@ -4,13 +4,30 @@ package proto;
 
 option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
 
-message AgentStatusRequest {}
-
-message AgentStatus {
-  string id = 1;
-  string type = 2;
+enum AgentState {
+  AGENT_STATE_UNKNOWN   = 0;
+  AGENT_STATE_INIT      = 1;
+  AGENT_STATE_STARTING  = 2;
+  AGENT_STATE_RUNNING   = 3;
+  AGENT_STATE_STOPPING  = 4;
+  AGENT_STATE_STOPPED   = 5;
+  AGENT_STATE_FAILED    = 6;
+  AGENT_STATE_RELOADING = 7;
 }
 
-message AgentStatusResponse {
-  repeated AgentStatus agents = 1;
+message AgentStatus {
+  string id        = 1;
+  string type      = 2;
+  AgentState state = 3;
+  string name      = 4;
+  string language  = 5;
+  string version   = 6;
+  repeated string capabilities = 7;
+}
+
+message AgentStatusRequest {} // usually empty or may filter by id/prefix
+message AgentStatusResponse { repeated AgentStatus agents = 1; }
+
+service Supervisor {
+  rpc ListAgents(AgentStatusRequest) returns (AgentStatusResponse);
 }

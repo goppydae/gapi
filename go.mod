@@ -1,8 +1,6 @@
 module github.com/goppydae/gapi
 
-go 1.23.0
-
-toolchain go1.24.1
+go 1.25.0
 
 require (
 	filippo.io/age v1.2.1
@@ -13,6 +11,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/zeebo/blake3 v0.2.4
 	go.etcd.io/bbolt v1.4.0
+	google.golang.org/grpc v1.67.3
 	google.golang.org/protobuf v1.36.9
 )
 
@@ -44,5 +43,6 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

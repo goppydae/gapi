@@ -1,7 +1,8 @@
 package eventbus
 
-type Transport interface {
-	PublishRemote(Event) error
-	Broadcast(Event) error
-	OnRemoteEvent(func(Event))
+type Transport[T any] interface {
+	PublishRemote(Event[T]) error
+	Broadcast(Event[T]) error
+	OnRemoteEvent(func(Event[T]))
+	Close() error
 }

@@ -2,10 +2,10 @@ package agentreg
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/goppydae/gapi/core/store"
-	"github.com/goppydae/gapi/internal/db/graphdb"
 )
 
 type AgentDescription struct {
@@ -36,8 +36,10 @@ func NewAgentRegistry(s store.HybridStore) (*AgentRegistry, error) {
 }
 
 func (r *AgentRegistry) Register(agent *AgentDescription) error {
-	id := agent.ID
-	return r.store.Set(agentsBucket, id, agent)
+	if agent == nil || strings.TrimSpace(agent.ID) == "" || strings.TrimSpace(agent.Type) == "" {
+		return fmt.Errorf("invalid agent: %+v", agent)
+	}
+	return r.store.Set(agentsBucket, agent.ID, agent)
 }
 
 func (r *AgentRegistry) Lookup(id string) (*AgentDescription, error) {
@@ -80,51 +82,63 @@ func (r *AgentRegistry) TopologicalSort() ([]string, error) {
 		return nil, err
 	}
 
-	nodeIndex := make(map[string]struct{})
+	// Build adjacency using ONLY hard deps (Requires); Wants to remain soft.
+	reqs := make(map[string][]string, len(agents))
+	exists := make(map[string]struct{}, len(agents))
 	for _, a := range agents {
-		r.store.AddNode(graphdb.Node{ID: a.ID})
-		nodeIndex[a.ID] = struct{}{}
+		exists[a.ID] = struct{}{}
+		reqs[a.ID] = append([]string(nil), a.Requires...)
 	}
 
-	for _, a := range agents {
-		for _, dep := range append(a.Requires, a.Wants...) {
-			if _, ok := nodeIndex[dep]; ok {
-				r.store.AddEdge(graphdb.Edge{From: a.ID, To: dep, Kind: "dependency"})
+	// Kahn's algorithm (in-memory, no store side effects)
+	inDeg := map[string]int{}
+	for id := range exists {
+		inDeg[id] = 0
+	}
+	for id, deps := range reqs {
+		_ = id
+		for _, d := range deps {
+			if _, ok := exists[d]; ok {
+				inDeg[id]++
 			}
 		}
 	}
 
-	// Assume store.graph.ShortestPath is enough for now; topo.Sort is unavailable
-	// So we return a naive linearization by counting 0-dependency agents first
-	var sorted []string
-	visited := make(map[string]bool)
+	queue := make([]string, 0, len(agents))
+	for id, deg := range inDeg {
+		if deg == 0 {
+			queue = append(queue, id)
+		}
+	}
 
-	for len(sorted) < len(agents) {
-		didWork := false
-		for _, a := range agents {
-			if visited[a.ID] {
-				continue
-			}
-			deps, _ := r.GetDependencies(a.ID)
-			ready := true
+	var order []string
+	for len(queue) > 0 {
+		// pop last (stack-ish is fine)
+		n := len(queue) - 1
+		id := queue[n]
+		queue = queue[:n]
+		order = append(order, id)
+
+		for depOwner, deps := range reqs {
 			for _, d := range deps {
-				if !visited[d] {
-					ready = false
-					break
+				if d == id {
+					inDeg[depOwner]--
+					if inDeg[depOwner] == 0 {
+						queue = append(queue, depOwner)
+					}
 				}
 			}
-			if ready {
-				visited[a.ID] = true
-				sorted = append(sorted, a.ID)
-				didWork = true
-			}
-		}
-		if !didWork {
-			return nil, fmt.Errorf("cycle detected or missing dependencies")
 		}
 	}
 
-	return sorted, nil
+	if len(order) != len(agents) {
+		return nil, fmt.Errorf("cycle detected or missing hard dependency")
+	}
+
+	// Sync now we know the DAG is valid.
+	r.syncGraph(agents)
+
+	return order, nil
 }
 
 func (r *AgentRegistry) Close() error {

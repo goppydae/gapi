@@ -2,9 +2,6 @@ package transport
 
 import "github.com/goppydae/gapi/internal/eventbus"
 
-type Transport interface {
-	PublishRemote(eventbus.Event) error
-	Broadcast(eventbus.Event) error
-	OnRemoteEvent(func(eventbus.Event))
-	Close() error
-}
+// Alias so code that imports internal/transport can refer to Transport[T],
+// while the canonical interface lives in eventbus (preventing import cycles).
+type Transport[T any] = eventbus.Transport[T]

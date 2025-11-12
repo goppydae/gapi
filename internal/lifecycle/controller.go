@@ -18,11 +18,11 @@ type AgentLookup interface {
 type LifecycleController struct {
 	fsms map[string]*LifecycleStateMachine
 	mgr  AgentLookup
-	bus  *eventbus.EventBus
+	bus  *eventbus.EventBus[*anypb.Any]
 	host string
 }
 
-func NewLifecycleController(fsms map[string]*LifecycleStateMachine, mgr AgentLookup, bus *eventbus.EventBus, host string) *LifecycleController {
+func NewLifecycleController(fsms map[string]*LifecycleStateMachine, mgr AgentLookup, bus *eventbus.EventBus[*anypb.Any], host string) *LifecycleController {
 	return &LifecycleController{
 		fsms: fsms,
 		mgr:  mgr,
@@ -47,26 +47,104 @@ func (lc *LifecycleController) Handle(ctrl *protopkg.LifecycleControl) {
 	var err error
 	var transition string
 
-	switch ctrl.Action {
+	current := fsm.GetState()
+
+	switch ctrl.GetAction() {
+
 	case protopkg.LifecycleControl_START:
-		transition = "starting"
-		err = agent.Start()
+		// No-op if we're already up or headed up.
+		if current == "running" || current == "starting" {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), "noop: already running")
+			return
+		}
+
+		// First START from "initialize" is now legal via relaxed FSM.
+		if err := fsm.TransitionTo("starting"); err != nil {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("transition(starting) failed: %v", err))
+			return
+		}
+
+		if err := agent.Start(); err != nil {
+			_ = fsm.TransitionTo("error")
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("start failed: %v", err))
+			return
+		}
+
+		_ = fsm.TransitionTo("running")
+		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "started")
+
 	case protopkg.LifecycleControl_STOP:
-		transition = "stopping"
-		err = agent.Stop()
+		// Idempotent stop.
+		if current == "stopped" || current == "stopping" {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), "noop: already stopped")
+			return
+		}
+
+		if err := fsm.TransitionTo("stopping"); err != nil {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("transition(stopping) failed: %v", err))
+			return
+		}
+
+		if err := agent.Stop(); err != nil {
+			_ = fsm.TransitionTo("error")
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("stop failed: %v", err))
+			return
+		}
+
+		_ = fsm.TransitionTo("stopped")
+		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "stopped")
+
 	case protopkg.LifecycleControl_RESTART:
-		transition = "restarting"
-		_ = agent.Stop()
-		err = agent.Start()
+		// Dedicated restart path. This does NOT treat START as an implicit stop.
+		// It only runs on the explicit RESTART action.
+		if current != "restarting" {
+			if err := fsm.TransitionTo("restarting"); err != nil {
+				lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("transition(restarting) failed: %v", err))
+				return
+			}
+		}
+
+		// Best-effort stop only if we were actually up/starting/reloading.
+		if current == "running" || current == "starting" || current == "reloading" {
+			if err := agent.Stop(); err != nil {
+				_ = fsm.TransitionTo("error")
+				lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("restart/stop failed: %v", err))
+				return
+			}
+		}
+
+		if err := agent.Start(); err != nil {
+			_ = fsm.TransitionTo("error")
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("restart/start failed: %v", err))
+			return
+		}
+
+		_ = fsm.TransitionTo("running")
+		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "restarted")
+
 	case protopkg.LifecycleControl_RELOAD:
-		transition = "reloading"
-		err = agent.Reload()
-	case protopkg.LifecycleControl_ACTION_UNSPECIFIED:
-		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "queried via ACTION_UNSPECIFIED")
-		return
+		// Only meaningful from running; otherwise, keep policy simple: no-op.
+		if current != "running" {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), "noop: reload allowed only from running")
+			return
+		}
+
+		if err := fsm.TransitionTo("reloading"); err != nil {
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("transition(reloading) failed: %v", err))
+			return
+		}
+
+		if err := agent.Reload(); err != nil {
+			_ = fsm.TransitionTo("error")
+			lc.sendStatus(ctrl.AgentId, fsm.GetState(), fmt.Sprintf("reload failed: %v", err))
+			return
+		}
+
+		_ = fsm.TransitionTo("running")
+		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "reloaded")
+
 	default:
 		lc.sendStatus(ctrl.AgentId, fsm.GetState(), "unsupported action")
-		return
 	}
 
 	if err != nil {
@@ -92,6 +170,6 @@ func (lc *LifecycleController) sendStatus(agentID, state, message string) {
 		return
 	}
 
-	event := eventbus.NewEvent("user", "agent/lifecycle.status", "gapid", payload, true)
+	event := eventbus.NewEvent("system", "agent/lifecycle.status", "gapid", payload, true)
 	_ = lc.bus.Publish(event)
 }

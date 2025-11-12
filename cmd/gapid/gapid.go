@@ -48,7 +48,7 @@ func runSupervisor() {
 		logger.Fatal().Err(err).Msg("failed to load config")
 	}
 
-	t, err := transport.NewServerFromConfig(cfg.Transport)
+	t, err := transport.NewServerFromConfig[*anypb.Any](cfg.Transport)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to initialize transport")
 	}
@@ -111,7 +111,7 @@ func runSupervisor() {
 	setupAgents()
 	controller := lifecycle.NewLifecycleController(agentFSMs, manager, bus, host)
 
-	bus.SubscribePrefix("user", "system/ping", func(e eventbus.Event) {
+	bus.SubscribePrefix("system", "system/ping", func(e eventbus.Event[*anypb.Any]) {
 		logger.Info().
 			Str("event", "handling_ping").
 			Str("event_id", e.ID).
@@ -126,11 +126,11 @@ func runSupervisor() {
 			return
 		}
 
-		response := eventbus.NewEvent("user", "system/pong", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "system/pong", "gapid", anyPayload, true)
 		_ = bus.Publish(response)
 	})
 
-	bus.SubscribePrefix("user", "system/agents", func(e eventbus.Event) {
+	bus.SubscribePrefix("system", "system/agents/", func(e eventbus.Event[*anypb.Any]) {
 		logger.Info().Str("event_id", e.ID).Msg("received agent status request")
 
 		entries, err := registry.List()
@@ -141,9 +141,14 @@ func runSupervisor() {
 
 		var agentStatuses []*protopkg.AgentStatus
 		for _, entry := range entries {
+			state := protopkg.AgentState_AGENT_STATE_UNKNOWN
+			if fsm, ok := agentFSMs[entry.ID]; ok {
+				state = fsm.CurrentProtoState()
+			}
 			agentStatuses = append(agentStatuses, &protopkg.AgentStatus{
-				Id:   entry.ID,
-				Type: entry.Type,
+				Id:    entry.ID,
+				Type:  entry.Type,
+				State: state,
 			})
 		}
 
@@ -154,18 +159,18 @@ func runSupervisor() {
 			return
 		}
 
-		response := eventbus.NewEvent("user", "system/agents.reply", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "system/agents.reply", "gapid", anyPayload, true)
 		_ = bus.Publish(response)
 	})
 
-	bus.Subscribe("user", "system/agent.reload", func(e eventbus.Event) {
+	bus.Subscribe("system", "system/agent.reload", func(e eventbus.Event[*anypb.Any]) {
 		logger.Info().Str("event_id", e.ID).Msg("received agent reload request")
 
 		agentFSMs = make(map[string]*lifecycle.LifecycleStateMachine)
 		setupAgents()
 	})
 
-	bus.SubscribePrefix("user", "agent/lifecycle.control", func(e eventbus.Event) {
+	bus.SubscribePrefix("system", "agent/lifecycle.control", func(e eventbus.Event[*anypb.Any]) {
 		logger.Info().
 			Str("event_id", e.ID).
 			Str("topic", e.Topic).

@@ -13,18 +13,19 @@ type LifecycleStateMachine struct {
 	sm      *state.BaseStateMachine
 	agentID string
 	host    string
-	bus     *eventbus.EventBus
+	bus     *eventbus.EventBus[*anypb.Any]
 }
 
-func NewLifecycleStateMachine(agentID, hostname string, bus *eventbus.EventBus) *LifecycleStateMachine {
-	sm := state.NewBaseStateMachine("initialize", map[string][]string{
-		"initialize": {"stopped"},
-		"stopped":    {"starting"},
-		"starting":   {"running", "error"},
-		"running":    {"stopping", "reloading"},
-		"reloading":  {"running", "error"},
-		"stopping":   {"stopped", "error"},
-		"error":      {"stopped"},
+func NewLifecycleStateMachine(agentID, hostname string, bus *eventbus.EventBus[*anypb.Any]) *LifecycleStateMachine {
+	sm := state.NewBaseStateMachine("initializing", map[string][]string{
+		"initializing": {"restarting", "starting", "stopped", "error"},
+		"stopped":      {"starting", "error"},
+		"starting":     {"running", "error"},
+		"running":      {"stopping", "reloading", "restarting", "error"},
+		"reloading":    {"running", "error"},
+		"stopping":     {"stopped", "error"},
+		"restarting":   {"running", "error"},
+		"error":        {"stopping", "stopped", "starting", "restarting"},
 	})
 
 	lsm := &LifecycleStateMachine{
@@ -72,4 +73,25 @@ func (lsm *LifecycleStateMachine) TransitionTo(newState string) error {
 
 func (lsm *LifecycleStateMachine) GetState() string {
 	return lsm.sm.GetState()
+}
+
+func (lsm *LifecycleStateMachine) CurrentProtoState() protopkg.AgentState {
+	switch lsm.GetState() {
+	case "initializing":
+		return protopkg.AgentState_AGENT_STATE_INIT
+	case "starting":
+		return protopkg.AgentState_AGENT_STATE_STARTING
+	case "running":
+		return protopkg.AgentState_AGENT_STATE_RUNNING
+	case "stopping":
+		return protopkg.AgentState_AGENT_STATE_STOPPING
+	case "stopped":
+		return protopkg.AgentState_AGENT_STATE_STOPPED
+	case "failed":
+		return protopkg.AgentState_AGENT_STATE_FAILED
+	case "reloading":
+		return protopkg.AgentState_AGENT_STATE_RELOADING
+	default:
+		return protopkg.AgentState_AGENT_STATE_UNKNOWN
+	}
 }

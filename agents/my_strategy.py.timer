@@ -6,8 +6,8 @@ NAME = "Arbitration Strategy"
 VERSION = "1.0.0"
 TYPE = "timer"
 INTERVAL = 10
-CAPABILITIES = ["arbitrage", "eth", "usdt"]
-ENABLE = True
+# CAPABILITIES = ["arbitrage", "eth", "usdt"]
+ENABLED = True
 
 def initialize():
     print("Initializing arbitrage engine...")
@@ -21,7 +21,7 @@ def start():
         # Simulate signal logic
         signal = "buy"  # placeholder
         print(f"Signal: {signal}")
-        lifecycle.sleep(10)  # cooperative yield
+        sleep(10)  # cooperative yield
 
 def stop():
     print("Shutting down strategy.")

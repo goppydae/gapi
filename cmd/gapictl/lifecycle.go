@@ -22,7 +22,7 @@ func sendLifecycleCommand(agentIDs []string, action protopkg.LifecycleControl_Ac
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	t, err := transport.NewClientFromConfig(cfg.Transport)
+	t, err := transport.NewClientFromConfig[*anypb.Any](cfg.Transport)
 	if err != nil {
 		log.Fatalf("failed to init transport: %v", err)
 	}
@@ -44,7 +44,7 @@ func sendLifecycleCommand(agentIDs []string, action protopkg.LifecycleControl_Ac
 			done := make(chan struct{})
 
 			// Listen for status reply
-			bus.SubscribeOnce("user", "agent/lifecycle.status", func(e eventbus.Event) {
+			bus.SubscribeOnce("system", "agent/lifecycle.status", func(e eventbus.Event[*anypb.Any]) {
 				var res protopkg.LifecycleStatus
 				if err := e.UnmarshalPayload(&res); err != nil {
 					results <- result{AgentID: agentID, Err: fmt.Errorf("unmarshal error: %v", err)}
@@ -66,7 +66,7 @@ func sendLifecycleCommand(agentIDs []string, action protopkg.LifecycleControl_Ac
 				return
 			}
 
-			event := eventbus.NewEvent("user", "agent/lifecycle.control", "gapictl", payload, true)
+			event := eventbus.NewEvent("system", "agent/lifecycle.control", "gapictl", payload, true)
 			if err := bus.Publish(event); err != nil {
 				results <- result{AgentID: agentID, Err: fmt.Errorf("publish error: %v", err)}
 				return
