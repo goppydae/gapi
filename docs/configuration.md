@@ -225,7 +225,11 @@ transport:
   keyFile: config/certs/server.key
 ```
 
-Ensure the certificate is valid for the remote hostname, or use `insecureSkipVerify: true` (not recommended for production).
+Ensure the certificate is valid for the remote hostname.
+
+> [!NOTE]
+> For local development, GAPI supports anonymous QUIC connections (no client certificate required) when connecting to loopback addresses (`127.0.0.1`, `::1`).
+
 
 ## Configuration Validation
 

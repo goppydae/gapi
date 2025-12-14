@@ -72,8 +72,8 @@ Lifecycle methods enable flexible agent control while preserving a minimal inter
 
 ### Zero-Config Self-Description
 - **Python ADK**: Uses `gopy` generated bindings to interface directly with Go core logic.
-  - No assumption of stdout/stderr parsing for control flow.
-  - Native function calls (`Initialize`, `SendEvent`, `AwaitCommand`) bridge the runtime gap.
+  - **IPC via QUIC**: Control flow and status updates are transmitted over multiplexed QUIC streams (Protobuf-encoded) instead of stdout.
+  - Native function calls (`Initialize`, `StartQUIC`, `SendEvent`, `StartHeartbeat`) bridge the runtime gap.
 - **Go ADK**: Introspects registered functions and exposes `--describe` metadata.
 
 This design eliminates manifest files and supports fully self-describing agents.

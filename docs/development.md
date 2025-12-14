@@ -26,6 +26,7 @@ If not using Nix, install:
 - **Python 3.11+**: [python.org](https://www.python.org/)
 - **GCC**: For CGO compilation
 - **Mage**: `go install github.com/magefile/mage@latest`
+- **Gopy**: `go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy` (Must use vendored dependencies)
 
 ## Building
 
@@ -359,6 +360,6 @@ nix develop --rebuild
 - See [Features - Resource Limits](features.md#rootless-support)
 
 **Transport errors**:
-- Verify certificates exist (for QUIC)
+- Verify certificates exist (for QUIC remote connections) or enable anonymous localhost support
 - Check firewall rules
 - Ensure address is not already in use
