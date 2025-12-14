@@ -149,10 +149,12 @@ mod.add_function('Slice_uint8_elem', retval('uint8_t'), [param('int64_t', 'handl
 mod.add_function('Slice_uint8_subslice', retval('int64_t'), [param('int64_t', 'handle'), param('int', 'st'), param('int', 'ed')])
 mod.add_function('Slice_uint8_set', None, [param('int64_t', 'handle'), param('int', 'idx'), param('uint8_t', 'value')])
 mod.add_function('Slice_uint8_append', None, [param('int64_t', 'handle'), param('uint8_t', 'value')])
-add_checked_function(mod, 'adk_InjectCommand', None, [param('char*', 'cmd'), param('bool', 'goRun')])
-add_checked_function(mod, 'adk_SendEvent', None, [param('char*', 'jsonStr'), param('bool', 'goRun')])
 add_checked_string_function(mod, 'adk_AwaitCommand', retval('char*'), [])
 add_checked_function(mod, 'adk_Initialize', None, [param('char*', 'name'), param('char*', 'version'), param('char*', 'typeStr'), param('bool', 'goRun')])
+add_checked_function(mod, 'adk_InjectCommand', None, [param('char*', 'cmd'), param('bool', 'goRun')])
+add_checked_function(mod, 'adk_SendEvent', None, [param('char*', 'jsonStr'), param('bool', 'goRun')])
+add_checked_function(mod, 'adk_StartHeartbeat', None, [param('char*', 'id'), param('char*', 'typeStr'), param('bool', 'goRun')])
+add_checked_function(mod, 'adk_StartQUIC', retval('char*'), [param('char*', 'addr')])
 
 mod.generate(open('adk.c', 'w'))
 

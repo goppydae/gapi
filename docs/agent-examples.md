@@ -10,8 +10,8 @@ Service agents run continuously until stopped.
 
 ```python
 # agents/hello.py.service
-# ENABLED = True
-# TYPE = service
+ENABLED = True
+TYPE = "service"
 
 import time
 
@@ -26,8 +26,8 @@ def start():
 
 ```python
 # agents/worker.py.service
-# ENABLED = True
-# TYPE = service
+ENABLED = True
+TYPE = "service"
 
 import signal
 import sys
@@ -74,9 +74,9 @@ Timer agents execute on a schedule.
 
 ```python
 # agents/backup.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = OnUnitActiveSec=5m
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnUnitActiveSec=5m"
 
 def start():
     print("Running backup...")
@@ -88,9 +88,9 @@ def start():
 
 ```python
 # agents/init-check.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = OnBootSec=30s
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnBootSec=30s"
 
 def start():
     print("Running post-boot check...")
@@ -99,9 +99,9 @@ def start():
 
 ```python
 # agents/warmup.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = OnStartupSec=10s
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnStartupSec=10s"
 
 def start():
     print("Warming up caches...")
@@ -112,9 +112,9 @@ def start():
 
 ```python
 # agents/daily-report.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = 0 9 * * 1-5
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "0 9 * * 1-5"
 
 def start():
     print("Generating daily report...")
@@ -123,9 +123,9 @@ def start():
 
 ```python
 # agents/hourly-sync.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = 0 * * * *
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "0 * * * *"
 
 def start():
     print("Syncing data...")
@@ -136,9 +136,9 @@ def start():
 
 ```python
 # agents/cleanup.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = @daily
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "@daily"
 
 def start():
     print("Running daily cleanup...")
@@ -149,9 +149,9 @@ def start():
 
 ```python
 # agents/heartbeat.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = 30s
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "30s"
 
 def start():
     print("Heartbeat")
@@ -253,9 +253,9 @@ Agents with CPU and memory constraints.
 
 ```python
 # agents/cpu-worker.py.service
-# ENABLED = True
-# TYPE = service
-# CPU_LIMIT = 0.5
+ENABLED = True
+TYPE = "service"
+CPU_LIMIT = 0.5
 
 def start():
     # This agent can use at most 50% of one CPU core
@@ -268,9 +268,9 @@ def start():
 
 ```python
 # agents/cache.py.service
-# ENABLED = True
-# TYPE = service
-# MEMORY_LIMIT = 512MB
+ENABLED = True
+TYPE = "service"
+MEMORY_LIMIT = "512MB"
 
 def start():
     # This agent will be OOM-killed if it exceeds 512MB
@@ -298,10 +298,10 @@ def start():
 
 ```python
 # agents/db-backup.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = 0 2 * * *
-# DEPENDENCIES = database
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "0 2 * * *"
+DEPENDENCIES = ["database"]
 
 import subprocess
 import datetime
@@ -325,9 +325,9 @@ def start():
 
 ```python
 # agents/log-rotator.py.timer
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = @daily
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "@daily"
 
 import os
 import gzip

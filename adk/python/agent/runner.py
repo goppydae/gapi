@@ -16,6 +16,7 @@ except ImportError:
         def SendEvent(self, msg): 
             sys.stdout.write(msg + "\n")
             sys.stdout.flush()
+        def StartHeartbeat(self, id, t): pass
     adk = DummyAdk()
 
 try:
@@ -108,7 +109,6 @@ class AgentWrapper:
         self.agent_type = (agent_type or "service").lower()
         self.state = "inactive"
         self.stop_evt = threading.Event()
-        self._hb_thread = None
         self._start_thread = None
 
         self.fn_init   = _get_fn(mod, FN_ALIASES["init"])
@@ -129,11 +129,6 @@ class AgentWrapper:
             else:
                 self.fn_start(self.stop_evt)
 
-    def _heartbeat_loop(self):
-        while not self.stop_evt.wait(5.0):
-            if self.state != "running":
-                break
-            _notify("heartbeat", state=self.state, id=self.agent_id, type=self.agent_type)
 
     def _await_ready(self):
         deadline = time.time() + READY_TIMEOUT_SEC
@@ -203,9 +198,15 @@ class AgentWrapper:
 
         if err_holder["err"] is None:
             self.state = "running"
+            # Initialize QUIC connection (default to localhost loopback)
+            try:
+                adk.StartQUIC("127.0.0.1:4242")
+            except Exception as e:
+                print(f"[RUNNER] Warning: Failed to start QUIC client: {e}")
+
             _notify("ready", state=self.state, id=self.agent_id, type=self.agent_type)
-            self._hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
-            self._hb_thread.start()
+            # Offload heartbeat to Go ADK
+            adk.StartHeartbeat(self.agent_id, self.agent_type)
 
     def stop(self, timeout=10):
         try:
@@ -218,11 +219,10 @@ class AgentWrapper:
             self.stop_evt.set()
             time.sleep(min(timeout, 0.25))
             try:
-                if self._hb_thread is not None:
-                    self._hb_thread.join(timeout=1.0)
+                # Go heartbeats stop automatically when process exits or we could explicitly stop it
+                pass
             except Exception:
                 pass
-            self._hb_thread = None
 
             try:
                 if self._start_thread is not None and self._start_thread.is_alive():

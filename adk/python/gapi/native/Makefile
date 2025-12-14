@@ -5,7 +5,7 @@
 GOCMD=go
 GOBUILD=$(GOCMD) build -mod=mod
 GOIMPORTS=goimports
-PYTHON=/home/sysop/go/src/github.com/goppydae/gapi/.venv/bin/python3
+PYTHON=/nix/store/3lll9y925zz9393sa59h653xik66srjb-python3-3.13.9/bin/python3
 LIBEXT=.so
 
 # get the CC and flags used to build python:

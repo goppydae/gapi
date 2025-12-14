@@ -1,6 +1,6 @@
-# ENABLED = True
-# TYPE = timer
-# SCHEDULE = OnUnitActiveSec=5s
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnUnitActiveSec=5s"
 
 def start():
     """This function is called each time the timer triggers"""

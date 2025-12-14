@@ -42,9 +42,11 @@ func NewQUICServer(addr string, cert tls.Certificate) (*QUIC, error) {
 
 func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 	tlsConf := &tls.Config{
-		Certificates:       []tls.Certificate{*cert},
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"gapi-quic"},
+	}
+	if cert != nil {
+		tlsConf.Certificates = []tls.Certificate{*cert}
 	}
 	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, nil)
 	if err != nil {

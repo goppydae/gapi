@@ -97,8 +97,8 @@ Agents are configured via metadata directives in comments at the top of the file
 ### Required Directives
 
 ```python
-# ENABLED = True
-# TYPE = service
+ENABLED = True
+TYPE = "service"
 ```
 
 - **`ENABLED`**: Must be `True` for the agent to be loaded
@@ -111,51 +111,51 @@ Agents are configured via metadata directives in comments at the top of the file
 Specify other agents that must start before this one:
 
 ```python
-# DEPENDENCIES = database, cache, logging
+DEPENDENCIES = ["database", "cache", "logging"]
 ```
 
-Dependencies are comma-separated agent IDs (filename without extension).
+Dependencies are a list of agent IDs (filename without extension).
 
 #### Resource Limits
 
 Enforce CPU and memory limits:
 
 ```python
-# CPU_LIMIT = 0.5        # 50% of one CPU core
-# MEMORY_LIMIT = 512MB   # 512 megabytes
+CPU_LIMIT = 0.5        # 50% of one CPU core
+MEMORY_LIMIT = "512MB"   # 512 megabytes
 ```
 
 Supported units for memory: `KB`, `MB`, `GB`
 
 #### Timer Configuration
 
-For `TYPE = timer` agents:
+For `TYPE = "timer"` agents:
 
 ```python
-# SCHEDULE = OnUnitActiveSec=5m
+SCHEDULE = "OnUnitActiveSec=5m"
 ```
 
 See [Features - Timer Agents](features.md#timer-agents) for schedule format details.
 
 #### Socket Configuration
 
-For `TYPE = socket` agents:
+For `TYPE = "socket"` agents:
 
 ```python
-# LISTEN_STREAM = 0.0.0.0:8080      # TCP socket
-# LISTEN_DATAGRAM = 0.0.0.0:5353    # UDP socket
+LISTEN_STREAM = "0.0.0.0:8080"      # TCP socket
+# LISTEN_DATAGRAM = "0.0.0.0:5353"    # UDP socket
 ```
 
 ### Complete Example
 
 ```python
 # agents/api-server.py.service
-# ENABLED = True
-# TYPE = socket
-# DEPENDENCIES = database, cache
-# CPU_LIMIT = 1.0
-# MEMORY_LIMIT = 1GB
-# LISTEN_STREAM = 0.0.0.0:8080
+ENABLED = True
+TYPE = "socket"
+DEPENDENCIES = ["database", "cache"]
+CPU_LIMIT = 1.0
+MEMORY_LIMIT = "1GB"
+LISTEN_STREAM = "0.0.0.0:8080"
 
 def start():
     import os
@@ -191,8 +191,8 @@ File descriptors start at `fd 3` (after stdin=0, stdout=1, stderr=2).
 You can define custom environment variables in agent metadata:
 
 ```python
-# ENV_DATABASE_URL = postgresql://localhost/mydb
-# ENV_API_KEY = secret123
+ENV_DATABASE_URL = "postgresql://localhost/mydb"
+ENV_API_KEY = "secret123"
 ```
 
 Variables prefixed with `ENV_` are set in the agent's environment (with the `ENV_` prefix removed).

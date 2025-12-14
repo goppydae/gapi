@@ -55,18 +55,6 @@ os.chdir(cwd)
 
 
 # ---- Functions ---
-def InjectCommand(cmd, goRun=False):
-	"""InjectCommand(str cmd) 
-	
-	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
-	"""
-	_adk.adk_InjectCommand(cmd, goRun)
-def SendEvent(jsonStr, goRun=False):
-	"""SendEvent(str jsonStr) 
-	
-	SendEvent sends a raw JSON event string to the supervisor.
-	"""
-	_adk.adk_SendEvent(jsonStr, goRun)
 def AwaitCommand():
 	"""AwaitCommand() str
 	
@@ -81,5 +69,29 @@ def Initialize(name, version, typeStr, goRun=False):
 	Initialize sets up the agent identity.
 	"""
 	_adk.adk_Initialize(name, version, typeStr, goRun)
+def InjectCommand(cmd, goRun=False):
+	"""InjectCommand(str cmd) 
+	
+	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
+	"""
+	_adk.adk_InjectCommand(cmd, goRun)
+def SendEvent(jsonStr, goRun=False):
+	"""SendEvent(str jsonStr) 
+	
+	SendEvent sends a generic event to the supervisor via QUIC.
+	"""
+	_adk.adk_SendEvent(jsonStr, goRun)
+def StartHeartbeat(id, typeStr, goRun=False):
+	"""StartHeartbeat(str id, str typeStr) 
+	
+	StartHeartbeat starts a background goroutine that sends heartbeat events.
+	"""
+	_adk.adk_StartHeartbeat(id, typeStr, goRun)
+def StartQUIC(addr):
+	"""StartQUIC(str addr) str
+	
+	StartQUIC initializes the QUIC connection to the supervisor.
+	"""
+	return _adk.adk_StartQUIC(addr)
 
 

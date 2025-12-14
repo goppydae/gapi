@@ -1,7 +1,7 @@
-# ENABLED = True
-# TYPE = timer
-# ID = cron_every_5min
-# SCHEDULE = */5 * * * *
+ENABLED = True
+TYPE = "timer"
+ID = "cron_every_5min"
+SCHEDULE = "*/5 * * * *"
 
 def start():
     print("Running every 5 minutes")

@@ -126,7 +126,11 @@
 
             if ! command -v gopy &> /dev/null; then
               echo "Installing gopy..."
-              go install github.com/go-python/gopy@latest
+              go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy
+            fi
+            if ! command -v goimports &> /dev/null; then
+              echo "Installing goimports..."
+              go build -mod=vendor -o $GOBIN/goimports golang.org/x/tools/cmd/goimports
             fi
 
             if [ -n "$ZSH_VERSION" ]; then

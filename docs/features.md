@@ -212,8 +212,8 @@ Agents are simple Python scripts with minimal structure:
 
 ```python
 # agents/example.py.service
-# ENABLED = True
-# TYPE = service
+ENABLED = True
+TYPE = "service"
 
 def start():
     print("Agent started!")
@@ -224,14 +224,14 @@ No classes, no inheritance, no framework-specific decorators.
 
 ### Self-Describing Metadata
 
-Agent metadata is defined as comments at the top of the file:
+Agent metadata is defined as constants at the top of the file:
 
 ```python
-# ENABLED = True
-# TYPE = service
-# DEPENDENCIES = database, cache
-# CPU_LIMIT = 0.5
-# MEMORY_LIMIT = 512MB
+ENABLED = True
+TYPE = "service"
+DEPENDENCIES = ["database", "cache"]
+CPU_LIMIT = 0.5
+MEMORY_LIMIT = "512MB"
 ```
 
 The supervisor parses these directives automatically. No separate configuration files needed.

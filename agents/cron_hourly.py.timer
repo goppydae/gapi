@@ -1,7 +1,7 @@
-# ENABLED = True
-# TYPE = timer
-# ID = cron_hourly
-# SCHEDULE = @hourly
+ENABLED = True
+TYPE = "timer"
+ID = "cron_hourly"
+SCHEDULE = "@hourly"
 
 def start():
     print("Running hourly task")
