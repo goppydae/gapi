@@ -252,6 +252,6 @@ ls -la /proc/$(pgrep gapid)/fd
 
 ## Next Steps
 
-- [Full Installation Guide](./INSTALLATION.md)
+- [Full Installation Guide](./installation.md)
 - [Agent Development](../AGENTS.md)
 - [Production Deployment](./DEPLOYMENT.md)
