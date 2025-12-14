@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -108,6 +109,23 @@ func Proto() error {
 		}
 		if err := sh.Run("protoc", args...); err != nil {
 			return fmt.Errorf("protoc failed for %s: %w", file, err)
+		}
+	}
+
+	// Copy generated files to internal/proto/
+	if err := os.MkdirAll("internal/proto", 0755); err != nil {
+		return fmt.Errorf("failed to create internal/proto directory: %w", err)
+	}
+
+	pbFiles, err := filepath.Glob("proto/*.pb.go")
+	if err != nil {
+		return err
+	}
+
+	for _, src := range pbFiles {
+		dst := filepath.Join("internal/proto", filepath.Base(src))
+		if err := sh.Copy(dst, src); err != nil {
+			return fmt.Errorf("failed to copy %s to %s: %w", src, dst, err)
 		}
 	}
 

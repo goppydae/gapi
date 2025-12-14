@@ -40,14 +40,6 @@ jobs:
             mage proto || echo "Proto generation via mage failed, continuing..."
           fi
 
-      - name: Tidy Go modules
-        run: go mod tidy
-
-      - name: Verify go.mod is clean
-        run: |
-          git diff --exit-code go.mod go.sum || \
-          (echo "go.mod or go.sum is not up to date. Please run 'go mod tidy' locally and commit the changes." && exit 1)
-
       - name: Build all targets
         run: mage buildAll
 

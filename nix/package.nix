@@ -4,11 +4,18 @@ buildGoModule rec {
   pname = "gapi";
   version = "0.1.0";
   
-  src = lib.cleanSource ../.;
+  src = lib.cleanSourceWith {
+    src = ../.;
+    filter = path: type:
+      let baseName = baseNameOf path;
+      in !(baseName == "vendor" || baseName == ".git");
+  };
   
-  # Set to "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" for first build
-  # Then update with actual hash from error message
-  vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+  # Skip vendoring since protobuf files are generated during build
+  vendorHash = null;
+  
+  # Ignore vendor directory during build
+  buildFlags = [ "-mod=mod" ];
   
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ gcc python3 pam ];

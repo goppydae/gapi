@@ -96,3 +96,4 @@ buf.gen.yaml.lock
 
 # Ephemeral build data
 build/meta/*
+vendor/

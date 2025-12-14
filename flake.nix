@@ -111,7 +111,6 @@
             pkg-config
             python3
             python3Packages.pybindgen
-            nixos-generators.packages.${system}.nixos-generators
           ];
 
           shellHook = ''
