@@ -36,6 +36,8 @@ type Model struct {
 	agents      []AgentStatus
 	selectedIdx int
 	logs        []string
+	logViewer   LogViewer
+	filter      Filter
 	width       int
 	height      int
 	err         error
@@ -48,6 +50,8 @@ func NewModel() Model {
 		agents:      []AgentStatus{},
 		selectedIdx: 0,
 		logs:        []string{},
+		logViewer:   LogViewer{},
+		filter:      NewFilter(),
 	}
 }
 
@@ -129,6 +133,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		// Update log viewer size if in log view
+		if m.view == ViewLogs {
+			var cmd tea.Cmd
+			m.logViewer, cmd = m.logViewer.Update(msg, m.agents, m.selectedIdx)
+			return m, cmd
+		}
 		return m, nil
 
 	case agentStatusMsg:
@@ -136,6 +147,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		// Update log viewer if in log view
+		if m.view == ViewLogs {
+			var cmd tea.Cmd
+			m.logViewer, cmd = m.logViewer.Update(msg, m.agents, m.selectedIdx)
+			return m, tea.Batch(
+				fetchAgentStatus,
+				tickEvery(time.Second),
+				cmd,
+			)
+		}
+
 		return m, tea.Batch(
 			fetchAgentStatus,
 			tickEvery(time.Second),
@@ -171,10 +193,54 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// If filter is active, let it handle the input
+	if m.filter.active {
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		return m, cmd
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
+
+	case "/":
+		// Activate name search
+		m.filter.Activate(FilterByName)
+
+	case "f":
+		// Cycle through state filters
+		if m.filter.mode == FilterByState && m.filter.query == "running" {
+			m.filter.SetQuery("stopped")
+		} else if m.filter.mode == FilterByState && m.filter.query == "stopped" {
+			m.filter.mode = FilterNone
+			m.filter.SetQuery("")
+		} else {
+			m.filter.Activate(FilterByState)
+			m.filter.SetQuery("running")
+			m.filter.Deactivate()
+		}
+
+	case "t":
+		// Cycle through type filters
+		if m.filter.mode == FilterByType && m.filter.query == "service" {
+			m.filter.SetQuery("timer")
+		} else if m.filter.mode == FilterByType && m.filter.query == "timer" {
+			m.filter.SetQuery("socket")
+		} else if m.filter.mode == FilterByType && m.filter.query == "socket" {
+			m.filter.mode = FilterNone
+			m.filter.SetQuery("")
+		} else {
+			m.filter.Activate(FilterByType)
+			m.filter.SetQuery("service")
+			m.filter.Deactivate()
+		}
+
+	case "esc":
+		// Clear filter
+		m.filter.mode = FilterNone
+		m.filter.SetQuery("")
 
 	case "up", "k":
 		if m.selectedIdx > 0 {
@@ -182,7 +248,14 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "down", "j":
-		if m.selectedIdx < len(m.agents)-1 {
+		// Count filtered agents
+		filteredCount := 0
+		for _, agent := range m.agents {
+			if m.filter.Matches(agent) {
+				filteredCount++
+			}
+		}
+		if m.selectedIdx < filteredCount-1 {
 			m.selectedIdx++
 		}
 
@@ -190,6 +263,10 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ViewDetail
 
 	case "l":
+		// Initialize log viewer for selected agent
+		if m.selectedIdx < len(m.agents) {
+			m.logViewer = NewLogViewer(m.agents[m.selectedIdx].ID, m.width, m.height)
+		}
 		m.view = ViewLogs
 
 	case "s":
@@ -249,12 +326,12 @@ func (m Model) View() string {
 	case ViewList:
 		return m.renderList()
 	case ViewLogs:
-		return m.renderLogs()
+		return m.logViewer.View()
 	case ViewDetail:
 		return m.renderDetail()
+	default:
+		return "Unknown view"
 	}
-
-	return ""
 }
 
 func (m Model) renderList() string {
@@ -270,16 +347,31 @@ func (m Model) renderList() string {
 
 	running := 0
 	stopped := 0
+	filtered := 0
 	for _, a := range m.agents {
-		if a.State == "RUNNING" {
+		if a.State == "RUNNING" || a.State == "running" {
 			running++
 		} else {
 			stopped++
 		}
+		if m.filter.Matches(a) {
+			filtered++
+		}
 	}
 
 	header := fmt.Sprintf("GAPI Monitor - Agents: %d running, %d stopped", running, stopped)
+	if m.filter.mode != FilterNone {
+		header += fmt.Sprintf(" [%d/%d filtered]", filtered, len(m.agents))
+	}
 	s += headerStyle.Render(header) + "\n\n"
+
+	// Filter status
+	if filterStatus := m.filter.StatusLine(); filterStatus != "" {
+		filterStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("11")).
+			Italic(true)
+		s += filterStyle.Render(filterStatus) + "\n\n"
+	}
 
 	// Table header
 	tableHeader := lipgloss.NewStyle().
@@ -289,16 +381,21 @@ func (m Model) renderList() string {
 	s += tableHeader.Render(fmt.Sprintf("%-20s %-12s %-8s %-10s %-10s\n",
 		"ID", "STATE", "TYPE", "CPU", "MEMORY"))
 
-	// Agent rows
-	for i, agent := range m.agents {
+	// Agent rows (filtered)
+	displayIdx := 0
+	for _, agent := range m.agents {
+		if !m.filter.Matches(agent) {
+			continue
+		}
+
 		style := lipgloss.NewStyle()
 
-		if i == m.selectedIdx {
+		if displayIdx == m.selectedIdx {
 			style = style.Background(lipgloss.Color("63")).Foreground(lipgloss.Color("230"))
 		}
 
 		stateColor := lipgloss.Color("10") // green
-		if agent.State != "RUNNING" {
+		if agent.State != "RUNNING" && agent.State != "running" {
 			stateColor = lipgloss.Color("9") // red
 		}
 
@@ -310,7 +407,7 @@ func (m Model) renderList() string {
 			agent.Memory,
 		)
 
-		if i == m.selectedIdx {
+		if displayIdx == m.selectedIdx {
 			s += style.Render(row) + "\n"
 		} else {
 			stateStyle := lipgloss.NewStyle().Foreground(stateColor)
@@ -322,6 +419,7 @@ func (m Model) renderList() string {
 				agent.Memory,
 			)
 		}
+		displayIdx++
 	}
 
 	// Footer
@@ -329,7 +427,7 @@ func (m Model) renderList() string {
 	footerStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
 
-	s += footerStyle.Render("[↑↓/jk] navigate  [enter] details  [l] logs  [s] start  [x] stop  [r] reload  [q] quit")
+	s += footerStyle.Render("[↑↓/jk] navigate  [/] search  [f] filter state  [t] filter type  [esc] clear  [s/x/r] control  [q] quit")
 
 	return s
 }

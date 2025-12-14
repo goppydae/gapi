@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
+
+message LogMessage {
+  string agent_id = 1;
+  string level = 2;      // DEBUG, INFO, WARN, ERROR
+  string message = 3;
+  int64 timestamp = 4;   // Unix timestamp in milliseconds
+}

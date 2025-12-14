@@ -19,10 +19,9 @@
             go
 
             gcc
-            air
             mage
-            buf
             openssl
+            protobuf  # Add protoc
             protoc-gen-go
             protoc-gen-go-grpc
             pam

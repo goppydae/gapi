@@ -104,6 +104,38 @@ def start():
     # Backup logic here
 ```
 
+Timers execute on a schedule, supporting multiple formats:
+
+**Systemd-style** (interval-based):
+```python
+# SCHEDULE = OnUnitActiveSec=5s  # Every 5 seconds
+# SCHEDULE = OnBootSec=1m        # 1 minute after boot
+# SCHEDULE = OnStartupSec=30s    # 30 seconds after startup
+```
+
+**Cron expressions**:
+```python
+# SCHEDULE = */5 * * * *    # Every 5 minutes
+# SCHEDULE = 0 */2 * * *    # Every 2 hours
+# SCHEDULE = 0 9 * * 1-5    # 9 AM on weekdays
+# SCHEDULE = 0 0 * * 0      # Midnight on Sundays
+```
+
+**Named schedules**:
+```python
+# SCHEDULE = @hourly    # Once per hour
+# SCHEDULE = @daily     # Once per day at midnight
+# SCHEDULE = @weekly    # Once per week on Sunday
+# SCHEDULE = @monthly   # Once per month on the 1st
+```
+
+**Raw durations**:
+```python
+# SCHEDULE = 5s    # Every 5 seconds
+# SCHEDULE = 1m    # Every minute
+# SCHEDULE = 1h    # Every hour
+```
+
 ### Socket-Activated Agent
 ```python
 # agents/api.py.socket

@@ -23,14 +23,19 @@ internal/proto/*.pb.py
 internal/proto/*_pb2.py
 internal/proto/*_pb2_grpc.py
 
-# Python environment and build files
-__pycache__/
+# Python environment and build fbin/
 *.pyc
-*.pyo
-*.pyd
-.env/
-.venv/
-env/
+__pycache__/
+.bin/
+*.sig
+*.key
+*.pub
+gapi.db
+gapi.sock
+test/tmp/
+.vscode/
+.idea/
+COMMIT_MESSAGE.md
 venv/
 dist/
 *.egg-info/

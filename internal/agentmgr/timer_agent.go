@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 	"time"
 
@@ -74,8 +73,8 @@ func (ta *TimerAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("timer already running")
 	}
 
-	// Parse systemd-style schedule
-	interval, err := parseSystemdSchedule(ta.schedule)
+	// Parse schedule (supports systemd-style and cron)
+	schedule, err := ParseSchedule(ta.schedule)
 	if err != nil {
 		return fmt.Errorf("invalid schedule %q: %w", ta.schedule, err)
 	}
@@ -83,13 +82,12 @@ func (ta *TimerAgent) Start(ctx context.Context) error {
 	log.Info().
 		Str("agent", ta.id).
 		Str("schedule", ta.schedule).
-		Dur("interval", interval).
 		Msg("timer agent started")
 
 	// Start ticker goroutine
 	ctx, cancel := context.WithCancel(context.Background())
 	ta.cancel = cancel
-	go ta.run(ctx, interval)
+	go ta.run(ctx, schedule)
 
 	return nil
 }
@@ -132,15 +130,16 @@ func (ta *TimerAgent) Reset() {
 	}
 }
 
-func (ta *TimerAgent) run(ctx context.Context, interval time.Duration) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
+func (ta *TimerAgent) run(ctx context.Context, schedule Schedule) {
 	for {
+		now := time.Now()
+		next := schedule.Next(now)
+		duration := next.Sub(now)
+
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-time.After(duration):
 			ta.execute()
 		}
 	}
@@ -170,26 +169,4 @@ func (ta *TimerAgent) execute() {
 	}
 
 	log.Info().Str("agent", ta.id).Msg("timer execution completed")
-}
-
-// parseSystemdSchedule converts systemd-style timer settings to time.Duration
-// Supports: OnBootSec=5s, OnUnitActiveSec=30s, OnStartupSec=1m
-// For simplicity, we treat all as intervals (OnUnitActiveSec behavior)
-func parseSystemdSchedule(s string) (time.Duration, error) {
-	s = strings.TrimSpace(s)
-
-	// Handle OnBootSec=, OnUnitActiveSec=, OnStartupSec=
-	for _, prefix := range []string{"OnUnitActiveSec=", "OnBootSec=", "OnStartupSec="} {
-		if strings.HasPrefix(s, prefix) {
-			durStr := strings.TrimPrefix(s, prefix)
-			return time.ParseDuration(durStr)
-		}
-	}
-
-	// Fallback: try parsing as raw duration
-	if dur, err := time.ParseDuration(s); err == nil {
-		return dur, nil
-	}
-
-	return 0, fmt.Errorf("unsupported schedule format (use OnUnitActiveSec=<duration>, OnBootSec=<duration>, or OnStartupSec=<duration>)")
 }
