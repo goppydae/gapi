@@ -11,5 +11,5 @@ func With(ctx context.Context, logger zerolog.Logger) context.Context {
 }
 
 func From(ctx context.Context) zerolog.Logger {
-	return zerolog.Ctx(ctx)
+	return *zerolog.Ctx(ctx)
 }
