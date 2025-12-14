@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/goppydae/gapi/core/store"
+	"github.com/goppydae/gapi/internal/db/graphdb"
 )
 
 type AgentDescription struct {
@@ -18,6 +19,8 @@ type AgentDescription struct {
 	Capabilities []string `json:"capabilities"`
 	Requires     []string `json:"requires"`
 	Wants        []string `json:"wants"`
+	RequiredBy   []string `json:"required_by"`
+	WantedBy     []string `json:"wanted_by"`
 	Tags         []string `json:"tags"`
 }
 
@@ -39,7 +42,44 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 	if agent == nil || strings.TrimSpace(agent.ID) == "" || strings.TrimSpace(agent.Type) == "" {
 		return fmt.Errorf("invalid agent: %+v", agent)
 	}
-	return r.store.Set(agentsBucket, agent.ID, agent)
+	// primary record
+	if err := r.store.Set(agentsBucket, agent.ID, agent); err != nil {
+		return err
+	}
+
+	// graph edges
+	if err := r.store.AddNode(graphdb.Node{ID: agent.ID, Type: agent.Type}); err != nil {
+		return fmt.Errorf("graph node error: %w", err)
+	}
+
+	// Outgoing Dependencies
+	for _, dep := range agent.Requires {
+		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: "requires"}); err != nil {
+			return fmt.Errorf("edge requires error: %w", err)
+		}
+	}
+	for _, dep := range agent.Wants {
+		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: "wants"}); err != nil {
+			return fmt.Errorf("edge wants error: %w", err)
+		}
+	}
+
+	// Infer Incoming Dependencies (Reverse)
+	// If I (agent.ID) am WantedBy=[foo], it means foo -> (wants) -> I.
+	for _, target := range agent.WantedBy {
+		// Ensure target node exists? GraphDB might require it, or auto-create.
+		// Assuming auto-create or loose consistency for now, or just adding edge.
+		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: "wants"}); err != nil {
+			return fmt.Errorf("edge wanted_by error: %w", err)
+		}
+	}
+	for _, target := range agent.RequiredBy {
+		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: "requires"}); err != nil {
+			return fmt.Errorf("edge required_by error: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func (r *AgentRegistry) Lookup(id string) (*AgentDescription, error) {
@@ -69,11 +109,33 @@ func (r *AgentRegistry) List() ([]*AgentDescription, error) {
 }
 
 func (r *AgentRegistry) GetDependencies(id string) ([]string, error) {
-	agent, err := r.Lookup(id)
+	// Query GraphDB for authoritative dependencies
+	// This captures both static 'requires'/'wants' AND dynamic 'wanted_by'/'required_by' edges
+	reqs, err := r.store.Neighbors(id, "requires")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("neighbors/requires: %w", err)
 	}
-	return append(agent.Requires, agent.Wants...), nil
+	wants, err := r.store.Neighbors(id, "wants")
+	if err != nil {
+		return nil, fmt.Errorf("neighbors/wants: %w", err)
+	}
+
+	seen := make(map[string]struct{})
+	var all []string
+
+	for _, e := range reqs {
+		if _, ok := seen[e.To]; !ok {
+			seen[e.To] = struct{}{}
+			all = append(all, e.To)
+		}
+	}
+	for _, e := range wants {
+		if _, ok := seen[e.To]; !ok {
+			seen[e.To] = struct{}{}
+			all = append(all, e.To)
+		}
+	}
+	return all, nil
 }
 
 func (r *AgentRegistry) TopologicalSort() ([]string, error) {

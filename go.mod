@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	filippo.io/age v1.2.1
+	github.com/go-python/gopy v0.4.10
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/quic-go/quic-go v0.55.0
 	github.com/rs/zerolog v1.34.0
@@ -11,6 +13,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/zeebo/blake3 v0.2.4
 	go.etcd.io/bbolt v1.4.0
+	golang.org/x/sys v0.35.0
 	google.golang.org/grpc v1.67.3
 	google.golang.org/protobuf v1.36.9
 )
@@ -35,7 +38,6 @@ require (
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect

@@ -1,0 +1,27 @@
+
+ID = "hog"
+DESCRIPTION = "Memory hog"
+ENABLED = False
+MEMORY_LIMIT = "10MB"
+
+import time
+import sys
+
+def start():
+    print("Hogging memory...")
+    try:
+        # 15MB
+        data = bytearray(15 * 1024 * 1024)
+        # Touch pages to force resident
+        for i in range(0, len(data), 4096):
+            data[i] = 1
+        print("Allocated 15MB resident")
+        sys.stdout.flush()
+        time.sleep(1000)
+    except Exception as e:
+        print(f"Hog fail: {e}")
+        sys.stdout.flush()
+    
+    # Keep running to see if we get killed asynchronously or during alloc
+    while True:
+        time.sleep(1)

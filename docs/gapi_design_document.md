@@ -1,8 +1,8 @@
 # GAPI Design Document
 
-**Version**: 1.1  
-**Date**: Nov 11, 2025  
-**Author**: Enqack  
+**Version**: 1.2
+**Date**: Dec 14, 2025
+**Author**: Enqack
 
 ---
 
@@ -14,8 +14,8 @@
 
 ## 🧱 Core Architecture
 
-- **Language Targets**: Go (compiled) and Python (interpreted)
-- **Transport**: Initially supports TCP/QUIC and later UNIX sockets
+- **Language Targets**: Go (compiled) and Python (via native bindings)
+- **Transport**: TCP/QUIC (implemented) and UNIX sockets
 - **Messaging**: Protobuf-encoded control and telemetry messages
 - **Lifecycle Model**: Lifecycle-aware agents with structured phases and optional hooks
 - **Agent Development Kits (ADKs)**: Provide a zero-boilerplate experience
@@ -24,9 +24,12 @@
 
 ## 🔒 Identity, Security, and Integrity
 
-- **BLAKE3** for schema and identity hashing.
-- **ED25519** keys for signing manifests and agent identities.
-- **AGE** for encrypting sealed configuration and message payloads.
+> [!NOTE]
+> **Implementation Status**: Security features are being rolled out incrementally. Current focus is on functional lifecycle parity.
+
+- **BLAKE3** for schema and identity hashing (Planned).
+- **ED25519** keys for signing manifests and agent identities (Planned).
+- **AGE** for encrypting sealed configuration and message payloads (Planned).
 - Unified cryptographic workflow via `gapi-crypto`, ensuring deterministic and verifiable builds.
 - `--describe` includes version, hash, and signer fingerprints.
 - Manifests and schema hashes verified at runtime for integrity.
@@ -37,7 +40,7 @@
 
 - Structured logging via **Zerolog**
 - IPC separated from logs for clarity
-- Planned support for stream multiplexing (e.g., over QUIC)
+- Stream multiplexing over **QUIC** (Active)
 
 ---
 
@@ -68,7 +71,9 @@ Lifecycle methods enable flexible agent control while preserving a minimal inter
 - Each function maps directly to a lifecycle phase.
 
 ### Zero-Config Self-Description
-- **Python ADK**: Uses reflection to discover functions at runtime.
+- **Python ADK**: Uses `gopy` generated bindings to interface directly with Go core logic.
+  - No assumption of stdout/stderr parsing for control flow.
+  - Native function calls (`Initialize`, `SendEvent`, `AwaitCommand`) bridge the runtime gap.
 - **Go ADK**: Introspects registered functions and exposes `--describe` metadata.
 
 This design eliminates manifest files and supports fully self-describing agents.
@@ -99,7 +104,9 @@ Future iterations will formalize schema validation and introspection contracts f
 
 - Interface contracts defined in Protobuf for lifecycle and IPC.
 - `LifecycleControl`, `LifecycleStatus`, and `Envelope` schemas form the core message types.
-- ADKs must implement or consume these through bindings (`gopy`, CLI shims, etc.).
+- **Python ADK Implementation**:
+  - Uses `gopy` to bind `adk/go`.
+  - Limitations: No direct `chan` support; strictly uses blocking methods and simple types for the API surface.
 - Versioning and schema compatibility will be enforced across SDKs.
 
 ---
@@ -149,7 +156,7 @@ Goblin extends GAPI into multi-node systems with:
 
 ### Appendix B — Roadmap and Future Work
 - Schema validation and describe consistency
-- QUIC multiplexing and secure tunnels
+- Native `gopy` channel support (requires upstreams improvements or significant architecture shift)
 - Cross-ADK testing framework
 - Goblin: HA clusters and automatic agent failover
 

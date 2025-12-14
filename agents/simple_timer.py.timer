@@ -1,0 +1,15 @@
+ID = "simple_timer"
+TYPE = "job" # Timers are often jobs triggered periodically
+DESCRIPTION = "A timer that runs every 10 seconds"
+INTERVAL = 10.0 # GAPI/Systemd interval
+ENABLED = True
+
+import time
+
+def run():
+    print(f"Timer executed at {time.time()}")
+
+def start():
+    # If treated as a service, it just loops, but with INTERVAL it might be scheduled.
+    # For now, let's make it compatible with 'service' or 'job' type.
+    run()

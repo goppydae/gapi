@@ -1,35 +1,344 @@
-import sys
-import json
-import runpy
+#! /usr/bin/env python3
+import argparse, importlib.util, json, os, sys, signal, threading, time, inspect, traceback, socket
+from importlib.machinery import SourceFileLoader
+from contextlib import redirect_stdout, redirect_stderr
 
-REQUIRED = ["ID", "NAME", "VERSION", "TYPE"]
-HOOKS = ["initialize", "start", "stop", "restart", "reload"]
+# Ensure we can import the 'gapi' package from the parent directory
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+
+try:
+    from gapi.native import adk
+except ImportError:
+    # Use a dummy adk if bindings fail (for bootstrapping/testing without compilation)
+    class DummyAdk:
+        def Initialize(self, n, v, t): pass
+        def SendEvent(self, msg): 
+            sys.stdout.write(msg + "\n")
+            sys.stdout.flush()
+    adk = DummyAdk()
+
+try:
+    from gapi.schemas import AgentMetadata
+except ImportError:
+    # Fallback to simple dict if gapi package is missing (should verify this doesn't happen in production)
+    AgentMetadata = dict 
+
+FN_ALIASES = {
+    "init":    ["initialize", "init", "setup"],
+    "start":   ["start", "run"],
+    "stop":    ["stop", "shutdown", "teardown"],
+    "reload":  ["reload", "rehash", "reconfigure"],
+    "restart": ["restart"],
+}
+
+META_KEYS = {
+    "id": ["ID","id","agent_id"], "name":["NAME","name"], "version":["VERSION","version"],
+    "type":["TYPE","type","unit_type","kind"], "enabled":["ENABLED","enabled"],
+    "interval":["INTERVAL","interval"],
+    "requires":["REQUIRES","requires","DEPS","deps","Dependencies"],
+    "wants":["WANTS","wants"],
+    "wanted_by":["WANTED_BY","wanted_by","WantedBy"],
+    "required_by":["REQUIRED_BY","required_by","RequiredBy"],
+    "listen_stream": ["LISTEN_STREAM", "SOCKET", "PORT"],
+    "cpu_limit": ["CPU_LIMIT", "CPU"],
+    "memory_limit": ["MEMORY_LIMIT", "MEM", "MEMORY"],
+    "desc":["DESCRIPTION","description","Desc"],
+}
+
+READY_TIMEOUT_SEC = float(os.getenv("RUNNER_READY_TIMEOUT", "20"))
+GRACE_SEC = float(os.getenv("RUNNER_READY_GRACE", "0.25"))
+READY_MODE = os.getenv("RUNNER_READY_MODE", "strict").lower()  # strict by default now
+RUN_ID = os.getenv("GAPI_RUN_ID", "")
+
+def _notify(event: str, **kv):
+    kv.setdefault("ts", time.time())
+    if RUN_ID:
+        kv.setdefault("run_id", RUN_ID)
+    msg = json.dumps({"event": event, **kv}, ensure_ascii=False)
+    adk.SendEvent(msg)
+
+
+def _get_fn(mod, keys):
+    for k in keys:
+        f = getattr(mod, k, None)
+        if callable(f):
+            return f
+    return None
+
+def load_module(path):
+    path = os.path.abspath(path)
+    with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+        loader = SourceFileLoader("agent_mod", path)
+        spec = importlib.util.spec_from_loader("agent_mod", loader)
+        if spec is None:
+            raise ImportError(f"no loader available for path: {path}")
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+
+def _ports_from_meta(mod):
+    ports = []
+    p = getattr(mod, "PORTS", None)
+    if isinstance(p, (list, tuple)):
+        for x in p:
+            try: ports.append(int(x))
+            except Exception: pass
+    b = getattr(mod, "BIND", None)
+    if isinstance(b, (list, tuple)) and len(b) == 2:
+        try: ports.append(int(b[1]))
+        except Exception: pass
+    return list(dict.fromkeys(ports))
+
+def _is_port_open(port, host="127.0.0.1", timeout=0.15):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:
+        return False
+
+class AgentWrapper:
+    def __init__(self, mod, agent_id: str, agent_type: str):
+        self.mod = mod
+        self.agent_id = agent_id
+        self.agent_type = (agent_type or "service").lower()
+        self.state = "inactive"
+        self.stop_evt = threading.Event()
+        self._hb_thread = None
+        self._start_thread = None
+
+        self.fn_init   = _get_fn(mod, FN_ALIASES["init"])
+        self.fn_start  = _get_fn(mod, FN_ALIASES["start"])
+        self.fn_stop   = _get_fn(mod, FN_ALIASES["stop"])
+        self.fn_reload = _get_fn(mod, FN_ALIASES["reload"])
+        self.fn_restart= _get_fn(mod, FN_ALIASES["restart"])
+
+        self._ports = _ports_from_meta(mod)
+
+    def _call_start(self):
+        if not self.fn_start:
+            return
+        sig = inspect.signature(self.fn_start)
+        with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+            if len(sig.parameters) == 0:
+                self.fn_start()
+            else:
+                self.fn_start(self.stop_evt)
+
+    def _heartbeat_loop(self):
+        while not self.stop_evt.wait(5.0):
+            if self.state != "running":
+                break
+            _notify("heartbeat", state=self.state, id=self.agent_id, type=self.agent_type)
+
+    def _await_ready(self):
+        deadline = time.time() + READY_TIMEOUT_SEC
+        baseline = {t.ident for t in threading.enumerate() if not t.daemon}
+        time.sleep(GRACE_SEC)
+
+        def new_non_daemon_threads():
+            current = [t for t in threading.enumerate() if not t.daemon]
+            return [t for t in current if t.ident not in baseline]
+
+        # If no start function, treat as ready
+        if self.fn_start is None:
+            return True
+
+        while time.time() < deadline:
+            # a) start thread alive (work running)
+            if self._start_thread and self._start_thread.is_alive():
+                return True
+            # b) start thread already returned, but new worker threads exist
+            if new_non_daemon_threads():
+                return True
+            # c) declared port opened
+            for p in self._ports:
+                if _is_port_open(p):
+                    return True
+            # d) loose mode fallback (opt-in via env)
+            if READY_MODE == "loose":
+                return True
+
+            _notify("start_pending", id=self.agent_id, type=self.agent_type)
+            if self.stop_evt.wait(0.2):
+                break
+        return False
+
+    def initialize(self):
+        if self.stop_evt.is_set():
+            self.stop_evt = threading.Event()
+        if self.fn_init:
+            with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+                self.fn_init()
+        self.state = "initialized"
+        _notify("initialized", id=self.agent_id, type=self.agent_type)
+
+    def start(self):
+        if self.stop_evt.is_set():
+            self.stop_evt = threading.Event()
+
+        self.state = "starting"
+        _notify("starting", id=self.agent_id, type=self.agent_type)
+
+        err_holder = {"err": None}
+        def runner():
+            try:
+                self._call_start()
+            except Exception as e:
+                err_holder["err"] = e
+                self.state = "failed"
+                _notify("error", error=str(e), id=self.agent_id, type=self.agent_type)
+
+        if self.fn_start:
+            self._start_thread = threading.Thread(target=runner, daemon=True)
+            self._start_thread.start()
+
+        if not self._await_ready():
+            # do not announce ready; let supervisor time out the start
+            return
+
+        if err_holder["err"] is None:
+            self.state = "running"
+            _notify("ready", state=self.state, id=self.agent_id, type=self.agent_type)
+            self._hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
+            self._hb_thread.start()
+
+    def stop(self, timeout=10):
+        try:
+            if self.fn_stop:
+                self.state = "stopping"
+                _notify("stopping", id=self.agent_id, type=self.agent_type)
+                with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+                    self.fn_stop()
+        finally:
+            self.stop_evt.set()
+            time.sleep(min(timeout, 0.25))
+            try:
+                if self._hb_thread is not None:
+                    self._hb_thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self._hb_thread = None
+
+            try:
+                if self._start_thread is not None and self._start_thread.is_alive():
+                    self._start_thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self._start_thread = None
+
+            self.state = "stopped"
+            _notify("stopped", id=self.agent_id, type=self.agent_type)
+            self.stop_evt = threading.Event()
+
+def get_meta(mod, key, default=None):
+    # Lookup using META_KEYS
+    aliases = META_KEYS.get(key, [key])
+    for k in aliases:
+        v = getattr(mod, k, None)
+        if v is not None:
+            return v
+    return default
+
+def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
+    id_ = get_meta(mod, "id", agent_id or "unknown")
+    name = get_meta(mod, "name", id_)
+    ver  = get_meta(mod, "version", "0.0.1")
+    typ  = get_meta(mod, "type", agent_type or "service")
+    en   = get_meta(mod, "enabled", True)
+    ivl  = get_meta(mod, "interval")
+    desc = get_meta(mod, "desc", "")
+    
+    # Dependencies
+    reqs = get_meta(mod, "requires", [])
+    wants = get_meta(mod, "wants", [])
+    wanted_by = get_meta(mod, "wanted_by", [])
+    required_by = get_meta(mod, "required_by", [])
+    
+    # Sockets
+    listen_stream = get_meta(mod, "listen_stream")
+
+    caps = []
+    for key in ("initialize","init","setup","start","run","stop","shutdown","reload","restart"):
+        if callable(getattr(mod, key, None)):
+            caps.append(key)
+    
+    # TypedDict construction
+    describe_data = {
+        "id": id_, "name": name, "version": ver, "type": typ, "language": "python",
+        "enabled": en, "capabilities": caps, "description": desc,
+        "requires": reqs, "wants": wants, "wanted_by": wanted_by, "required_by": required_by,
+        "listen_stream": str(listen_stream) if listen_stream else "",
+        "cpu_limit": str(get_meta(mod, "cpu_limit", "")),
+        "memory_limit": str(get_meta(mod, "memory_limit", "")),
+    }
+    if ivl is not None:
+        describe_data["interval"] = ivl
+        
+    obj: AgentMetadata = {"describe": describe_data}
+    return obj
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[2] != "--describe":
-        print("Usage: runner.py <agentfile> --describe", file=sys.stderr)
-        sys.exit(1)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--module", required=True)
+    ap.add_argument("--describe", action="store_true")
+    ap.add_argument("--start", action="store_true")
+    ap.add_argument("--stop", action="store_true")
+    ap.add_argument("--reload", action="store_true")
+    ap.add_argument("--restart", action="store_true")
+    ap.add_argument("--id")
+    ap.add_argument("--type", default="service")
+    args = ap.parse_args()
 
-    agent_path = sys.argv[1]
-    g = runpy.run_path(agent_path)
+    try:
+        mod = load_module(args.module)
+    except Exception as e:
+        print(f"[runner] failed to import module {args.module}: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return 2
 
-    missing = [k for k in REQUIRED if k not in g]
-    if missing:
-        print(f"Missing fields: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(2)
+    if args.describe:
+        try:
+            obj = describe(mod, args.id, args.type)
+            sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n"); sys.stdout.flush()
+            return 0
+        except Exception as e:
+            print(f"[runner] describe failed: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            return 3
 
-    out = {
-        "id": g["ID"],
-        "name": g["NAME"],
-        "version": g["VERSION"],
-        "type": g["TYPE"],
-        "description": g.get("DESCRIPTION", ""),
-        "interval": g.get("INTERVAL", 0),
-        "enabled": g.get("ENABLED", True),
-        "implements": [fn for fn in HOOKS if fn in g],
-    }
+    agent = AgentWrapper(
+        mod,
+        agent_id=(args.id or getattr(mod, "ID", None) or getattr(mod, "id", None) or "unknown"),
+        agent_type=args.type,
+    )
 
-    print(json.dumps(out))
+    # Initialize binding
+    adk.Initialize(agent.agent_id, "1.0.0", agent.agent_type)
+
+
+    def on_sigterm(signum, frame):
+        agent.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, on_sigterm)
+    signal.signal(signal.SIGINT, on_sigterm)
+
+    if args.start:
+        agent.initialize()
+        agent.start()
+        try:
+            while True:
+                time.sleep(0.25)
+        except KeyboardInterrupt:
+            pass
+    if args.reload:
+        agent.reload()
+    if args.restart:
+        agent.restart()
+    if args.stop:
+        agent.stop()
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

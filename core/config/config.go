@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/spf13/viper"
 )
 
@@ -17,9 +19,13 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	addDefaultPaths() // uses build tag-specific implementation
+	if env := os.Getenv("GAPI_CONFIG"); env != "" {
+		viper.SetConfigFile(env)
+	} else {
+		viper.SetConfigName("config")
+		viper.SetConfigType("yaml")
+		addDefaultPaths() // uses build tag-specific implementation
+	}
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {

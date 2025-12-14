@@ -6,57 +6,58 @@ import (
 	"encoding/binary"
 	"io"
 	"log"
-	"reflect"
 	"strings"
 	"sync"
 
 	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/internal/proto"
-	quicgo "github.com/quic-go/quic-go"
+	quic "github.com/quic-go/quic-go"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-type QUIC[T proto.Message] struct {
-	listener *quicgo.Listener
-	conn     quicgo.Connection
-
-	onRemote func(eventbus.Event[T])
+type QUIC struct {
+	listener *quic.Listener
+	conn     *quic.Conn
 	mu       sync.Mutex
+
+	onRemote func(eventbus.Event[*anypb.Any])
 }
 
-// Server: listens and accepts inbound connections/streams.
-func NewQUICServer[T proto.Message](addr string, cert tls.Certificate) (*QUIC[T], error) {
+// ---- Constructors ----
+
+func NewQUICServer(addr string, cert tls.Certificate) (*QUIC, error) {
 	tlsConf := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{"gapi-quic"},
 	}
-	ln, err := quicgo.ListenAddr(addr, tlsConf, nil)
+	ln, err := quic.ListenAddr(addr, tlsConf, nil)
 	if err != nil {
 		return nil, err
 	}
-	q := &QUIC[T]{listener: ln}
+	q := &QUIC{listener: ln}
 	go q.acceptLoop()
 	return q, nil
 }
 
-// Client: dials a remote QUIC endpoint.
-func NewQUICClient[T proto.Message](addr string, cert *tls.Certificate) (*QUIC[T], error) {
+func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 	tlsConf := &tls.Config{
 		Certificates:       []tls.Certificate{*cert},
-		InsecureSkipVerify: true, // tune per your trust model
+		InsecureSkipVerify: true,
 		NextProtos:         []string{"gapi-quic"},
 	}
-	conn, err := quicgo.DialAddr(context.Background(), addr, tlsConf, nil)
+	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, nil)
 	if err != nil {
 		return nil, err
 	}
-	q := &QUIC[T]{conn: conn}
+	q := &QUIC{conn: conn}
 	go q.handleConn(conn)
 	return q, nil
 }
 
-func (q *QUIC[T]) acceptLoop() {
+// ---- Server / Client loops ----
+
+func (q *QUIC) acceptLoop() {
 	for {
 		conn, err := q.listener.Accept(context.Background())
 		if err != nil {
@@ -67,7 +68,7 @@ func (q *QUIC[T]) acceptLoop() {
 	}
 }
 
-func (q *QUIC[T]) handleConn(conn quicgo.Connection) {
+func (q *QUIC) handleConn(conn *quic.Conn) {
 	q.mu.Lock()
 	q.conn = conn
 	q.mu.Unlock()
@@ -81,7 +82,7 @@ func (q *QUIC[T]) handleConn(conn quicgo.Connection) {
 	}
 }
 
-func (q *QUIC[T]) handleStream(s quicgo.Stream) {
+func (q *QUIC) handleStream(s *quic.Stream) {
 	defer s.Close()
 
 	var lenBuf [4]byte
@@ -103,27 +104,24 @@ func (q *QUIC[T]) handleStream(s quicgo.Stream) {
 		return
 	}
 
-	msg := allocT[T]()
+	var payload *anypb.Any
 	if env.Payload != nil {
-		if err := env.Payload.UnmarshalTo(msg); err != nil {
-			log.Println("unmarshal payload:", err)
-			return
-		}
+		payload = env.Payload
 	}
 
-	sc := ""
-	tp := env.Topic
+	scope := ""
+	topic := env.Topic
 	if i := strings.IndexByte(env.Topic, '/'); i > 0 {
-		sc = env.Topic[:i]
-		tp = env.Topic[i+1:]
+		scope = env.Topic[:i]
+		topic = env.Topic[i+1:]
 	}
 
-	e := eventbus.Event[T]{
+	e := eventbus.Event[*anypb.Any]{
 		ID:      env.Id,
-		Scope:   sc, // <- restore scope
-		Topic:   tp, // <- topic without scope prefix
+		Scope:   scope,
+		Topic:   topic,
 		Source:  env.Source,
-		Payload: msg,
+		Payload: payload,
 	}
 
 	if q.onRemote != nil {
@@ -131,16 +129,9 @@ func (q *QUIC[T]) handleStream(s quicgo.Stream) {
 	}
 }
 
-func allocT[T proto.Message]() T {
-	var zero T
-	typ := reflect.TypeOf(zero)
-	if typ.Kind() == reflect.Ptr {
-		return reflect.New(typ.Elem()).Interface().(T)
-	}
-	return zero
-}
+// ---- Publish / Broadcast ----
 
-func (q *QUIC[T]) PublishRemote(e eventbus.Event[T]) error {
+func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
 	q.mu.Lock()
 	conn := q.conn
 	q.mu.Unlock()
@@ -154,10 +145,6 @@ func (q *QUIC[T]) PublishRemote(e eventbus.Event[T]) error {
 	}
 	defer s.Close()
 
-	anyPayload, err := anypb.New(e.Payload)
-	if err != nil {
-		return err
-	}
 	wireTopic := e.Topic
 	if e.Scope != "" {
 		wireTopic = e.Scope + "/" + e.Topic
@@ -167,7 +154,7 @@ func (q *QUIC[T]) PublishRemote(e eventbus.Event[T]) error {
 		Topic:   wireTopic,
 		Source:  e.Source,
 		Type:    "event",
-		Payload: anyPayload,
+		Payload: e.Payload,
 	}
 
 	b, err := proto.Marshal(env)
@@ -187,14 +174,11 @@ func (q *QUIC[T]) PublishRemote(e eventbus.Event[T]) error {
 	return nil
 }
 
-func (q *QUIC[T]) Broadcast(e eventbus.Event[T]) error {
-	// Single-conn implementation; if you maintain multiple peers, iterate them here.
-	return q.PublishRemote(e)
-}
+func (q *QUIC) Broadcast(e eventbus.Event[*anypb.Any]) error { return q.PublishRemote(e) }
 
-func (q *QUIC[T]) OnRemoteEvent(fn func(eventbus.Event[T])) { q.onRemote = fn }
+func (q *QUIC) OnRemoteEvent(fn func(eventbus.Event[*anypb.Any])) { q.onRemote = fn }
 
-func (q *QUIC[T]) Close() error {
+func (q *QUIC) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	var err error

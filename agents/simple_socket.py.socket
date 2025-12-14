@@ -1,0 +1,70 @@
+ID = "simple_socket"
+TYPE = "socket"
+DESCRIPTION = "A service that listens on a specific port"
+ENABLED = True
+LISTEN_STREAM = "0.0.0.0:65432" # GAPI will bind this
+
+import socket
+import threading
+import os
+
+server = None
+stop_event = threading.Event()
+
+def handle_client(conn, addr):
+    with conn:
+        print(f"Connected by {addr}")
+        while True:
+            data = conn.recv(1024)
+            if not data: break
+            conn.sendall(data)
+
+def start():
+    global server
+    
+    
+    # Check for socket activation
+    if "LISTEN_FDS" in os.environ:
+        # Systemd/Supervisor socket activation
+        # We expect FD 3 to be the listening socket (LISTEN_FDS=1)
+        # Using fileno=... allows Python to auto-detect family and type
+        print(f"Socket Activation! LISTEN_FDS={os.environ['LISTEN_FDS']}")
+        server = socket.socket(fileno=3)
+    else:
+        # Standalone mode
+        if os.path.exists(LISTEN_STREAM):
+             os.remove(LISTEN_STREAM)
+             
+        if LISTEN_STREAM.startswith("/"):
+             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+             server.bind(LISTEN_STREAM)
+        else:
+             host, port = LISTEN_STREAM.split(":")
+             port = int(port)
+             server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+             server.bind((host, port))
+        server.listen(1)
+    
+    # Run accept loop in thread to not block supervisor
+    t = threading.Thread(target=accept_loop, daemon=False)
+    t.start()
+    print("Socket service started")
+
+def accept_loop():
+    while not stop_event.is_set():
+        try:
+            conn, addr = server.accept()
+            print(f"Accepted connection from {addr}")
+            t = threading.Thread(target=handle_client, args=(conn, addr))
+            t.start()
+        except socket.timeout:
+            continue
+        except Exception as e:
+            print(f"Socket error: {e}")
+            if stop_event.is_set(): break
+
+
+def stop():
+    stop_event.set()
+    if server:
+        server.close()

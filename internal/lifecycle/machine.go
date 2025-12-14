@@ -9,6 +9,18 @@ import (
 	"github.com/goppydae/gapi/internal/state"
 )
 
+const (
+	StateInitializing = "initializing"
+	StateInitialized  = "initialized"
+	StateStarting     = "starting"
+	StateRunning      = "running"
+	StateStopping     = "stopping"
+	StateStopped      = "stopped"
+	StateReloading    = "reloading"
+	StateRestarting   = "restarting"
+	StateError        = "error"
+)
+
 type LifecycleStateMachine struct {
 	sm      *state.BaseStateMachine
 	agentID string
@@ -17,15 +29,15 @@ type LifecycleStateMachine struct {
 }
 
 func NewLifecycleStateMachine(agentID, hostname string, bus *eventbus.EventBus[*anypb.Any]) *LifecycleStateMachine {
-	sm := state.NewBaseStateMachine("initializing", map[string][]string{
-		"initializing": {"restarting", "starting", "stopped", "error"},
-		"stopped":      {"starting", "error"},
-		"starting":     {"running", "error"},
-		"running":      {"stopping", "reloading", "restarting", "error"},
-		"reloading":    {"running", "error"},
-		"stopping":     {"stopped", "error"},
-		"restarting":   {"running", "error"},
-		"error":        {"stopping", "stopped", "starting", "restarting"},
+	sm := state.NewBaseStateMachine(StateStopped, map[string][]string{
+		StateInitializing: {StateInitialized, StateStarting, StateError},
+		StateInitialized:  {StateStarting, StateRestarting, StateStopped, StateError},
+		StateStarting:     {StateRunning, StateError},
+		StateRunning:      {StateStopping, StateReloading, StateRestarting, StateError},
+		StateStopping:     {StateStopped, StateError},
+		StateStopped:      {StateStarting, StateRestarting, StateError},
+		StateReloading:    {StateRunning, StateError},
+		StateError:        {StateStopping, StateStopped, StateStarting, StateRestarting},
 	})
 
 	lsm := &LifecycleStateMachine{
@@ -58,7 +70,7 @@ func (lsm *LifecycleStateMachine) emitLifecycleEvent(from, to string) {
 
 	event := eventbus.NewEvent(
 		"system",
-		"lifecycle.transition",
+		"agent/lifecycle.transition",
 		lsm.agentID,
 		anyMsg,
 		true,
@@ -78,16 +90,20 @@ func (lsm *LifecycleStateMachine) GetState() string {
 func (lsm *LifecycleStateMachine) CurrentProtoState() protopkg.AgentState {
 	switch lsm.GetState() {
 	case "initializing":
-		return protopkg.AgentState_AGENT_STATE_INIT
+		return protopkg.AgentState_AGENT_STATE_INITIALIZING
+	case "initialized":
+		return protopkg.AgentState_AGENT_STATE_INITIALIZED
 	case "starting":
 		return protopkg.AgentState_AGENT_STATE_STARTING
+	case "started":
+		return protopkg.AgentState_AGENT_STATE_STARTED
 	case "running":
 		return protopkg.AgentState_AGENT_STATE_RUNNING
 	case "stopping":
 		return protopkg.AgentState_AGENT_STATE_STOPPING
 	case "stopped":
 		return protopkg.AgentState_AGENT_STATE_STOPPED
-	case "failed":
+	case "error":
 		return protopkg.AgentState_AGENT_STATE_FAILED
 	case "reloading":
 		return protopkg.AgentState_AGENT_STATE_RELOADING

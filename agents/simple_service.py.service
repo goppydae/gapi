@@ -1,0 +1,18 @@
+ID = "simple_service"
+TYPE = "service"
+DESCRIPTION = "A simple service that logs a message every few seconds"
+ENABLED = True
+
+import time
+import sys
+
+def start():
+    print("Simple Service Starting...")
+    sys.stdout.flush()
+    while True:
+        print(f"Service tick: {time.time()}")
+        sys.stdout.flush()
+        time.sleep(5)
+
+def stop():
+    print("Simple Service Stopping...")

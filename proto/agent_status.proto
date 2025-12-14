@@ -5,14 +5,16 @@ package proto;
 option go_package = "github.com/goppydae/gapi/internal/proto/v1;proto";
 
 enum AgentState {
-  AGENT_STATE_UNKNOWN   = 0;
-  AGENT_STATE_INIT      = 1;
-  AGENT_STATE_STARTING  = 2;
-  AGENT_STATE_RUNNING   = 3;
-  AGENT_STATE_STOPPING  = 4;
-  AGENT_STATE_STOPPED   = 5;
-  AGENT_STATE_FAILED    = 6;
-  AGENT_STATE_RELOADING = 7;
+  AGENT_STATE_UNKNOWN = 0;
+  AGENT_STATE_INITIALIZING = 1;
+  AGENT_STATE_INITIALIZED = 2;
+  AGENT_STATE_STARTING = 3;
+  AGENT_STATE_STARTED = 4;
+  AGENT_STATE_RUNNING = 5;
+  AGENT_STATE_STOPPING = 6;
+  AGENT_STATE_STOPPED = 7;
+  AGENT_STATE_FAILED = 8;
+  AGENT_STATE_RELOADING = 9;
 }
 
 message AgentStatus {
@@ -23,6 +25,7 @@ message AgentStatus {
   string language  = 5;
   string version   = 6;
   repeated string capabilities = 7;
+  repeated string dependencies = 8;
 }
 
 message AgentStatusRequest {} // usually empty or may filter by id/prefix

@@ -13,12 +13,12 @@ import (
 	"github.com/goppydae/gapi/internal/logging/logevent"
 )
 
-// Event is now generic over the payload type T.
-// If you still use protobuf Any, instantiate as Event[*anypb.Any].
+// ---- Event Definition ----
+
 type Event[T any] struct {
 	ID        string
-	Scope     string // "user", "system", "admin"
-	Topic     string // e.g. "enqack/strategy.signal"
+	Scope     string
+	Topic     string
 	Payload   T
 	Source    string
 	Broadcast bool
@@ -35,36 +35,52 @@ func NewEvent[T any](scope, topic, source string, payload T, broadcast bool) Eve
 	}
 }
 
-// Handler is typed on the same T as Event.
 type Handler[T any] func(Event[T])
 
-// Transport is generic and injected (see interface.go).
+// ---- EventBus Implementation ----
+
 type EventBus[T any] struct {
-	subs      map[string][]Handler[T]
-	transport Transport[T]
-	mu        sync.RWMutex
+	mu         sync.RWMutex
+	subs       map[string][]Handler[T]
+	prefixSubs map[string][]Handler[T]
+	transport  Transport[T]
+	closed     bool
 }
 
-func NewEventBus[T any](t Transport[T]) *EventBus[T] {
-	bus := &EventBus[T]{
-		subs:      make(map[string][]Handler[T]),
-		transport: t,
-	}
+type Options struct{}
 
+func NewEventBus[T any](t Transport[T], _ ...Options) *EventBus[T] {
+	b := &EventBus[T]{
+		subs:       make(map[string][]Handler[T]),
+		prefixSubs: make(map[string][]Handler[T]),
+		transport:  t,
+	}
 	if t != nil {
-		t.OnRemoteEvent(func(e Event[T]) {
-			_ = bus.dispatch(e)
-		})
+		t.OnRemoteEvent(func(e Event[T]) { _ = b.dispatch(e) })
 	}
-
-	return bus
+	return b
 }
 
-var validScopes = map[string]bool{
-	"user":   true,
-	"system": true,
-	"admin":  true,
+func NewInprocBus[T any]() *EventBus[T] {
+	return NewEventBus[T](nil)
 }
+
+func (b *EventBus[T]) Close() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	if b.transport != nil {
+		_ = b.transport.Close()
+	}
+	b.subs = nil
+	b.prefixSubs = nil
+	return nil
+}
+
+var validScopes = map[string]bool{"system": true, "user": true, "admin": true}
 
 func ValidateEvent[T any](e Event[T]) error {
 	if !validScopes[e.Scope] {
@@ -76,70 +92,94 @@ func ValidateEvent[T any](e Event[T]) error {
 	return nil
 }
 
-func (bus *EventBus[T]) Subscribe(scope, topic string, fn Handler[T]) error {
+func fullKey(scope, topic string) string { return scope + "/" + topic }
+
+func (b *EventBus[T]) ensureInitLocked() {
+	if b.subs == nil {
+		b.subs = make(map[string][]Handler[T])
+	}
+	if b.prefixSubs == nil {
+		b.prefixSubs = make(map[string][]Handler[T])
+	}
+}
+
+// ---- Subscription APIs ----
+
+func (b *EventBus[T]) Subscribe(scope, topic string, fn Handler[T]) error {
 	if !validScopes[scope] {
 		return fmt.Errorf("invalid scope: %s", scope)
 	}
-	fullKey := scope + "/" + topic
-	bus.mu.Lock()
-	defer bus.mu.Unlock()
-	bus.subs[fullKey] = append(bus.subs[fullKey], fn)
+	k := fullKey(scope, topic)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return fmt.Errorf("eventbus closed")
+	}
+	b.ensureInitLocked()
+	b.subs[k] = append(b.subs[k], fn)
 	return nil
 }
 
-func (bus *EventBus[T]) SubscribePrefix(scope, topicPrefix string, fn Handler[T]) error {
+func (b *EventBus[T]) SubscribePrefix(scope, topicPrefix string, fn Handler[T]) error {
 	if !validScopes[scope] {
 		return fmt.Errorf("invalid scope: %s", scope)
 	}
-	key := "__MATCH:" + scope + "/" + topicPrefix
-	bus.mu.Lock()
-	defer bus.mu.Unlock()
-	bus.subs[key] = append(bus.subs[key], fn)
+	k := "__MATCH:" + fullKey(scope, topicPrefix)
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return fmt.Errorf("eventbus closed")
+	}
+	b.ensureInitLocked()
+	b.prefixSubs[k] = append(b.prefixSubs[k], fn)
 	return nil
 }
 
-func (bus *EventBus[T]) SubscribeOnce(scope, topic string, handler Handler[T]) {
+// SubscribeOnce calls handler at most once for the exact topic, then unsubscribes.
+func (bus *EventBus[T]) SubscribeOnce(scope, topic string, handler Handler[T]) error {
 	var once sync.Once
 	var wrapper Handler[T]
-
 	wrapper = func(e Event[T]) {
 		once.Do(func() {
 			handler(e)
 			bus.Unsubscribe(scope, topic, wrapper)
 		})
 	}
-
-	_ = bus.Subscribe(scope, topic, wrapper)
+	return bus.Subscribe(scope, topic, wrapper)
 }
 
+// Unsubscribe removes a single handler from an exact topic.
 func (bus *EventBus[T]) Unsubscribe(scope, topic string, target Handler[T]) {
-	key := fmt.Sprintf("%s/%s", scope, topic)
+	k := fullKey(scope, topic)
 
 	bus.mu.Lock()
 	defer bus.mu.Unlock()
-
-	handlers := bus.subs[key]
+	handlers := bus.subs[k]
 	for i, h := range handlers {
 		if fmt.Sprintf("%p", h) == fmt.Sprintf("%p", target) {
-			bus.subs[key] = append(handlers[:i], handlers[i+1:]...)
+			bus.subs[k] = append(handlers[:i], handlers[i+1:]...)
 			break
 		}
 	}
-
-	if len(bus.subs[key]) == 0 {
-		delete(bus.subs, key)
+	if len(bus.subs[k]) == 0 {
+		delete(bus.subs, k)
 	}
 }
 
-func (bus *EventBus[T]) Publish(e Event[T]) error {
+// ---- Publish / Dispatch ----
+
+func (b *EventBus[T]) Publish(e Event[T]) error {
 	if err := ValidateEvent(e); err != nil {
-		logcore.Warn().
-			Str("event", "reject").
-			Str("event_id", e.ID).
-			Str("topic", e.Topic).
-			Str("scope", e.Scope).
+		logcore.Warn().Str("event", "reject").Str("event_id", e.ID).
+			Str("topic", e.Topic).Str("scope", e.Scope).
 			Msg("rejected invalid event")
 		return err
+	}
+
+	if b == nil {
+		return fmt.Errorf("eventbus: publish on nil bus")
 	}
 
 	logevent.Log(logcore.With().Str("module", "eventbus").Logger(), logevent.Event{
@@ -148,96 +188,65 @@ func (bus *EventBus[T]) Publish(e Event[T]) error {
 		Source: e.Source,
 		Payload: logevent.BusPayload{
 			Topic:   e.Topic,
-			Payload: fmt.Sprintf("%v", e.Payload),
+			Payload: fmt.Sprintf("%T", e.Payload),
 		},
 	})
 
-	if e.Broadcast && bus.transport != nil {
-		if err := bus.transport.Broadcast(e); err != nil {
-			logcore.Error().
-				Err(err).
-				Str("event_id", e.ID).
-				Str("topic", e.Topic).
-				Msg("transport.Broadcast failed")
+	if b.transport != nil {
+		var terr error
+		if e.Broadcast {
+			terr = b.transport.Broadcast(e)
+		} else {
+			terr = b.transport.PublishRemote(e)
 		}
-	} else if bus.transport != nil {
-		if err := bus.transport.PublishRemote(e); err != nil {
-			logcore.Error().
-				Err(err).
-				Str("event_id", e.ID).
-				Str("topic", e.Topic).
-				Msg("transport.PublishRemote failed")
+		if terr != nil {
+			logcore.Error().Err(terr).Str("event_id", e.ID).
+				Str("topic", e.Topic).Msg("transport publish failed")
 		}
-	} else {
-		logcore.Warn().
-			Str("event_id", e.ID).
-			Str("topic", e.Topic).
-			Msg("no transport available for publish")
 	}
 
-	return bus.dispatch(e)
+	return b.dispatch(e)
 }
 
-func (bus *EventBus[T]) dispatch(e Event[T]) error {
-	fullKey := e.Scope + "/" + e.Topic
+func (b *EventBus[T]) dispatch(e Event[T]) error {
+	k := fullKey(e.Scope, e.Topic)
 
-	logevent.Log(logcore.With().Str("module", "eventbus").Logger(), logevent.Event{
-		ID:     e.ID,
-		Type:   "dispatch",
-		Source: e.Source,
-		Payload: logevent.BusPayload{
-			Topic:   e.Topic,
-			Payload: fmt.Sprintf("%v", e.Payload),
-		},
-	})
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 
-	bus.mu.RLock()
-	defer bus.mu.RUnlock()
-
-	if handlers, ok := bus.subs[fullKey]; ok {
+	// Exact match
+	if handlers, ok := b.subs[k]; ok {
 		for _, fn := range handlers {
 			go fn(e)
 		}
 	}
-
-	logcore.Info().
-		Str("dispatch_key", fullKey).
-		Int("subs_len", len(bus.subs)).
-		Msg("checking topic subscriptions for prefix match")
-
-	for topic := range bus.subs {
-		logcore.Info().Str("sub_key", topic).Msg("registered subscription")
-	}
-
-	for topic, handlers := range bus.subs {
-		if strings.HasPrefix(topic, "__MATCH:") {
-			base := strings.TrimPrefix(topic, "__MATCH:")
-			if strings.HasPrefix(fullKey, base) {
-				for _, fn := range handlers {
-					go fn(e)
-				}
+	// Prefix match
+	for key, handlers := range b.prefixSubs {
+		prefix := strings.TrimPrefix(key, "__MATCH:")
+		if strings.HasPrefix(k, prefix) {
+			for _, fn := range handlers {
+				go fn(e)
 			}
 		}
 	}
-
 	return nil
 }
 
-// LocalTransport is a no-op in-proc transport; kept generic for testing.
+// ---- Protobuf Helpers ----
+
+// UnmarshalAnyPayload extracts and unmarshals a protobuf Any payload from an event.
+// Call it as:  eventbus.UnmarshalAnyPayload(e, &myProto)
+func UnmarshalAnyPayload(e Event[*anypb.Any], target proto.Message) error {
+	if e.Payload == nil {
+		return fmt.Errorf("no payload in event")
+	}
+	return e.Payload.UnmarshalTo(target)
+}
+
+// LocalTransport is a no-op transport for local-only operation.
 type LocalTransport[T any] struct{}
 
-func (t *LocalTransport[T]) PublishRemote(e Event[T]) error  { return nil }
-func (t *LocalTransport[T]) Broadcast(e Event[T]) error      { return nil }
-func (t *LocalTransport[T]) OnRemoteEvent(fn func(Event[T])) {}
-
-// Back-compat helper: when T == *anypb.Any you can still unmarshal.
-func (e *Event[T]) UnmarshalPayload(target proto.Message) error {
-	anyPayload, ok := any(e.Payload).(*anypb.Any)
-	if !ok {
-		return fmt.Errorf("payload is not *anypb.Any")
-	}
-	if anyPayload == nil {
-		return fmt.Errorf("event has no payload")
-	}
-	return anyPayload.UnmarshalTo(target)
-}
+func (t *LocalTransport[T]) PublishRemote(Event[T]) error { return nil }
+func (t *LocalTransport[T]) Broadcast(Event[T]) error     { return nil }
+func (t *LocalTransport[T]) OnRemoteEvent(func(Event[T])) {}
+func (t *LocalTransport[T]) Close() error                 { return nil }

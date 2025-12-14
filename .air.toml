@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 
 [build]
 # cmd = "go build -tags dev -o tmp/gapid ./cmd/gapid && go build -tags dev -o tmp/gapictl ./cmd/gapictl && chmod +x tmp/gapictl"
-cmd = "./build/scripts/devbuild.sh"
+cmd = "./build/scripts/devbuild.sh --build-only"
 bin = "./bin/gapid"
 include_ext = ["go"]
 exclude_dir = ["proto", "docs", "test", "build", "bin"]

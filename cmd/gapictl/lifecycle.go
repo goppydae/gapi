@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,80 +16,145 @@ import (
 	"github.com/goppydae/gapi/internal/transport"
 )
 
-// sendLifecycleCommand sends control commands in parallel to multiple agents
-// and prints their results (success, error, or timeout).
+func waitForPendingThenTerminal(
+	ctx context.Context,
+	bus *eventbus.EventBus[*anypb.Any],
+	agentID string,
+	pendingTimeout time.Duration,
+	finalTimeout time.Duration,
+) (*protopkg.LifecycleStatus, error) {
+
+	statusCh := make(chan *protopkg.LifecycleStatus, 8)
+
+	// Subscribe BEFORE publish; your EventBus doesn't return an unsub handle.
+	bus.SubscribePrefix("system", "agent/lifecycle.status", func(e eventbus.Event[*anypb.Any]) {
+		var st protopkg.LifecycleStatus
+		if err := eventbus.UnmarshalAnyPayload(e, &st); err != nil {
+			return
+		}
+		if st.GetAgentId() != agentID {
+			return
+		}
+		select {
+		case statusCh <- &st:
+		default:
+			// drop if full
+		}
+	})
+
+	isTerminal := func(state string) bool {
+		s := strings.ToUpper(strings.TrimSpace(state))
+		switch s {
+		case "PENDING", "STARTING", "STOPPING", "RELOADING", "INITIALIZING", "":
+			return false
+		default:
+			return true // RUNNING, STOPPED, FAILED, INITIALIZED, or anything else non-empty
+		}
+	}
+
+	// Timers: start with PENDING window, then switch to terminal window.
+	pendingTimer := time.NewTimer(pendingTimeout)
+	defer pendingTimer.Stop()
+
+	finalTimer := time.NewTimer(finalTimeout)
+	if !finalTimer.Stop() {
+		select {
+		case <-finalTimer.C:
+		default:
+		}
+	}
+	activeTimer := pendingTimer.C
+	seenPending := false
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case <-activeTimer:
+			if !seenPending {
+				return nil, fmt.Errorf("timeout waiting for PENDING")
+			}
+			return nil, fmt.Errorf("timeout waiting for terminal state")
+
+		case st := <-statusCh:
+			// Terminal may arrive before PENDING.
+			if isTerminal(st.GetState()) {
+				return st, nil
+			}
+			if !seenPending && st.GetState() == "PENDING" {
+				seenPending = true
+				if !pendingTimer.Stop() {
+					select {
+					case <-pendingTimer.C:
+					default:
+					}
+				}
+				finalTimer.Reset(finalTimeout)
+				activeTimer = finalTimer.C
+				continue
+			}
+			// Ignore other non-terminal updates.
+		}
+	}
+}
+
+// sendLifecycleCommand sends control commands in parallel to multiple agents,
+// waits for PENDING then terminal, and prints results.
 func sendLifecycleCommand(agentIDs []string, action protopkg.LifecycleControl_Action) {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	t, err := transport.NewClientFromConfig[*anypb.Any](cfg.Transport)
+	t, err := transport.NewClientFromConfig(cfg.Transport)
 	if err != nil {
 		log.Fatalf("failed to init transport: %v", err)
 	}
-
 	bus := eventbus.NewEventBus(t)
 
 	type result struct {
 		AgentID string
-		State   string
+		Status  *protopkg.LifecycleStatus
 		Err     error
 	}
 
 	results := make(chan result, len(agentIDs))
 
-	for _, agentID := range agentIDs {
-		agentID := agentID // capture loop variable
+	for _, id := range agentIDs {
+		agentID := id // capture loop var
 
 		go func() {
-			done := make(chan struct{})
+			// 1) Subscribe first and kick off the waiter
+			ctx := context.Background()
 
-			// Listen for status reply
-			bus.SubscribeOnce("system", "agent/lifecycle.status", func(e eventbus.Event[*anypb.Any]) {
-				var res protopkg.LifecycleStatus
-				if err := e.UnmarshalPayload(&res); err != nil {
-					results <- result{AgentID: agentID, Err: fmt.Errorf("unmarshal error: %v", err)}
-					return
-				}
-				if res.AgentId == agentID {
-					results <- result{AgentID: res.AgentId, State: res.State}
-					close(done)
-				}
-			})
-
-			msg := &protopkg.LifecycleControl{
-				AgentId: agentID,
-				Action:  action,
-			}
-			payload, err := anypb.New(msg)
+			// 2) Publish the control request
+			req := &protopkg.LifecycleControl{AgentId: agentID, Action: action}
+			packed, err := anypb.New(req)
 			if err != nil {
-				results <- result{AgentID: agentID, Err: fmt.Errorf("marshal error: %v", err)}
+				results <- result{AgentID: agentID, Err: fmt.Errorf("marshal request: %w", err)}
+				return
+			}
+			ev := eventbus.NewEvent("system", "agent/lifecycle.action", "gapictl", packed, true)
+			if err := bus.Publish(ev); err != nil {
+				results <- result{AgentID: agentID, Err: fmt.Errorf("publish control: %w", err)}
 				return
 			}
 
-			event := eventbus.NewEvent("system", "agent/lifecycle.control", "gapictl", payload, true)
-			if err := bus.Publish(event); err != nil {
-				results <- result{AgentID: agentID, Err: fmt.Errorf("publish error: %v", err)}
-				return
-			}
-
-			select {
-			case <-done:
-			case <-time.After(5 * time.Second):
-				results <- result{AgentID: agentID, Err: fmt.Errorf("timeout")}
-			}
+			// 3) Await PENDING then terminal
+			st, err := waitForPendingThenTerminal(ctx, bus, agentID, 2*time.Second, 20*time.Second)
+			results <- result{AgentID: agentID, Status: st, Err: err}
 		}()
 	}
 
-	// Collect all results
+	// Collect results
 	for i := 0; i < len(agentIDs); i++ {
-		res := <-results
-		if res.Err != nil {
-			fmt.Printf("❌ agent %s: %v\n", res.AgentID, res.Err)
-		} else {
-			fmt.Printf("✅ agent %s is now in state: %s\n", res.AgentID, res.State)
+		r := <-results
+		if r.Err != nil {
+			fmt.Printf("❌ %s: %v\n", r.AgentID, r.Err)
+			continue
 		}
+		fmt.Printf("✅ %s → %s: %s\n", r.AgentID, r.Status.GetState(), r.Status.GetMessage())
 	}
 }
 

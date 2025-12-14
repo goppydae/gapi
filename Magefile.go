@@ -76,7 +76,7 @@ func buildBinary(outputBinary, mainPackage string) error {
 		schemaHash, commit, date, builtBy,
 	)
 
-	cmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", outputBinary, mainPackage)
+	cmd := exec.Command("go", "build", "-tags", "dev", "-ldflags", ldflags, "-o", outputBinary, mainPackage)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -155,6 +155,26 @@ func Tls() error {
 
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	return cmd.Run()
+}
+
+// BuildBindings generates the Python bindings using gopy.
+func BuildBindings() error {
+	fmt.Println("Generating native Python bindings...")
+	// Ensure the output directory exists
+	if err := os.MkdirAll("adk/python/gapi/native", 0755); err != nil {
+		return err
+	}
+
+	// Build bindings for adk/go package
+	// We use the manually installed gopy from .bin
+	cmd := exec.Command("gopy", "build",
+		"-output=adk/python/gapi/native",
+		"-vm=python3",
+		"github.com/goppydae/gapi/adk/go",
+	)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
