@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/goppydae/gapi/cmd/gapictl/tui"
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/version"
 	"github.com/goppydae/gapi/internal/eventbus"
@@ -131,8 +132,26 @@ var agentStatusCmd = &cobra.Command{
 	},
 }
 
+// TUI command
+var tuiCmd = &cobra.Command{
+	Use:   "tui",
+	Short: "Interactive TUI for monitoring agents",
+	Long:  "Start an interactive terminal UI for real-time agent monitoring and control.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return tui.Run()
+	},
+}
+
 func init() {
-	agentStatusCmd.Flags().Bool("tree", false, "Display dependencies as a tree")
+	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(pingCmd)
+	rootCmd.AddCommand(agentStatusCmd)
+	rootCmd.AddCommand(keygenCmd)
+	rootCmd.AddCommand(signCmd)
+	rootCmd.AddCommand(verifyCmd)
+	rootCmd.AddCommand(tuiCmd)
+
+	agentStatusCmd.Flags().BoolP("tree", "t", false, "Show dependency tree")
 }
 
 func printTree(agents []*protopkg.AgentStatus) {

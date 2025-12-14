@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/goppydae/gapi/core/config"
+	"github.com/goppydae/gapi/core/crypto"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/core/version"
 	"github.com/goppydae/gapi/internal/agentmgr"
@@ -195,11 +197,29 @@ func runSupervisor() error {
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to open database")
 	}
+	// Security: Load Verification Key
+	var pubKey *ed25519.PublicKey
+	if kp := cfg.Security.VerifyKey; kp != "" {
+		pk, err := crypto.LoadPublic(kp)
+		if err != nil {
+			return fmt.Errorf("failed to load verification key %q: %w", kp, err)
+		}
+		logger.Info().Str("key_path", kp).Msg("integrity verification enabled")
+		pubKey = &pk
+	} else if kp := os.Getenv("GAPI_VERIFY_KEY"); kp != "" {
+		pk, err := crypto.LoadPublic(kp)
+		if err != nil {
+			return fmt.Errorf("failed to load verification key from env %q: %w", kp, err)
+		}
+		logger.Info().Str("key_path", kp).Msg("integrity verification enabled")
+		pubKey = &pk
+	}
+
 	db, ok := raw.(store.HybridStore)
 	if !ok {
 		return fmt.Errorf("failed to cast store to HybridStore")
 	}
-	registry, err := agentreg.NewAgentRegistry(db)
+	registry, err := agentreg.NewAgentRegistry(db, pubKey)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create agent registry")
 	}
@@ -274,6 +294,16 @@ func runSupervisor() error {
 						} else {
 							logger.Info().Str("agent_id", id).Msg("armed lazy activation")
 						}
+					}
+				}
+
+				// Auto-start timer agents
+				if desc["type"] == "timer" {
+					ctrl := ag.Controller()
+					if err := ctrl.Apply(lifecycle.ActionStart); err != nil {
+						logger.Error().Err(err).Str("agent_id", id).Msg("failed to start timer agent")
+					} else {
+						logger.Info().Str("agent_id", id).Msg("timer agent started")
 					}
 				}
 			}

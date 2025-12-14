@@ -4,220 +4,169 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
-	"github.com/goppydae/gapi/core/crypto"
+	"github.com/magefile/mage/mg"
+	"github.com/magefile/mage/sh"
 )
 
-var Default = BuildAll
+// Build builds the gapid and gapictl binaries
+func Build() error {
+	mg.Deps(ensureGCC)
+	fmt.Println("Building gapid and gapictl...")
 
-const (
-	version          = "0.1.0"
-	goSDKVersion     = "0.1.0"
-	pythonSDKVersion = "0.1.0"
-	buildTag         = "dev"
-	schemaHashFile   = "build/meta/.schema_hash"
-)
-
-// BuildAll compiles both binaries with embedded version info.
-func BuildAll() error {
-	if err := BuildCtl(); err != nil {
-		return err
-	}
-	return BuildDaemon()
-}
-
-// BuildCtl builds the gapictl CLI tool.
-func BuildCtl() error {
-	fmt.Println("Building gapictl...")
-	return buildBinary(
-		"bin/gapictl",
-		"./cmd/gapictl",
-	)
-}
-
-// BuildDaemon builds the gapid supervisor binary.
-func BuildDaemon() error {
-	fmt.Println("Building gapid...")
-	return buildBinary(
-		"bin/gapid",
-		"./cmd/gapid",
-	)
-}
-
-// Shared binary build logic with linker flags and metadata output.
-func buildBinary(outputBinary, mainPackage string) error {
-	schemaHash := "dev"
-	if hashBytes, err := os.ReadFile(schemaHashFile); err == nil {
-		schemaHash = strings.TrimSpace(string(hashBytes))
-	}
-
-	commit := run("git", "rev-parse", "HEAD")
-	date := run("date", "-u", "+%Y-%m-%dT%H:%M:%SZ")
-	builtBy := os.Getenv("USER")
-
-	ldflags := fmt.Sprintf(
-		"-X 'github.com/goppydae/gapi/core/version.GAPIVersion=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.GoSDKVersion=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.PythonSDKVersion=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.BuildTag=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.SchemaHash=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.Commit=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.Date=%s' "+
-			"-X 'github.com/goppydae/gapi/core/version.BuiltBy=%s'",
-		version, goSDKVersion, pythonSDKVersion, buildTag,
-		schemaHash, commit, date, builtBy,
-	)
-
-	cmd := exec.Command("go", "build", "-tags", "dev", "-ldflags", ldflags, "-o", outputBinary, mainPackage)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := sh.Run("go", "build", "-o", "bin/gapid", "./cmd/gapid"); err != nil {
 		return err
 	}
 
-	meta := BuildMetadata{
-		Version:          version,
-		GoSDKVersion:     goSDKVersion,
-		PythonSDKVersion: pythonSDKVersion,
-		SchemaHash:       schemaHash,
-		BuildTag:         buildTag,
-		Commit:           commit,
-		Date:             date,
-		BuiltBy:          builtBy,
-		OutputBinary:     outputBinary,
-	}
-	return writeBuildMeta(meta)
-}
-
-// Gen regenerates Protobuf files and stamps the schema hash.
-func Gen() error {
-	fmt.Println("Generating Protobuf files...")
-	cmd := exec.Command("buf", "generate")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := sh.Run("go", "build", "-o", "bin/gapictl", "./cmd/gapictl"); err != nil {
 		return err
 	}
 
-	fmt.Println("Stamping schema hash...")
-	var allProto bytes.Buffer
-
-	err := filepath.Walk("proto", func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".proto") {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			allProto.Write(data)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("collecting proto files: %w", err)
-	}
-
-	full, _ := crypto.Blake3.Hash(allProto.Bytes())
-	err = os.WriteFile("build/meta/.schema_hash", []byte(full), 0644)
-	if err != nil {
-		return fmt.Errorf("writing schema hash: %w", err)
-	}
-
-	fmt.Printf("Schema hash: %s\n", full)
+	fmt.Println("✅ Build complete: bin/gapid, bin/gapictl")
 	return nil
 }
 
-// Tls generates self-signed TLS certs.
-func Tls() error {
-	dir := "config/certs"
-	fmt.Println("Generating self-signed TLS certificate into", dir)
+// Install installs binaries to $GOPATH/bin
+func Install() error {
+	mg.Deps(ensureGCC)
+	fmt.Println("Installing gapid and gapictl...")
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := sh.Run("go", "install", "./cmd/gapid"); err != nil {
 		return err
 	}
 
-	cmd := exec.Command("openssl", "req",
-		"-x509", "-newkey", "rsa:2048", "-nodes",
-		"-keyout", dir+"/server.key",
-		"-out", dir+"/server.crt",
-		"-days", "365",
-		"-subj", "/CN=localhost")
-
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	return cmd.Run()
-}
-
-// BuildBindings generates the Python bindings using gopy.
-func BuildBindings() error {
-	fmt.Println("Generating native Python bindings...")
-	// Ensure the output directory exists
-	if err := os.MkdirAll("adk/python/gapi/native", 0755); err != nil {
+	if err := sh.Run("go", "install", "./cmd/gapictl"); err != nil {
 		return err
 	}
 
-	// Build bindings for adk/go package
-	// We use the manually installed gopy from .bin
-	cmd := exec.Command("gopy", "build",
-		"-output=adk/python/gapi/native",
-		"-vm=python3",
-		"github.com/goppydae/gapi/adk/go",
-	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	fmt.Println("✅ Installed to $GOPATH/bin")
+	return nil
 }
 
-// Dev starts live-reload using Air.
+// Test runs all tests
+func Test() error {
+	mg.Deps(ensureGCC)
+	fmt.Println("Running tests...")
+	return sh.RunV("go", "test", "-v", "./...")
+}
+
+// TestUnit runs only unit tests
+func TestUnit() error {
+	mg.Deps(ensureGCC)
+	fmt.Println("Running unit tests...")
+	return sh.RunV("go", "test", "-v", "./internal/...")
+}
+
+// TestADK runs ADK integration tests
+func TestADK() error {
+	mg.Deps(Build)
+	fmt.Println("Running ADK integration tests...")
+	return sh.RunV("go", "test", "-v", "./test/adk/...")
+}
+
+// TestE2E runs end-to-end tests
+func TestE2E() error {
+	mg.Deps(Build)
+	fmt.Println("Running E2E tests...")
+	return sh.RunV("./test/e2e.sh")
+}
+
+// Clean removes build artifacts
+func Clean() error {
+	fmt.Println("Cleaning build artifacts...")
+
+	dirs := []string{"bin", "build"}
+	for _, dir := range dirs {
+		if err := sh.Rm(dir); err != nil {
+			fmt.Printf("Warning: failed to remove %s: %v\n", dir, err)
+		}
+	}
+
+	fmt.Println("✅ Clean complete")
+	return nil
+}
+
+// Proto generates protobuf code
+func Proto() error {
+	fmt.Println("Generating protobuf code...")
+
+	protoFiles, err := filepath.Glob("proto/*.proto")
+	if err != nil {
+		return err
+	}
+
+	for _, file := range protoFiles {
+		args := []string{
+			"--go_out=.",
+			"--go_opt=paths=source_relative",
+			"--go-grpc_out=.",
+			"--go-grpc_opt=paths=source_relative",
+			file,
+		}
+		if err := sh.Run("protoc", args...); err != nil {
+			return fmt.Errorf("protoc failed for %s: %w", file, err)
+		}
+	}
+
+	fmt.Println("✅ Protobuf generation complete")
+	return nil
+}
+
+// Fmt formats all Go code
+func Fmt() error {
+	fmt.Println("Formatting code...")
+	return sh.RunV("go", "fmt", "./...")
+}
+
+// Lint runs linters
+func Lint() error {
+	fmt.Println("Running linters...")
+
+	// Check if golangci-lint is available
+	if _, err := exec.LookPath("golangci-lint"); err == nil {
+		return sh.RunV("golangci-lint", "run")
+	}
+
+	// Fallback to go vet
+	fmt.Println("golangci-lint not found, using go vet...")
+	return sh.RunV("go", "vet", "./...")
+}
+
+// Tidy runs go mod tidy
+func Tidy() error {
+	fmt.Println("Tidying go.mod...")
+	return sh.Run("go", "mod", "tidy")
+}
+
+// Dev runs the development build and starts gapid
 func Dev() error {
-	fmt.Println("Running dev mode with Air...")
-	cmd := exec.Command("air")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	mg.Deps(Build)
+	fmt.Println("Starting gapid in development mode...")
+	return sh.RunV("./bin/gapid")
 }
 
-// run executes a shell command and returns trimmed output.
-func run(name string, args ...string) string {
-	out, err := exec.Command(name, args...).Output()
-	if err != nil {
-		return "unknown"
-	}
-	return strings.TrimSpace(string(out))
+// All runs fmt, tidy, build, and test
+func All() error {
+	mg.Deps(Fmt, Tidy, Build, Test)
+	fmt.Println("✅ All tasks complete")
+	return nil
 }
 
-// BuildMetadata represents the structure written to .json metadata files.
-type BuildMetadata struct {
-	Version          string `json:"version"`
-	GoSDKVersion     string `json:"go_sdk"`
-	PythonSDKVersion string `json:"python_sdk"`
-	SchemaHash       string `json:"schema_hash"`
-	BuildTag         string `json:"build_tag"`
-	Commit           string `json:"commit"`
-	Date             string `json:"date"`
-	BuiltBy          string `json:"built_by"`
-	OutputBinary     string `json:"output_binary"`
-}
+// ensureGCC checks if gcc is available and provides helpful error
+func ensureGCC() error {
+	if _, err := exec.LookPath("gcc"); err != nil {
+		return fmt.Errorf(`gcc not found in PATH
 
-// writeBuildMeta outputs metadata as JSON in build/meta/<binary>.json
-func writeBuildMeta(meta BuildMetadata) error {
-	data, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return err
+Please ensure you're in the nix development shell:
+  nix develop
+
+Or run mage commands through nix:
+  nix develop -c mage build
+
+Error: %w`, err)
 	}
-	if err := os.MkdirAll("build/buildmeta", 0755); err != nil {
-		return err
-	}
-	filename := strings.Replace(meta.OutputBinary, "bin/", "build/buildmeta/", 1) + ".json"
-	return ioutil.WriteFile(filename, data, 0644)
+	return nil
 }

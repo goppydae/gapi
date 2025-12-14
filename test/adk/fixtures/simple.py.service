@@ -1,0 +1,10 @@
+# ENABLED = True
+# TYPE = service
+# ID = simple_service
+
+import time
+
+def start():
+    print("Simple service started")
+    while True:
+        time.sleep(1)

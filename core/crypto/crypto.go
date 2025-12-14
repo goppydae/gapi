@@ -1,142 +1,99 @@
 package crypto
 
 import (
-	"bytes"
-	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
 	"encoding/hex"
+	"encoding/pem"
+	"fmt"
 	"io"
 	"os"
 
-	"filippo.io/age"
 	"github.com/zeebo/blake3"
 )
 
-type memWriter struct {
-	buf []byte
+// KeyPair holds the private and public keys
+type KeyPair struct {
+	Public  ed25519.PublicKey
+	Private ed25519.PrivateKey
 }
 
-func (m *memWriter) Write(p []byte) (int, error) {
-	m.buf = append(m.buf, p...)
-	return len(p), nil
+// GenerateKey creates a new Ed25519 keypair
+func GenerateKey() (*KeyPair, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	return &KeyPair{Public: pub, Private: priv}, nil
 }
 
-func (m *memWriter) Bytes() []byte {
-	return m.buf
+// Sign signs data with the private key
+func (k *KeyPair) Sign(data []byte) []byte {
+	return ed25519.Sign(k.Private, data)
 }
 
-type Blake3NS struct{}
-
-func (Blake3NS) Hash(data []byte) (string, string) {
-	hash := blake3.Sum256(data)
-	full := hex.EncodeToString(hash[:])
-	short := full[:16]
-	return full, short
+// Verify verifies the signature against the public key
+func Verify(pub ed25519.PublicKey, data, sig []byte) bool {
+	return ed25519.Verify(pub, data, sig)
 }
 
-func (Blake3NS) HashFile(path string) (string, string, error) {
+// HashFile returns the BLAKE3 hash of a file as a hex string
+func HashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	defer f.Close()
 
 	h := blake3.New()
-	_, err = io.Copy(h, f)
-	if err != nil {
-		return "", "", err
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
 	}
 
-	sum := h.Sum(nil)
-	full := hex.EncodeToString(sum)
-	short := full[:16]
-	return full, short, nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-var Blake3 = Blake3NS{}
-
-type SHA256NS struct{}
-
-func (SHA256NS) Hash(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
-}
-
-var SHA256 = SHA256NS{}
-
-type Ed25519NS struct{}
-
-func (Ed25519NS) Generate() (ed25519.PublicKey, ed25519.PrivateKey, error) {
-	return ed25519.GenerateKey(nil)
-}
-
-func (Ed25519NS) Sign(data []byte, priv ed25519.PrivateKey) []byte {
-	return ed25519.Sign(priv, data)
-}
-
-func (Ed25519NS) Verify(data, sig []byte, pub ed25519.PublicKey) bool {
-	return ed25519.Verify(pub, data, sig)
-}
-
-var Ed25519 = Ed25519NS{}
-
-type RSA256NS struct{}
-
-func (RSA256NS) Generate(bits int) (*rsa.PrivateKey, error) {
-	return rsa.GenerateKey(rand.Reader, bits)
-}
-
-func (RSA256NS) Sign(data []byte, priv *rsa.PrivateKey) ([]byte, error) {
-	h := sha256.Sum256(data)
-	return rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, h[:])
-}
-
-func (RSA256NS) Verify(data, sig []byte, pub *rsa.PublicKey) error {
-	h := sha256.Sum256(data)
-	return rsa.VerifyPKCS1v15(pub, crypto.SHA256, h[:], sig)
-}
-
-var RSA256 = RSA256NS{}
-
-type AGENS struct{}
-
-func (AGENS) Encrypt(recipientPub string, plaintext []byte) ([]byte, error) {
-	r, err := age.ParseX25519Recipient(recipientPub)
-	if err != nil {
-		return nil, err
+// SavePrivate saves the private key to a PEM file
+func (k *KeyPair) SavePrivate(path string) error {
+	block := &pem.Block{
+		Type:  "ED25519 PRIVATE KEY",
+		Bytes: k.Private,
 	}
-	out := &memWriter{}
-	encryptor, err := age.Encrypt(out, r)
+	f, err := os.Create(path)
 	if err != nil {
-		return nil, err
-	}
-	_, err = encryptor.Write(plaintext)
-	if err != nil {
-		return nil, err
-	}
-	err = encryptor.Close()
-	return out.Bytes(), err
-}
-
-func (AGENS) Decrypt(identityKey string, ciphertext []byte) ([]byte, error) {
-	f, err := os.Open(identityKey)
-	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-	identities, err := age.ParseIdentities(f)
-	if err != nil {
-		return nil, err
-	}
-	r := bytes.NewReader(ciphertext)
-	decryptor, err := age.Decrypt(r, identities...)
-	if err != nil {
-		return nil, err
-	}
-	return io.ReadAll(decryptor)
+	return pem.Encode(f, block)
 }
 
-var AGE = AGENS{}
+// LoadPrivate loads a private key from a PEM file
+func LoadPrivate(path string) (*KeyPair, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "ED25519 PRIVATE KEY" {
+		return nil, fmt.Errorf("invalid pem data")
+	}
+
+	priv := ed25519.PrivateKey(block.Bytes)
+	pub := priv.Public().(ed25519.PublicKey)
+	return &KeyPair{Private: priv, Public: pub}, nil
+}
+
+// SavePublic saves the public key to a hex file (simple format for now)
+func (k *KeyPair) SavePublic(path string) error {
+	return os.WriteFile(path, []byte(hex.EncodeToString(k.Public)), 0644)
+}
+
+// LoadPublic loads a public key from a hex file
+func LoadPublic(path string) (ed25519.PublicKey, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return hex.DecodeString(string(data))
+}

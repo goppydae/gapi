@@ -1,10 +1,14 @@
 package agentreg
 
 import (
+	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
+	"github.com/goppydae/gapi/core/crypto"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/internal/db/graphdb"
 )
@@ -25,15 +29,17 @@ type AgentDescription struct {
 }
 
 type AgentRegistry struct {
-	store  store.HybridStore
-	nodeMu sync.Mutex
+	store     store.HybridStore
+	verifyKey *ed25519.PublicKey // Optional: if set, verify signatures
+	nodeMu    sync.Mutex
 }
 
 const agentsBucket = "agents"
 
-func NewAgentRegistry(s store.HybridStore) (*AgentRegistry, error) {
+func NewAgentRegistry(s store.HybridStore, verifyKey *ed25519.PublicKey) (*AgentRegistry, error) {
 	r := &AgentRegistry{
-		store: s,
+		store:     s,
+		verifyKey: verifyKey,
 	}
 	return r, nil
 }
@@ -42,6 +48,30 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 	if agent == nil || strings.TrimSpace(agent.ID) == "" || strings.TrimSpace(agent.Type) == "" {
 		return fmt.Errorf("invalid agent: %+v", agent)
 	}
+
+	// Integrity Check
+	if r.verifyKey != nil {
+		sigPath := agent.Path + ".sig"
+		sigHex, err := os.ReadFile(sigPath)
+		if err != nil {
+			return fmt.Errorf("integrity check failed: missing signature for %s (expected %s): %v", agent.ID, sigPath, err)
+		}
+
+		sig, err := hex.DecodeString(string(sigHex))
+		if err != nil {
+			return fmt.Errorf("integrity check failed: invalid signature hex: %w", err)
+		}
+
+		hash, err := crypto.HashFile(agent.Path)
+		if err != nil {
+			return fmt.Errorf("integrity check failed: could not hash agent file: %w", err)
+		}
+
+		if !crypto.Verify(*r.verifyKey, []byte(hash), sig) {
+			return fmt.Errorf("integrity check failed: signature verification failed for %s", agent.ID)
+		}
+	}
+
 	// primary record
 	if err := r.store.Set(agentsBucket, agent.ID, agent); err != nil {
 		return err

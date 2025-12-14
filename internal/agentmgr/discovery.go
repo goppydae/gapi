@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/goppydae/gapi/core/schema"
 	"github.com/goppydae/gapi/internal/eventbus"
 	"github.com/goppydae/gapi/internal/lifecycle"
 )
@@ -43,6 +44,7 @@ type pyDescribe struct {
 		ListenStream string   `json:"listen_stream"`
 		CPULimit     string   `json:"cpu_limit"`
 		MemoryLimit  string   `json:"memory_limit"`
+		Schedule     string   `json:"schedule"` // For timer agents
 	} `json:"describe"`
 }
 
@@ -96,6 +98,20 @@ func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, erro
 			println(err.Error())
 			return nil
 		}
+
+		// Validate agent metadata
+		if err := schema.ValidateAgentDescribe(schema.AgentDescribe{
+			ID:           desc.Describe.ID,
+			Type:         desc.Describe.Type,
+			CPULimit:     desc.Describe.CPULimit,
+			MemoryLimit:  desc.Describe.MemoryLimit,
+			Schedule:     desc.Describe.Schedule,
+			ListenStream: desc.Describe.ListenStream,
+		}); err != nil {
+			println(fmt.Sprintf("validation failed for %s: %v", p, err))
+			return nil
+		}
+
 		meta := Discovered{
 			ID: desc.Describe.ID, Type: strings.ToLower(desc.Describe.Type),
 			Lang: "python", Path: p,
@@ -105,15 +121,28 @@ func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, erro
 			RequiredBy:   append([]string(nil), desc.Describe.RequiredBy...),
 			ListenStream: desc.Describe.ListenStream,
 		}
-		a := NewPythonAgent(
-			meta.ID, meta.Type, meta.Path, am.pyRun,
-			meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
-			desc.Describe.ListenStream,
-			desc.Describe.CPULimit,
-			desc.Describe.MemoryLimit,
-			am.bus,
-			depView{am}, // Kept original as `am.depView` does not exist
-		)
+
+		var a Agent
+		if meta.Type == "timer" {
+			// Create TimerAgent
+			schedule := desc.Describe.Schedule
+			if schedule == "" {
+				schedule = "OnUnitActiveSec=60s" // default systemd-style
+			}
+			a = NewTimerAgent(meta.ID, meta.Path, schedule, am.pyRun, am.bus, am.lbus)
+		} else {
+			// Create PythonAgent (service/socket)
+			a = NewPythonAgent(
+				meta.ID, meta.Type, meta.Path, am.pyRun,
+				meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
+				desc.Describe.ListenStream,
+				desc.Describe.CPULimit,
+				desc.Describe.MemoryLimit,
+				am.bus,
+				depView{am}, // Kept original as `am.depView` does not exist
+			)
+		}
+
 		am.Register(a)
 		out = append(out, a.Describe())
 		return nil

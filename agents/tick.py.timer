@@ -1,0 +1,8 @@
+# ENABLED = True
+# TYPE = timer
+# SCHEDULE = OnUnitActiveSec=5s
+
+def start():
+    """This function is called each time the timer triggers"""
+    print("⏰ Timer tick!")
+    print(f"Current time: {__import__('datetime').datetime.now()}")

@@ -14,8 +14,13 @@ type TransportConfig struct {
 	KeyFile  string `mapstructure:"keyFile"`
 }
 
+type SecurityConfig struct {
+	VerifyKey string `mapstructure:"verifyKey"` // Path to public key
+}
+
 type Config struct {
 	Transport TransportConfig `mapstructure:"transport"`
+	Security  SecurityConfig  `mapstructure:"security"`
 }
 
 func Load() (*Config, error) {

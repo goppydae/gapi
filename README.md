@@ -1,91 +1,203 @@
-# gapi
+# GAPI - Agent Supervision Framework
 
-*GoPPydae Agent and Process Interface*
-
----
-
-**GAPI** is a high-performance, event-driven supervisor designed to orchestrate agentic workflows with precision and integrity. It combines the robust process management of a systemd-like architecture with the flexibility of modern agent frameworks.
+**GAPI** is a lightweight, event-driven supervision framework for managing distributed daemon (agent) lifecycles in both local and clustered environments. Built with Go and Python, it provides zero-config startup, resource limits, and cryptographic integrity.
 
 ## Key Features
 
-### 🚀 Advanced Lifecycle Management
-- **State Machine Driven**: Deterministic transitions (Starting -> Running -> Stopping -> Stopped).
-- **Dependency Graph**: Agents can declare `REQUIRES`, `WANTS`, `WANTED_BY`, etc. GAPI ensures correct startup order and shutdown cascades.
-- **Lazy Activation**: Support for Socket Activation. Agents can stay stopped until traffic arrives at their socket.
+### 🔒 Security & Integrity
+- **Ed25519 Signing**: Cryptographically sign agents to ensure code integrity
+- **BLAKE3 Hashing**: Fast, secure content verification
+- **Signature Enforcement**: Optional verification of agent authenticity at runtime
 
-### 🛡️ Resource Isolation
-- **Rootless Cgroups v2**: Enforce CPU and Memory limits without needing root privileges.
-- **Strict Boundaries**: Processes are isolated in dedicated cgroups (e.g., `gapid-infra/gapid-agent-name`).
-- **OOM Protection**: Hard memory limits ensure runaway agents are killed instantly.
+### ⏰ Timer Agents
+- **Systemd-Style Scheduling**: Use familiar syntax (`OnUnitActiveSec=5s`, `OnBootSec=30s`)
+- **Periodic Execution**: Run agents on intervals without external cron
+- **Auto-Start**: Timer agents start automatically on discovery
 
-### 🔌 Extensible ADK
-- **Python Agents**: Native Python ADK for writing agents with minimal boilerplate.
-- **Event Bus**: Structured Protobuf messaging for inter-agent and system communication.
-- **Metadata Config**: Agents define their own config (Limits, Dependencies, Descriptions) directly in code.
+### 📊 Resource Limits (Cgroups v2)
+- **CPU Limits**: Restrict agent CPU usage (e.g., `CPU_LIMIT = 0.5` for 50%)
+- **Memory Limits**: Enforce hard memory caps (e.g., `MEMORY_LIMIT = 100MB`)
+- **Rootless**: Works in rootless environments with proper delegation
+
+### 🔌 Socket Activation
+- **Lazy Loading**: Agents start on first connection
+- **TCP/UDP Support**: Listen on any address/port
+- **Zero Downtime**: Seamless handoff from supervisor to agent
+
+### 🐍 Python ADK
+- **Native Bindings**: Direct Go ↔ Python communication via `gopy`
+- **Zero Boilerplate**: Just write functions, no classes required
+- **Self-Describing**: Agents expose metadata automatically
 
 ## Getting Started
 
 ### Prerequisites
-- Linux with Cgroups v2 enabled
-- Go 1.23+
-- Python 3.12+
+- **Nix** (recommended) or Go 1.25+ with Python 3
+- **GCC** (for CGO)
 
 ### Build
+
+Using Nix (recommended):
 ```bash
-# Build the daemon and CLI
-go run github.com/magefile/mage@latest buildall
+nix develop -c mage build
+```
+
+Or with Go directly:
+```bash
+go build -o bin/gapid ./cmd/gapid
+go build -o bin/gapictl ./cmd/gapictl
 ```
 
 ### Run
+
+Start the supervisor:
 ```bash
-# Start the supervisor
 ./bin/gapid
 ```
 
-### CLI
+List agents:
 ```bash
-# Check agent status
-./bin/gapictl agent-status
-
-# View dependency tree
-./bin/gapictl agent-status --tree
-
-# Control lifecycle
-./bin/gapictl lifecycle start <agent_id>
-./bin/gapictl lifecycle stop <agent_id>
+./bin/gapictl status
 ```
 
-## Agent Example
+### Security Setup
 
-Agents are simple Python scripts with metadata headers:
+Generate signing keys:
+```bash
+./bin/gapictl keygen mykey
+```
 
+Sign an agent:
+```bash
+./bin/gapictl sign agents/myagent.py.service mykey.key
+```
+
+Enable verification in `config.yaml`:
+```yaml
+security:
+  verifyKey: mykey.pub
+```
+
+## Agent Examples
+
+### Service Agent
 ```python
-# agents/my_agent.py.service
-
-ID = "my_agent"
-DESCRIPTION = "Example Agent"
-ENABLED = True
-REQUIRES = ["database", "auth_service"]
-MEMORY_LIMIT = "512MB"
-CPU_LIMIT = "0.5"
-
-import time
-from gapi.adk import Agent
+# agents/hello.py.service
+# ENABLED = True
+# TYPE = service
 
 def start():
-    print("Agent starting...")
+    print("Hello from service agent!")
     while True:
-        # Do work
-        time.sleep(1)
+        time.sleep(60)
 ```
 
-## Project Structure
-```bash
-gapi
-├── adk                - Agent Development Kits (Python)
-├── agents             - Example agents
-├── cmd                - Binaries (gapid, gapictl)
-├── core               - Core libraries (Store, Crypto, Config)
-├── internal           - Internal logic (Lifecycle, Cgroups, AgentMgr)
-└── proto              - Protobuf definitions
+### Timer Agent
+```python
+# agents/backup.py.timer
+# ENABLED = True
+# TYPE = timer
+# SCHEDULE = OnUnitActiveSec=5m
+
+def start():
+    print("Running backup...")
+    # Backup logic here
 ```
+
+### Socket-Activated Agent
+```python
+# agents/api.py.socket
+# ENABLED = True
+# TYPE = socket
+# LISTEN_STREAM = 0.0.0.0:8080
+
+def start():
+    # Handle incoming connections
+    pass
+```
+
+### Resource-Limited Agent
+```python
+# agents/worker.py.service
+# ENABLED = True
+# TYPE = service
+# CPU_LIMIT = 0.5
+# MEMORY_LIMIT = 512MB
+
+def start():
+    # CPU and memory constrained work
+    pass
+```
+
+## Configuration
+
+Create `config.yaml`:
+```yaml
+transport:
+  type: quic
+  address: 127.0.0.1:4242
+  certFile: config/certs/server.crt
+  keyFile: config/certs/server.key
+
+security:
+  verifyKey: path/to/public.key  # Optional
+```
+
+## Development
+
+### Available Mage Tasks
+```bash
+nix develop -c mage -l
+```
+
+Common tasks:
+- `mage build` - Build binaries
+- `mage test` - Run all tests
+- `mage testE2E` - Run E2E tests
+- `mage fmt` - Format code
+- `mage all` - Format, tidy, build, and test
+
+### Project Structure
+```
+gapi/
+├── cmd/
+│   ├── gapid/          # Supervisor daemon
+│   └── gapictl/        # CLI tool
+├── core/
+│   ├── config/         # Configuration
+│   ├── crypto/         # Ed25519 + BLAKE3
+│   └── version/        # Version info
+├── internal/
+│   ├── agentmgr/       # Agent management
+│   ├── agentreg/       # Agent registry
+│   ├── cgroups/        # Resource limits
+│   ├── eventbus/       # Event system
+│   └── lifecycle/      # State machine
+├── adk/
+│   ├── go/             # Go ADK
+│   └── python/         # Python ADK
+└── agents/             # Example agents
+```
+
+## Testing
+
+Run all tests:
+```bash
+nix develop -c mage test
+```
+
+Run E2E tests:
+```bash
+nix develop -c mage testE2E
+```
+
+## Documentation
+
+See `docs/` for detailed documentation:
+- [Design Document](docs/gapi_design_document.md)
+- [Lexicon](docs/lexicon.md)
+- [Lore](docs/lore.md)
+
+## License
+
+MIT

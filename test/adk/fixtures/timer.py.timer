@@ -1,0 +1,7 @@
+# ENABLED = True
+# TYPE = timer
+# ID = simple_timer
+# SCHEDULE = OnUnitActiveSec=10s
+
+def start():
+    print("Timer tick!")

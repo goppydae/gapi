@@ -43,8 +43,12 @@ META_KEYS = {
     "listen_stream": ["LISTEN_STREAM", "SOCKET", "PORT"],
     "cpu_limit": ["CPU_LIMIT", "CPU"],
     "memory_limit": ["MEMORY_LIMIT", "MEM", "MEMORY"],
+    "schedule": ["SCHEDULE"],
     "desc":["DESCRIPTION","description","Desc"],
 }
+
+# Schema version for agent metadata
+SCHEMA_VERSION = "1.0.0"
 
 READY_TIMEOUT_SEC = float(os.getenv("RUNNER_READY_TIMEOUT", "20"))
 GRACE_SEC = float(os.getenv("RUNNER_READY_GRACE", "0.25"))
@@ -265,12 +269,14 @@ def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
     
     # TypedDict construction
     describe_data = {
+        "schema_version": SCHEMA_VERSION,
         "id": id_, "name": name, "version": ver, "type": typ, "language": "python",
         "enabled": en, "capabilities": caps, "description": desc,
         "requires": reqs, "wants": wants, "wanted_by": wanted_by, "required_by": required_by,
         "listen_stream": str(listen_stream) if listen_stream else "",
         "cpu_limit": str(get_meta(mod, "cpu_limit", "")),
         "memory_limit": str(get_meta(mod, "memory_limit", "")),
+        "schedule": str(get_meta(mod, "schedule", "")),
     }
     if ivl is not None:
         describe_data["interval"] = ivl
