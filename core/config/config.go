@@ -33,8 +33,15 @@ func Load() (*Config, error) {
 	}
 	viper.AutomaticEnv()
 
+	// Zero-config defaults
+	viper.SetDefault("transport.type", "quic")
+	viper.SetDefault("transport.address", ":4242")
+
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config error: %w", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("read config error: %w", err)
+		}
+		// Config file not found; proceed with defaults
 	}
 
 	var cfg Config

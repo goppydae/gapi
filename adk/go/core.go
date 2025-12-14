@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/internal/proto"
 	"github.com/goppydae/gapi/internal/transport"
+	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -28,6 +30,7 @@ var (
 		cmd  string // e.g. "START", "STOP"
 	}
 	quicClient *transport.QUIC
+	schemaHash string
 )
 
 func init() {
@@ -57,6 +60,26 @@ func Initialize(name, version, typeStr string) {
 	log.Printf("[GAPI-ADK] Initialized agent: %s v%s (%s)", name, version, typeStr)
 }
 
+// SetSchemaHash sets the schema hash for the agent.
+func SetSchemaHash(hash string) {
+	mu.Lock()
+	defer mu.Unlock()
+	schemaHash = hash
+	log.Printf("[GAPI-ADK] Schema Hash set: %s", hash)
+}
+
+// ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
+// Returns empty string on error to simplify binding logic.
+func ComputeSchemaHash(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("[GAPI-ADK] Failed to read file for hashing %s: %v", path, err)
+		return ""
+	}
+	hash := blake3.Sum256(data)
+	return fmt.Sprintf("%x", hash)
+}
+
 // SendEvent sends a generic event to the supervisor via QUIC.
 func SendEvent(jsonStr string) {
 	mu.Lock()
@@ -83,9 +106,10 @@ func SendEvent(jsonStr string) {
 	// Map to LifecycleStatus
 	// Create a minimal LifecycleStatus matching proto definition
 	stat := &protopkg.LifecycleStatus{
-		AgentId: id,
-		State:   "unknown", // Default to unknown or extract from data
-		Message: jsonStr,
+		AgentId:    id,
+		State:      "unknown", // Default to unknown or extract from data
+		Message:    jsonStr,
+		SchemaHash: schemaHash,
 	}
 
 	anyStat, err := anypb.New(stat)

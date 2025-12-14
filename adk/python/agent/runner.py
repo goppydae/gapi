@@ -9,7 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 try:
     from gapi.native import adk
-except ImportError:
+except ImportError as e:
+    print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
     # Use a dummy adk if bindings fail (for bootstrapping/testing without compilation)
     class DummyAdk:
         def Initialize(self, n, v, t): pass
@@ -318,6 +319,24 @@ def main():
         agent_id=(args.id or getattr(mod, "ID", None) or getattr(mod, "id", None) or "unknown"),
         agent_type=args.type,
     )
+
+    # Compute schema hash using native Go implementation
+    schema_hash = "unknown"
+    try:
+        # We need the absolute path to the module file for hashing
+        # The module spec should have it
+        if getattr(mod, '__file__', None):
+            schema_hash = adk.ComputeSchemaHash(mod.__file__)
+            if not schema_hash:
+                schema_hash = "unknown"
+                print(f"[runner] Warning: Computed empty schema hash for {mod.__file__}", file=sys.stderr)
+        else:
+             print(f"[runner] Warning: Could not determine file path for module {args.module}, skipping hash", file=sys.stderr)
+    except Exception as e:
+        print(f"[runner] Warning: Failed to compute schema hash: {e}", file=sys.stderr)
+
+    # Set the hash in the ADK
+    adk.SetSchemaHash(schema_hash)
 
     # Initialize binding
     adk.Initialize(agent.agent_id, "1.0.0", agent.agent_type)

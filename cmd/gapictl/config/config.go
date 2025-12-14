@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/spf13/viper"
 )
 
@@ -16,10 +17,18 @@ func Load() (*Config, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("$HOME/.config/gapi")
+	viper.AddConfigPath("$HOME/.config/gapi")
 	viper.AutomaticEnv()
 
+	// Zero-config defaults
+	viper.SetDefault("target", "127.0.0.1:4242")
+	viper.SetDefault("namespace", "default")
+
 	if err := viper.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("read config error: %w", err)
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("read config error: %w", err)
+		}
+		// Config file not found; proceed with defaults
 	}
 
 	var cfg Config

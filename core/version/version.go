@@ -108,10 +108,19 @@ func Summary() string {
 
 	fmt.Fprintf(&out, "Go DDK:     %s\n", GoDDKVersion)
 	fmt.Fprintf(&out, "Python DDK: %s\n", PythonDDKVersion)
-	fmt.Fprintf(&out, "Protobuf Schema Hash: %s\n", SchemaHash[:16])
+	schemaHash := SchemaHash
+	if len(schemaHash) > 16 {
+		schemaHash = schemaHash[:16]
+	}
+	fmt.Fprintf(&out, "Protobuf Schema Hash: %s\n", schemaHash)
 	fmt.Fprintf(&out, "Go Version: %s\n", active.GoVersion)
 	fmt.Fprintf(&out, "Platform:   %s\n", active.Platform)
-	fmt.Fprintf(&out, "Commit:     %s\n", active.Commit[:16])
+
+	commit := active.Commit
+	if len(commit) > 16 {
+		commit = commit[:16]
+	}
+	fmt.Fprintf(&out, "Commit:     %s\n", commit)
 	fmt.Fprintf(&out, "Build Tag:  %s\n", BuildTag)
 	fmt.Fprintf(&out, "Built Date: %s\n", active.BuildDate)
 	fmt.Fprintf(&out, "Built By:   %s\n", active.BuiltBy)

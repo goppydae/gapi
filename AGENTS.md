@@ -25,9 +25,9 @@ Develop a unified, secure, and "zero boilerplate" ecosystem where GAPI manages l
 ## Technology Stack
 
 - **Languages**: Go (Core runtime), Python (Agent logic).
-- **Transport**: JSON over stdout/stderr (Iterative Design), migrating to Protobuf over TCP/QUIC (Future).
+- **Transport**: Protobuf over QUIC (Active), JSON over stdout (Fall-back/Debug).
 - **Core Libraries**: Zerolog (Logging), Serf (Gossip), Raft (Consensus).
-- **Security**: BLAKE3 (Hashing), ED25519 (Signing), AGE (Encryption).
+- **Security**: BLAKE3 (Schema & Identity Hashing), ED25519 (Signing), AGE (Encryption).
 
 ## Architectural Principles
 
@@ -45,7 +45,7 @@ Develop a unified, secure, and "zero boilerplate" ecosystem where GAPI manages l
 ### 3. Strict Contracts, Loose Coupling
 
 - All interactions are typed via Protobuf.
-- Introspection is standardized: every agent reports its own `id`, `version`, `hash`, and `capabilities` using a common schema.
+- Introspection is standardized: every agent reports its own `id`, `version`, `schema_hash`, and `capabilities` using a common schema.
 
 ### 4. Security by Design
 
@@ -55,3 +55,5 @@ Develop a unified, secure, and "zero boilerplate" ecosystem where GAPI manages l
 ## Development Directives
 
 - **Code Style**: Prefer explicit error handling (Go style). Use `context` for all long-running operations.
+- **Protocol First**: Define all data models and interfaces in Protobuf before writing code.
+- **nix develop**: Use `nix develop` to set up your development environment.

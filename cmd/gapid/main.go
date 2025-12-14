@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/rs/zerolog"
-	
+
 	"github.com/goppydae/gapi/core/version"
 	"github.com/goppydae/gapi/internal/logging/logcore"
 )

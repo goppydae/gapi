@@ -29,6 +29,7 @@ type LifecycleStatus struct {
 	Message       string                 `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
 	Time          *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=time,proto3" json:"time,omitempty"`
 	Hostname      string                 `protobuf:"bytes,5,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	SchemaHash    string                 `protobuf:"bytes,6,opt,name=schema_hash,json=schemaHash,proto3" json:"schema_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -98,17 +99,26 @@ func (x *LifecycleStatus) GetHostname() string {
 	return ""
 }
 
+func (x *LifecycleStatus) GetSchemaHash() string {
+	if x != nil {
+		return x.SchemaHash
+	}
+	return ""
+}
+
 var File_proto_lifecycle_status_proto protoreflect.FileDescriptor
 
 const file_proto_lifecycle_status_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/lifecycle_status.proto\x12\x05proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa8\x01\n" +
+	"\x1cproto/lifecycle_status.proto\x12\x05proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x01\n" +
 	"\x0fLifecycleStatus\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x18\n" +
 	"\amessage\x18\x03 \x01(\tR\amessage\x12.\n" +
 	"\x04time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x1a\n" +
-	"\bhostname\x18\x05 \x01(\tR\bhostnameB/Z-github.com/goppydae/gapi/internal/proto;protob\x06proto3"
+	"\bhostname\x18\x05 \x01(\tR\bhostname\x12\x1f\n" +
+	"\vschema_hash\x18\x06 \x01(\tR\n" +
+	"schemaHashB/Z-github.com/goppydae/gapi/internal/proto;protob\x06proto3"
 
 var (
 	file_proto_lifecycle_status_proto_rawDescOnce sync.Once
