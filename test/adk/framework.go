@@ -26,7 +26,7 @@ func NewHarness() (*TestHarness, error) {
 	// Get project root
 	root, err := findProjectRoot()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to find project root: %w", err)
 	}
 
 	return &TestHarness{
@@ -49,9 +49,10 @@ func (h *TestHarness) Start() error {
 	h.gapidCmd = exec.CommandContext(h.ctx, gapidPath)
 
 	// Set environment
+	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
 		fmt.Sprintf("GAPI_AGENTS_DIR=%s", h.agentsDir),
-		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(findProjectRoot(), "adk", "python", "agent", "runner.py")),
+		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
 	)
 
 	// Capture output for debugging

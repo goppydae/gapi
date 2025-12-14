@@ -4,12 +4,8 @@ buildGoModule rec {
   pname = "gapi";
   version = "0.1.0";
   
-  src = lib.cleanSourceWith {
-    src = ../.;
-    filter = path: type:
-      let baseName = baseNameOf path;
-      in !(baseName == "vendor" || baseName == ".git");
-  };
+  # Use cleanSource which respects .gitignore (vendor/ is in .gitignore)
+  src = lib.cleanSource ../.;
   
   # Skip vendoring since protobuf files are generated during build
   vendorHash = null;
