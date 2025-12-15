@@ -30,8 +30,8 @@ jobs:
         with:
           name: binaries
           path: |
-            gapictl
-            gapid
+            bin/gapictl
+            bin/gapid
           retention-days: 7
 
       - name: Trigger Goblin CI
