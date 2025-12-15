@@ -1,20 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/goppydae/gapi/cmd/gapictl/tui"
+	"github.com/goppydae/gapi/core/client"
 	"github.com/goppydae/gapi/core/config"
+	"github.com/goppydae/gapi/core/tui"
 	"github.com/goppydae/gapi/core/version"
-	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/internal/proto"
-	"github.com/goppydae/gapi/internal/transport"
 )
 
 var rootCmd = &cobra.Command{
@@ -37,21 +36,22 @@ var pingCmd = &cobra.Command{
 	Short: "Ping gapid",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, _ := config.Load()
-		t, _ := transport.NewClientFromConfig(cfg.Transport)
-		bus := eventbus.NewEventBus(t)
+		c, err := client.New(cfg)
+		if err != nil {
+			log.Fatalf("failed to init client: %v", err)
+		}
 
-		done := make(chan struct{})
-		bus.SubscribeOnce("system", "pong", func(e eventbus.Event[*anypb.Any]) {
-			var pong protopkg.PingStatus
-			_ = e.Payload.UnmarshalTo(&pong)
-			fmt.Println("message:", pong.Status)
-			close(done)
-		})
+		fmt.Print("pinging... ")
+		// 5s timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-		msg := &protopkg.PingStatus{Status: "ping"}
-		payload, _ := anypb.New(msg)
-		_ = bus.Publish(eventbus.NewEvent("system", "ping", "gapictl", payload, true))
-		<-done
+		status, err := c.Ping(ctx)
+		if err != nil {
+			fmt.Printf("FAIL: %v\n", err)
+			return
+		}
+		fmt.Println("message:", status)
 	},
 }
 
@@ -61,10 +61,17 @@ var agentReloadCmd = &cobra.Command{
 	Short: "Trigger a reload of registered agents",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, _ := config.Load()
-		t, _ := transport.NewClientFromConfig(cfg.Transport)
-		bus := eventbus.NewEventBus[*anypb.Any](t)
-		evt := eventbus.NewEvent[*anypb.Any]("system", "agent.reload", "gapictl", nil, true)
-		_ = bus.Publish(evt)
+		c, err := client.New(cfg)
+		if err != nil {
+			log.Fatalf("failed to init client: %v", err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := c.ReloadAgents(ctx); err != nil {
+			log.Fatalf("reload failed: %v", err)
+		}
 		fmt.Println("reload event dispatched")
 	},
 }
@@ -79,24 +86,26 @@ var agentStatusCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("failed to load config: %v", err)
 		}
-		t, err := transport.NewClientFromConfig(cfg.Transport)
+
+		c, err := client.New(cfg)
 		if err != nil {
-			log.Fatalf("failed to create transport: %v", err)
+			log.Fatalf("failed to init client: %v", err)
 		}
-		bus := eventbus.NewEventBus[*anypb.Any](t)
 
-		done := make(chan struct{})
-		bus.SubscribeOnce("system", "agents.reply", func(e eventbus.Event[*anypb.Any]) {
-			var res protopkg.AgentStatusResponse
-			_ = e.Payload.UnmarshalTo(&res)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
 
-			// Filter first
-			var filtered []*protopkg.AgentStatus
-			for _, agent := range res.Agents {
-				if len(args) == 0 {
-					filtered = append(filtered, agent)
-					continue
-				}
+		agents, err := c.AgentStatus(ctx)
+		if err != nil {
+			log.Fatalf("failed to get status: %v", err)
+		}
+
+		// Filter
+		var filtered []*protopkg.AgentStatus
+		if len(args) == 0 {
+			filtered = agents
+		} else {
+			for _, agent := range agents {
 				for _, pat := range args {
 					if strings.Contains(agent.Id, pat) {
 						filtered = append(filtered, agent)
@@ -104,30 +113,24 @@ var agentStatusCmd = &cobra.Command{
 					}
 				}
 			}
+		}
 
-			if !treeView {
-				// Flat view
-				for _, agent := range filtered {
-					deps := ""
-					if len(agent.Dependencies) > 0 {
-						deps = fmt.Sprintf(" (deps: %s)", strings.Join(agent.Dependencies, ", "))
-					}
-					fmt.Printf(" - %s (%s) [%s]%s\n", agent.Id, agent.Type, toProtoState(agent.State), deps)
+		if !treeView {
+			// Flat view
+			for _, agent := range filtered {
+				deps := ""
+				if len(agent.Dependencies) > 0 {
+					deps = fmt.Sprintf(" (deps: %s)", strings.Join(agent.Dependencies, ", "))
 				}
-			} else {
-				// Tree View
-				printTree(filtered)
+				caps := ""
+				if len(agent.Capabilities) > 0 {
+					caps = fmt.Sprintf(" [caps: %s]", strings.Join(agent.Capabilities, ", "))
+				}
+				fmt.Printf(" - %s (%s) [%s]%s%s\n", agent.Id, agent.Type, toProtoState(agent.State), deps, caps)
 			}
-			close(done)
-		})
-
-		req := &protopkg.AgentStatusRequest{}
-		packed, _ := anypb.New(req)
-		bus.Publish(eventbus.NewEvent("system", "agents/", "gapictl", packed, true))
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			log.Println("timeout: no response")
+		} else {
+			// Tree View
+			printTree(filtered)
 		}
 	},
 }
@@ -146,9 +149,6 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(pingCmd)
 	rootCmd.AddCommand(agentStatusCmd)
-	rootCmd.AddCommand(keygenCmd)
-	rootCmd.AddCommand(signCmd)
-	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(tuiCmd)
 
 	agentStatusCmd.Flags().BoolP("tree", "t", false, "Show dependency tree")
@@ -168,16 +168,12 @@ func printTree(agents []*protopkg.AgentStatus) {
 		}
 	}
 
-	// Roots are those with in-degree 0 (or not in the list at all, but we only print what we have)
 	var roots []*protopkg.AgentStatus
 	for _, a := range agents {
 		if inDegree[a.Id] == 0 {
 			roots = append(roots, a)
 		}
 	}
-
-	// If cycle or everything depends on something (e.g. A->B->A), pick arbitrary or just print all?
-	// Fallback: if no roots but agents exist, print all.
 	if len(roots) == 0 && len(agents) > 0 {
 		roots = agents
 	}
@@ -186,7 +182,6 @@ func printTree(agents []*protopkg.AgentStatus) {
 	printNode = func(id string, prefix string, isLast bool, visited map[string]bool) {
 		agent, ok := byId[id]
 		if !ok {
-			// Dependency not in list (maybe filtered out or missing?)
 			nodeStr := fmt.Sprintf("%s [missing]", id)
 			marker := "├── "
 			if isLast {
@@ -196,7 +191,6 @@ func printTree(agents []*protopkg.AgentStatus) {
 			return
 		}
 
-		// Print self
 		status := toProtoState(agent.State)
 		marker := "├── "
 		if isLast {
@@ -205,7 +199,7 @@ func printTree(agents []*protopkg.AgentStatus) {
 		fmt.Printf("%s%s%s (%s) [%s]\n", prefix, marker, agent.Id, agent.Type, status)
 
 		if visited[id] {
-			return // cycle break
+			return
 		}
 		visited[id] = true
 
@@ -221,15 +215,7 @@ func printTree(agents []*protopkg.AgentStatus) {
 	}
 
 	for _, root := range roots {
-		// Roots don't need prefix/marker logic exactly like children, but let's emulate `tree`
-		// We treat roots as top level list.
-		// However, standard `tree` output starts with `.`, here we list roots.
-
-		// We'll reset visited for each root to allow shared subtrees to print fully?
-		// Systemd prints shared subtrees fully.
 		printNode(root.Id, "", true, make(map[string]bool))
-		// Note: passing true for isLast is hacky for roots, but works for the marker.
-		// Actually, for multiple roots, we should handle them as a list too.
 	}
 }
 

@@ -30,6 +30,11 @@ type AgentDescribe struct {
 	MemoryLimit   string
 	Schedule      string
 	ListenStream  string
+	Requires      []string
+	Wants         []string
+	WantedBy      []string
+	RequiredBy    []string
+	Capabilities  []string
 }
 
 // ValidateAgentDescribe validates agent metadata
@@ -41,6 +46,25 @@ func ValidateAgentDescribe(desc AgentDescribe) error {
 
 	if err := validateType(desc.Type); err != nil {
 		return fmt.Errorf("invalid type: %w", err)
+	}
+
+	// Validate dependencies
+	if err := validateDependencies("requires", desc.Requires); err != nil {
+		return err
+	}
+	if err := validateDependencies("wants", desc.Wants); err != nil {
+		return err
+	}
+	if err := validateDependencies("wanted_by", desc.WantedBy); err != nil {
+		return err
+	}
+	if err := validateDependencies("required_by", desc.RequiredBy); err != nil {
+		return err
+	}
+
+	// Validate capabilities (if any specific format is needed, currently just alphanumeric check like IDs)
+	if err := validateCapabilities(desc.Capabilities); err != nil {
+		return err
 	}
 
 	// Validate optional fields if present
@@ -83,6 +107,30 @@ func validateID(id string) error {
 		return fmt.Errorf("id must contain only alphanumeric characters, underscores, and hyphens")
 	}
 
+	return nil
+}
+
+// validateDependencies ensures all dependency IDs are valid
+func validateDependencies(field string, deps []string) error {
+	for _, dep := range deps {
+		if err := validateID(dep); err != nil {
+			return fmt.Errorf("invalid dependency in %s: %q: %w", field, dep, err)
+		}
+	}
+	return nil
+}
+
+// validateCapabilities ensures all capabilities are valid strings
+func validateCapabilities(caps []string) error {
+	for _, c := range caps {
+		if len(c) == 0 {
+			return fmt.Errorf("capability cannot be empty")
+		}
+		// We can be more permissive with capabilities, but let's stick to basic sanity
+		if len(c) > 64 {
+			return fmt.Errorf("capability too long: %q", c)
+		}
+	}
 	return nil
 }
 
@@ -188,8 +236,11 @@ func ValidateSchedule(schedule string) error {
 	}
 
 	// Assume it's a cron expression - basic validation
-	// Full validation happens in ParseSchedule
-	// For now, just check it's not obviously invalid
+	// Reject anything that looks like "Key=Value" but wasn't caught above
+	if strings.Contains(schedule, "=") {
+		return fmt.Errorf("invalid schedule format: unknown prefix in %q", schedule)
+	}
+
 	if len(schedule) == 0 {
 		return fmt.Errorf("invalid schedule format")
 	}

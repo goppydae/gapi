@@ -9,58 +9,59 @@ type Adj struct {
 	In  map[string][]string // reverse edges
 }
 
-func syncGraph(agents map[string]Agent) *Adj {
-	g := &Adj{Out: map[string][]string{}, In: map[string][]string{}}
+func TopologicalSort(agents map[string]Agent) ([]string, error) {
+	// Build graph: Dependency -> [Dependents]
+	// If A depends on B, graph has B -> A
+	adj := map[string][]string{}
+	inDegree := map[string]int{}
+
+	// Initialize
+	for id := range agents {
+		adj[id] = []string{}
+		inDegree[id] = 0
+	}
+
+	// Populate
 	for id, a := range agents {
-		deps := a.Dependencies()
-		g.Out[id] = append([]string(nil), deps...)
-		for _, d := range deps {
-			g.In[d] = append(g.In[d], id)
-			if _, ok := g.Out[d]; !ok {
-				g.Out[d] = nil
+		for _, dep := range a.Dependencies() {
+			// dep -> id
+			adj[dep] = append(adj[dep], id)
+			inDegree[id]++
+
+			// Ensure dep exists in map even if not in agents map (external dep?)
+			// For strictly local sorting, we might ignore external or error.
+			// Assuming all deps are keys in agents for now or handled.
+			if _, ok := inDegree[dep]; !ok {
+				inDegree[dep] = 0 // Should be covered by init loop if local
 			}
 		}
-		if _, ok := g.In[id]; !ok {
-			g.In[id] = nil
-		}
-	}
-	return g
-}
-
-func TopologicalSort(agents map[string]Agent) ([]string, error) {
-	graph := syncGraph(agents) // ← per your ask
-	inDegree := map[string]int{}
-	for n := range graph.Out {
-		inDegree[n] = 0
-	}
-	for _, deps := range graph.Out {
-		for _, d := range deps {
-			inDegree[d]++
-		}
 	}
 
-	var q []string
-	for n, deg := range inDegree {
+	// Kahn's Algorithm
+	var queue []string
+	for id, deg := range inDegree {
 		if deg == 0 {
-			q = append(q, n)
+			queue = append(queue, id)
 		}
 	}
 
 	var order []string
-	for len(q) > 0 {
-		n := q[len(q)-1]
-		q = q[:len(q)-1]
-		order = append(order, n)
-		for _, child := range graph.In[n] {
-			inDegree[child]--
-			if inDegree[child] == 0 {
-				q = append(q, child)
+	for len(queue) > 0 {
+		curr := queue[0]
+		queue = queue[1:]
+		order = append(order, curr)
+
+		for _, neighbor := range adj[curr] {
+			inDegree[neighbor]--
+			if inDegree[neighbor] == 0 {
+				queue = append(queue, neighbor)
 			}
 		}
 	}
 
-	if len(order) != len(inDegree) {
+	if len(order) < len(inDegree) {
 		return nil, ErrCycle
 	}
+
 	return order, nil
 }

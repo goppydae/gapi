@@ -295,7 +295,6 @@ extern unsigned char Slice_uint8_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint8_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint8_set(long long int handle, GoInt _idx, unsigned char _vl);
 extern void Slice_uint8_append(long long int handle, unsigned char _vl);
-extern char* adk_AwaitCommand(void);
 extern char* adk_ComputeSchemaHash(char* path);
 extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
 extern void adk_InjectCommand(char* cmd, char goRun);
@@ -303,6 +302,7 @@ extern void adk_SendEvent(char* jsonStr, char goRun);
 extern void adk_SetSchemaHash(char* hash, char goRun);
 extern void adk_StartHeartbeat(char* id, char* typeStr, char goRun);
 extern char* adk_StartQUIC(char* addr);
+extern char* adk_AwaitCommand(void);
 
 #ifdef __cplusplus
 }

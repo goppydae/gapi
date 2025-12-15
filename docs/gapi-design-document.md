@@ -12,6 +12,41 @@
 
 ---
 
+## 🏛 Architecture Philosophy: GAPI vs. Goblin
+
+The core architectural principle of the ecosystem is **Mechanism vs. Policy**, distinguishing between the local runtime and the distributed orchestrator.
+
+### The Golden Rule: "Single Node vs. Multi-Node"
+
+#### 1. GAPI (The Runtime / Keyword: "Local")
+- **Scope**: STRICTLY single-machine.
+- **Responsibility**: "I know how to start a process, capture its logs, restart it if it crashes, and verify its signature."
+- **Ignorance**: GAPI knows **nothing** about clusters, other nodes, leader election, or consensus. It treats the world as if it is the only computer in existence.
+- **Role**: GAPI is the **library** or **framework** that Goblin (or any other tool) imports to perform local work.
+
+#### 2. Goblin (The Orchestrator / Keyword: "Cluster")
+- **Scope**: Coordination **across machines**.
+- **Responsibility**: "I know that Agent X should be running on Node 3."
+- **Policy**: Raft consensus, Serf discovery, scheduling algorithms, and global failover logic.
+- **Role**: Goblin wraps GAPI. It listens to the cluster, makes decisions (Policy), and uses GAPI methods (Mechanism) to drive local state.
+
+### Feature Separation Matrix
+
+| Feature | Component | Reasoning |
+| :--- | :--- | :--- |
+| **Process Supervision** | **GAPI** | Controlling a PID is a local kernel operation. |
+| **Log Capture** | **GAPI** | Capturing stdout/stderr happens at the process boundary. |
+| **Encryption (AGE)** | **GAPI** | Decrypting secrets is a local runtime concern. |
+| **Consensus (Raft)** | **Goblin** | Coordinated state requires network awareness. |
+| **Discovery (Serf)** | **Goblin** | Finding peers is a cluster concern. |
+| **"Start Agent"** | **GAPI** | The *act* of starting it. |
+| **"Schedule Agent"** | **Goblin** | The *decision* of where to start it. |
+| **Agent Capabilities** | **GAPI** | Local code introspection. |
+| **Global Event Bus** | **Goblin** | Routing messages between nodes. |
+| **Local Event Bus** | **GAPI** | Routing messages between local agents (IPC). |
+
+---
+
 ## 🧱 Core Architecture
 
 - **Language Targets**: Go (compiled) and Python (via native bindings)

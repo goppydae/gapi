@@ -4,46 +4,40 @@
 
 ## ✨ Key Features
 
-- 🔒 **Security**: Ed25519 signing + BLAKE3 hashing for agent integrity
+- 🔒 **Security**: Ed25519 signing + BLAKE3 hashing + source-to-binary verification
 - ⏰ **Timer Agents**: Systemd-style scheduling, cron expressions, named schedules
 - 📊 **Resource Limits**: CPU and memory constraints via cgroups v2 (rootless supported)
 - 🔌 **Socket Activation**: On-demand agent startup for TCP/UDP services
-- 🐍 **Python ADK**: Zero-boilerplate agent development with native Go bindings
+- 🐍 **Dual ADK**: Write agents in Python or Go with identical behavior
+- 🛠️ **Developer Tools**: Agent templates, watch mode, verification chain
+- 🔄 **CI/CD Ready**: Automated cross-ADK testing in GitHub Actions
 
 ## 🚀 Quick Start
 
-### Build
-
 ```bash
-# Using Nix (recommended)
-nix develop -c mage build
+# Install
+nix develop -c go build ./cmd/gapid
+nix develop -c go build ./cmd/gapictl
 
-# Or with Go directly
-go build -o bin/gapid ./cmd/gapid
-go build -o bin/gapictl ./cmd/gapictl
-```
+# Create agent
+gapictl agent new my_service
 
-### Run
+# Build
+gapictl agent build agents/go/foundational/my_service
 
-```bash
-# Start supervisor
+# Verify
+gapictl agent verify agents/build/go/my_service
+
+# Run
 ./bin/gapid
-
-# Check agent status
-./bin/gapictl agent-status
-
-# Lifecycle control
-./bin/gapictl lifecycle start myagent
-./bin/gapictl lifecycle stop myagent
-./bin/gapictl lifecycle restart myagent
 ```
 
-## 📝 Simple Agent Example
+## 📝 Simple Example
 
 ```python
-# agents/hello.py.service
-# ENABLED = True
-# TYPE = service
+# agents/python/services/hello.py.service
+ID = "hello"
+TYPE = "service"
 
 def start():
     print("Hello from GAPI!")
@@ -55,30 +49,26 @@ That's it! No classes, no inheritance, no boilerplate.
 
 ## 📚 Documentation
 
-- **[Features](docs/features.md)** - Deep dive into security, timers, cgroups, socket activation, Python ADK
-- **[Configuration](docs/configuration.md)** - YAML config, transport options, agent metadata
-- **[Agent Examples](docs/agent-examples.md)** - Service, timer, socket, resource-limited agents
-- **[Development](docs/development.md)** - Build, test, project structure, contributing
-- **[Design Document](docs/gapi-design-document.md)** - Architecture and design philosophy
-- **[Installation](docs/installation.md)** - Deployment and installation guide
-- **[Lexicon](docs/lexicon.md)** - Terminology and concepts
-- **[Lore](docs/lore.md)** - Project history and evolution
+- **[Getting Started](docs/getting-started.md)** - Installation and first agent
+- **[Agent Development](agents/README.md)** - Complete guide to writing agents
+- **[Python ADK](agents/python/README.md)** - Python agent development
+- **[Go ADK](agents/go/README.md)** - Go agent development
+- **[Features](docs/features.md)** - Security, timers, cgroups, socket activation
+- **[Configuration](docs/configuration.md)** - YAML config, transport options
+- **[Design Document](docs/gapi-design-document.md)** - Architecture and philosophy
 
 ## 🛠️ Development
 
 ```bash
-# Run all tasks (format, tidy, build, test)
-nix develop -c mage all
-
 # Run tests
 nix develop -c mage test
 
-# Run E2E tests
-nix develop -c mage testE2E
+# Run cross-ADK tests
+nix develop -c go test ./test/adk/
 ```
 
-See [Development Guide](docs/development.md) for details.
+See [agents/README.md](agents/README.md) for agent development guide.
 
 ## 📄 License
 
-MIT
+Mozilla Public License 2.0 (MPL-2.0)

@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/schema"
 	"github.com/goppydae/gapi/internal/eventbus"
 	"github.com/goppydae/gapi/internal/lifecycle"
@@ -30,6 +31,7 @@ type Discovered struct {
 	WantedBy     []string
 	RequiredBy   []string
 	ListenStream string
+	Capabilities []string
 }
 
 type pyDescribe struct {
@@ -45,6 +47,7 @@ type pyDescribe struct {
 		CPULimit     string   `json:"cpu_limit"`
 		MemoryLimit  string   `json:"memory_limit"`
 		Schedule     string   `json:"schedule"` // For timer agents
+		Capabilities []string `json:"capabilities"`
 	} `json:"describe"`
 }
 
@@ -80,12 +83,80 @@ func (am *AgentManager) All() map[string]Agent {
 	return out
 }
 
-func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, error) {
+func (am *AgentManager) TopologicalSort() ([]string, error) {
+	return TopologicalSort(am.agents)
+}
+
+// DiscoverFromPaths discovers agents from all configured search paths.
+// Paths are searched in priority order (Development → User → System).
+// First occurrence of an agent ID wins (higher priority path).
+func (am *AgentManager) DiscoverFromPaths() ([]map[string]string, error) {
+	searchPaths := config.AgentSearchPaths()
+	discovered := make(map[string]Agent) // Track by ID to enforce first-match-wins
 	var out []map[string]string
-	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+
+	for _, searchPath := range searchPaths {
+		// Skip non-existent paths
+		if _, err := os.Stat(searchPath); os.IsNotExist(err) {
+			continue
+		}
+
+		pathType := config.ClassifyPath(searchPath)
+		println(fmt.Sprintf("[Discovery] Scanning %s [%s]", searchPath, pathType))
+
+		// Discover agents from this path
+		agents, err := am.discoverFromSinglePath(searchPath, pathType)
+		if err != nil {
+			println(fmt.Sprintf("[Discovery] Warning: failed to scan %s: %v", searchPath, err))
+			continue
+		}
+
+		// Register agents (first occurrence wins)
+		for _, agent := range agents {
+			agentID := agent.ID()
+			if _, exists := discovered[agentID]; exists {
+				println(fmt.Sprintf("[Discovery] Skipping %s from %s (already found in higher priority path)", agentID, searchPath))
+				continue
+			}
+
+			discovered[agentID] = agent
+			am.Register(agent)
+			out = append(out, agent.Describe())
+			println(fmt.Sprintf("[Discovery] Registered %s from %s [%s]", agentID, searchPath, pathType))
+		}
+	}
+
+	println(fmt.Sprintf("[Discovery] Total agents discovered: %d", len(discovered)))
+	return out, nil
+}
+
+// DiscoverFromPath discovers agents from a single root path (legacy method for backward compatibility).
+// Prefer DiscoverFromPaths() for new code.
+func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, error) {
+	pathType := config.ClassifyPath(root)
+	agents, err := am.discoverFromSinglePath(root, pathType)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []map[string]string
+	for _, agent := range agents {
+		am.Register(agent)
+		out = append(out, agent.Describe())
+	}
+	return out, nil
+}
+
+// discoverFromSinglePath scans a single directory for agents.
+func (am *AgentManager) discoverFromSinglePath(root string, pathType config.PathType) ([]Agent, error) {
+	var agents []Agent
+
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
+
+		// Python agents: *.py.service, *.py.timer, *.py.socket
 		if !strings.HasSuffix(d.Name(), ".service") && !strings.HasSuffix(d.Name(), ".timer") && !strings.HasSuffix(d.Name(), ".socket") {
 			return nil
 		}
@@ -107,6 +178,11 @@ func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, erro
 			MemoryLimit:  desc.Describe.MemoryLimit,
 			Schedule:     desc.Describe.Schedule,
 			ListenStream: desc.Describe.ListenStream,
+			Requires:     desc.Describe.Requires,
+			Wants:        desc.Describe.Wants,
+			WantedBy:     desc.Describe.WantedBy,
+			RequiredBy:   desc.Describe.RequiredBy,
+			Capabilities: desc.Describe.Capabilities,
 		}); err != nil {
 			println(fmt.Sprintf("validation failed for %s: %v", p, err))
 			return nil
@@ -120,6 +196,7 @@ func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, erro
 			WantedBy:     append([]string(nil), desc.Describe.WantedBy...),
 			RequiredBy:   append([]string(nil), desc.Describe.RequiredBy...),
 			ListenStream: desc.Describe.ListenStream,
+			Capabilities: append([]string(nil), desc.Describe.Capabilities...),
 		}
 
 		var a Agent
@@ -138,16 +215,17 @@ func (am *AgentManager) DiscoverFromPath(root string) ([]map[string]string, erro
 				desc.Describe.ListenStream,
 				desc.Describe.CPULimit,
 				desc.Describe.MemoryLimit,
+				meta.Capabilities,
 				am.bus,
-				depView{am}, // Kept original as `am.depView` does not exist
+				depView{am},
 			)
 		}
 
-		am.Register(a)
-		out = append(out, a.Describe())
+		agents = append(agents, a)
 		return nil
 	})
-	return out, nil
+
+	return agents, err
 }
 
 func (am *AgentManager) pythonDescribe(modulePath string) (*pyDescribe, error) {
@@ -232,11 +310,11 @@ func (d depView) IsRunning(id string) bool {
 	return a.Controller().State() == lifecycle.StateRunning
 }
 
-func (d depView) EnsureStarted(id string) error {
+func (d depView) EnsureStarted(ctx context.Context, id string) error {
 	a := d.am.Get(id)
 	if a == nil {
 		return fmt.Errorf("dependency %q not found", id)
 	}
 	// Recursive call via controller
-	return a.Controller().Apply(lifecycle.ActionStart)
+	return a.Controller().ApplyWithContext(ctx, lifecycle.ActionStart)
 }

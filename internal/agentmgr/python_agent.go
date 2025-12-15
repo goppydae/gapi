@@ -40,10 +40,11 @@ type PythonAgent struct {
 	mu   sync.RWMutex
 	ctrl *lifecycle.Controller
 
-	requires   []string
-	wants      []string
-	wantedBy   []string
-	requiredBy []string // includedBy
+	requires     []string
+	wants        []string
+	wantedBy     []string
+	requiredBy   []string // includedBy
+	capabilities []string
 
 	listenSpec string
 	listener   net.Listener
@@ -63,22 +64,24 @@ func NewPythonAgent(
 	reqs, wants, wantedBy, requiredBy []string,
 	listenStream string, // Added listenStream parameter
 	cpuLimit, memLimit string,
+	caps []string,
 	globalBus *eventbus.EventBus[*anypb.Any],
 	depView lifecycle.DependencyResolver,
 ) *PythonAgent {
 	host, _ := os.Hostname()
 	a := &PythonAgent{
 		id: id, typ: typ, path: modulePath, runner: runnerPath,
-		requires:   append([]string(nil), reqs...),
-		wants:      append([]string(nil), wants...),
-		wantedBy:   append([]string(nil), wantedBy...),
-		requiredBy: append([]string(nil), requiredBy...),
-		listenSpec: listenStream,
-		cpuLimit:   cpuLimit,
-		memLimit:   memLimit,
-		nextRunID:  "",
-		bus:        globalBus,
-		hostname:   host,
+		requires:     append([]string(nil), reqs...),
+		wants:        append([]string(nil), wants...),
+		wantedBy:     append([]string(nil), wantedBy...),
+		requiredBy:   append([]string(nil), requiredBy...),
+		capabilities: append([]string(nil), caps...),
+		listenSpec:   listenStream,
+		cpuLimit:     cpuLimit,
+		memLimit:     memLimit,
+		nextRunID:    "",
+		bus:          globalBus,
+		hostname:     host,
 	}
 	a.ctrl = lifecycle.NewController(id, host, a, a.bus, depView)
 
@@ -112,6 +115,7 @@ func (a *PythonAgent) Describe() map[string]string {
 		"wants":         strings.Join(a.wants, ","),
 		"wanted_by":     strings.Join(a.wantedBy, ","),
 		"required_by":   strings.Join(a.requiredBy, ","),
+		"capabilities":  strings.Join(a.capabilities, ","),
 		"listen_stream": a.listenSpec, // Added listen_stream to description
 		// backward compat?
 		"deps": strings.Join(a.requires, ","),

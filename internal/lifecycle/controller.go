@@ -48,10 +48,13 @@ type Controller struct {
 	stateCh   chan statusEvt // single, long-lived feed
 }
 
+// DepCtxKey is used to store the call stack for cycle detection
+var DepCtxKey = "gapi_dep_stack"
+
 type DependencyResolver interface {
 	DepsOf(id string) []string
 	IsRunning(id string) bool
-	EnsureStarted(id string) error
+	EnsureStarted(ctx context.Context, id string) error
 }
 
 func NewController(id, host string, r Runner, bus *TypedBus, deps DependencyResolver) *Controller {
@@ -107,6 +110,20 @@ func NewController(id, host string, r Runner, bus *TypedBus, deps DependencyReso
 func (c *Controller) State() string { return c.sm.GetState() }
 
 func (c *Controller) Apply(a Action) error {
+	return c.ApplyWithContext(context.Background(), a)
+}
+
+func (c *Controller) ApplyWithContext(ctx context.Context, a Action) error {
+	// Cycle Detection
+	stack, _ := ctx.Value(DepCtxKey).([]string)
+	for _, visited := range stack {
+		if visited == c.id {
+			return fmt.Errorf("dependency cycle detected: %s -> ... -> %s", strings.Join(stack, " -> "), c.id)
+		}
+	}
+	stack = append(stack, c.id)
+	ctx = context.WithValue(ctx, DepCtxKey, stack)
+
 	switch a {
 	case ActionInitialize:
 		return c.sm.TransitionTo(StateInitializing)
@@ -118,7 +135,7 @@ func (c *Controller) Apply(a Action) error {
 		}
 		if c.deps != nil {
 			for _, dep := range c.deps.DepsOf(c.id) {
-				if err := c.deps.EnsureStarted(dep); err != nil {
+				if err := c.deps.EnsureStarted(ctx, dep); err != nil {
 					return fmt.Errorf("dependency %q failed to start: %w", dep, err)
 				}
 			}
@@ -189,15 +206,16 @@ func (c *Controller) Apply(a Action) error {
 
 	case ActionReload:
 		if c.sm.GetState() != StateRunning {
-			return c.Apply(ActionStart)
+			return c.ApplyWithContext(ctx, ActionStart)
 		}
 		c.publishControl(protopkg.LifecycleControl_RELOAD)
 		if err := c.sm.TransitionTo(StateReloading); err != nil {
 			return err
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// reloadCtx is for the actual reload operation, not cycle detection
+		reloadCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := c.runner.Reload(ctx); err != nil {
+		if err := c.runner.Reload(reloadCtx); err != nil {
 			_ = c.sm.TransitionTo(StateError)
 			return err
 		}
@@ -209,10 +227,10 @@ func (c *Controller) Apply(a Action) error {
 
 	case ActionRestart:
 		c.publishControl(protopkg.LifecycleControl_RESTART)
-		if err := c.Apply(ActionStop); err != nil {
+		if err := c.ApplyWithContext(ctx, ActionStop); err != nil {
 			return fmt.Errorf("restart/stop: %w", err)
 		}
-		return c.Apply(ActionStart)
+		return c.ApplyWithContext(ctx, ActionStart)
 	}
 	return fmt.Errorf("unknown action %q", a)
 }

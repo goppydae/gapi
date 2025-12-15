@@ -54,6 +54,8 @@ tmp/
 docs/_build/
 docs/build/
 docs/generated/
+site/
+man/
 
 # Mage build artifacts
 mage_output/

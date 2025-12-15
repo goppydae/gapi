@@ -111,6 +111,10 @@
             pkg-config
             python3
             python3Packages.pybindgen
+            # Documentation
+            pandoc
+            python3Packages.mkdocs
+            python3Packages.mkdocs-material
           ];
 
           shellHook = ''

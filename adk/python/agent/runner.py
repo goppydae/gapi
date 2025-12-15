@@ -264,9 +264,20 @@ def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
     listen_stream = get_meta(mod, "listen_stream")
 
     caps = []
+    # 1. Lifecycle methods explicitly present
     for key in ("initialize","init","setup","start","run","stop","shutdown","reload","restart"):
         if callable(getattr(mod, key, None)):
             caps.append(key)
+    
+    # 2. @capability decorated methods/functions
+    # Scan all module level functions
+    for name, obj in inspect.getmembers(mod):
+        if inspect.isfunction(obj) or inspect.ismethod(obj):
+            declared = getattr(obj, "_gapi_capabilities", [])
+            caps.extend(declared)
+    
+    # Deduplicate
+    caps = list(dict.fromkeys(caps))
     
     # TypedDict construction
     describe_data = {

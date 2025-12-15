@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -31,6 +32,8 @@ func Load() (*Config, error) {
 		viper.SetConfigType("yaml")
 		addDefaultPaths() // uses build tag-specific implementation
 	}
+	viper.SetEnvPrefix("GAPI")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	// Zero-config defaults
