@@ -43,7 +43,7 @@
 - [x] Add `@capability` decorator to Python ADK.
 - [x] Expose capabilities in `gapid` discovery.
 - [x] Update `gapictl agent-status` to show capabilities.
-- [x] **Daemon Supervisor Improvements**: Refine the `gapid` supervisor to handle more complex lifecycle states and dependency resolution (partially implemented).
+- [x] **Daemon Supervisor Improvements**: Refine the `gapid` supervisor to handle more complex lifecycle states and dependency resolution (Implemented).
 
 ## Core Polish (In Progress)
 ### Build Security & Determinism
@@ -209,5 +209,7 @@
 16. ✅ **Event Replication** - Gossip/Raft backed bus
 17. ✅ **Dev Environment** - Nix flake & documentation site
 18. ✅ **Multi-Node Support** - `goblinctl` flags for local clusters
+19. ✅ **Dependency Scheduling** - Strict `Requires` enforcement & Service autostart
+20. ✅ **OneShot Agents** - Blocking startup process & 'oneshot' schema type
 
-**Total**: 18 major features completed in one session! 🚀
+**Total**: 20 major features completed in one session! 🚀

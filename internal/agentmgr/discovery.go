@@ -58,6 +58,9 @@ type Agent interface {
 	Dependencies() []string
 	Controller() *lifecycle.Controller
 	Describe() map[string]string
+	Requires() []string
+	Wants() []string
+	SetRunID(string)
 }
 
 type AgentManager struct {

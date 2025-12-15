@@ -19,7 +19,7 @@ type Version struct {
 var CurrentVersion = Version{Major: 1, Minor: 0, Patch: 0}
 
 // ValidAgentTypes are the supported agent unit types
-var ValidAgentTypes = []string{"service", "timer", "socket", "pipe", "event", "init"}
+var ValidAgentTypes = []string{"service", "timer", "socket", "pipe", "event", "init", "oneshot"}
 
 // AgentDescribe represents agent metadata for validation
 type AgentDescribe struct {

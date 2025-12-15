@@ -48,6 +48,9 @@ func (ta *TimerAgent) ID() string                        { return ta.id }
 func (ta *TimerAgent) Type() string                      { return "timer" }
 func (ta *TimerAgent) Lang() string                      { return "python" }
 func (ta *TimerAgent) Dependencies() []string            { return nil }
+func (ta *TimerAgent) Requires() []string                { return nil }
+func (ta *TimerAgent) Wants() []string                   { return nil }
+func (ta *TimerAgent) SetRunID(string)                   { /* no-op for timers or store if needed */ }
 func (ta *TimerAgent) Controller() *lifecycle.Controller { return ta.ctrl }
 
 func (ta *TimerAgent) Describe() map[string]string {

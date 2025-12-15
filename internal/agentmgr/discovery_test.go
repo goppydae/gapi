@@ -17,6 +17,9 @@ func (m *MockAgent) ID() string                        { return m.id }
 func (m *MockAgent) Type() string                      { return "service" }
 func (m *MockAgent) Lang() string                      { return "mock" }
 func (m *MockAgent) Dependencies() []string            { return m.deps }
+func (m *MockAgent) Requires() []string                { return m.deps }
+func (m *MockAgent) Wants() []string                   { return nil }
+func (m *MockAgent) SetRunID(string)                   {}
 func (m *MockAgent) Controller() *lifecycle.Controller { return nil }
 func (m *MockAgent) Describe() map[string]string {
 	return map[string]string{"capabilities": ""} // Simplified

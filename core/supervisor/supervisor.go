@@ -184,6 +184,9 @@ func (s *Supervisor) setupAgents() {
 		}
 	}
 
+	// Track successfully started/armed agents for dependency resolution
+	startedAgents := make(map[string]bool)
+
 	if len(sortedIDs) == 0 {
 		s.logger.Warn().Msg("no agents registered in manager")
 	} else {
@@ -199,10 +202,26 @@ func (s *Supervisor) setupAgents() {
 				continue
 			}
 
+			// Dependency Check
+			// We only enforce 'Requires'. 'Wants' are advisory.
+			missingReq := ""
+			for _, req := range ag.Requires() {
+				if !startedAgents[req] {
+					missingReq = req
+					break
+				}
+			}
+			if missingReq != "" {
+				s.logger.Warn().Str("agent_id", id).Str("missing_dependency", missingReq).Msg("skipping start due to missing or failed dependency")
+				continue
+			}
+
 			s.logger.Info().Str("agent_id", id).Msg("registered agent")
 
-			// Lazy Activation
 			desc := ag.Describe()
+			started := false
+
+			// lazy Activation
 			if desc["listen_stream"] != "" {
 				if armable, ok := ag.(interface {
 					Arm() error
@@ -220,6 +239,7 @@ func (s *Supervisor) setupAgents() {
 						s.logger.Error().Err(err).Str("agent_id", id).Msg("failed to arm lazy activation")
 					} else {
 						s.logger.Info().Str("agent_id", id).Msg("armed lazy activation")
+						started = true
 					}
 				}
 			}
@@ -231,7 +251,25 @@ func (s *Supervisor) setupAgents() {
 					s.logger.Error().Err(err).Str("agent_id", id).Msg("failed to start timer agent")
 				} else {
 					s.logger.Info().Str("agent_id", id).Msg("timer agent started")
+					started = true
 				}
+			}
+
+			// Standard Service/Oneshot auto-start (if not lazy/timer)
+			// (We assume 'service' or 'oneshot' type and no listen_stream means it should start immediately)
+			if (desc["type"] == "service" || desc["type"] == "oneshot") && desc["listen_stream"] == "" {
+				ctrl := ag.Controller()
+				// We should verify enabled? implicit enabled for now.
+				if err := ctrl.Apply(lifecycle.ActionStart); err != nil {
+					s.logger.Error().Err(err).Str("agent_id", id).Msg("failed to start agent")
+				} else {
+					s.logger.Info().Str("agent_id", id).Msg("agent started")
+					started = true
+				}
+			}
+
+			if started {
+				startedAgents[id] = true
 			}
 		}
 	}

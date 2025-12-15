@@ -98,9 +98,11 @@ func NewPythonAgent(
 	return a
 }
 
-func (a *PythonAgent) ID() string   { return a.id }
-func (a *PythonAgent) Type() string { return a.typ }
-func (a *PythonAgent) Lang() string { return "python" }
+func (a *PythonAgent) ID() string         { return a.id }
+func (a *PythonAgent) Type() string       { return a.typ }
+func (a *PythonAgent) Lang() string       { return "python" }
+func (a *PythonAgent) Requires() []string { return a.requires }
+func (a *PythonAgent) Wants() []string    { return a.wants }
 func (a *PythonAgent) Dependencies() []string {
 	return append(append([]string(nil), a.requires...), a.wants...)
 }
@@ -359,7 +361,21 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		}
 	}
 
-	// Stream output to logs logic...
+	// Oneshot behavior: Wait for completion
+	if a.typ == "oneshot" {
+		a.publishStatus("STARTING", "oneshot running")
+		// Wait for exit
+		err := a.cmd.Wait()
+		if err != nil {
+			a.publishStatus("FAILED", fmt.Sprintf("oneshot failed: %v", err))
+			a.cleanupAfterExit()
+			return fmt.Errorf("oneshot agent failed: %w", err)
+		}
+		a.publishStatus("COMPLETED", "oneshot success")
+		a.cleanupAfterExit()
+		return nil
+	}
+
 	return nil
 }
 
