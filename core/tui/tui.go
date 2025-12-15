@@ -1,18 +1,19 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"google.golang.org/protobuf/types/known/anypb"
-
-	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/internal/eventbus"
-	protopkg "github.com/goppydae/gapi/internal/proto"
-	"github.com/goppydae/gapi/internal/transport"
 )
+
+// AgentControl defines the interface for interacting with agents.
+type AgentControl interface {
+	FetchStatus(context.Context) ([]AgentStatus, error)
+	Lifecycle(ctx context.Context, id, action string) (bool, error)
+}
 
 type ViewMode int
 
@@ -42,9 +43,10 @@ type Model struct {
 	height      int
 	err         error
 	quitting    bool
+	ctrl        AgentControl
 }
 
-func NewModel() Model {
+func NewModel(ctrl AgentControl) Model {
 	return Model{
 		view:        ViewList,
 		agents:      []AgentStatus{},
@@ -52,12 +54,13 @@ func NewModel() Model {
 		logs:        []string{},
 		logViewer:   LogViewer{},
 		filter:      NewFilter(),
+		ctrl:        ctrl,
 	}
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
-		fetchAgentStatus,
+		m.fetchAgentStatusCmd,
 		tickEvery(time.Second),
 	)
 }
@@ -67,55 +70,16 @@ type agentStatusMsg []AgentStatus
 type tickMsg time.Time
 type errMsg error
 
-func fetchAgentStatus() tea.Msg {
-	cfg, err := config.Load()
+func (m Model) fetchAgentStatusCmd() tea.Msg {
+	// 5s timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	agents, err := m.ctrl.FetchStatus(ctx)
 	if err != nil {
-		return errMsg(fmt.Errorf("failed to load config: %w", err))
-	}
-
-	t, err := transport.NewClientFromConfig(cfg.Transport)
-	if err != nil {
-		return errMsg(fmt.Errorf("failed to create transport: %w", err))
-	}
-	defer t.Close()
-
-	bus := eventbus.NewEventBus(t)
-
-	done := make(chan []AgentStatus)
-	errChan := make(chan error) // Subscribe to detailed status
-	bus.SubscribeOnce("system", "", "agents.reply", func(e eventbus.Event[*anypb.Any]) {
-		var resp protopkg.AgentStatusResponse
-		if err := e.Payload.UnmarshalTo(&resp); err != nil {
-			errChan <- err
-			return
-		}
-
-		agents := make([]AgentStatus, 0, len(resp.Agents))
-		for _, a := range resp.Agents {
-			agents = append(agents, AgentStatus{
-				ID:     a.Id,
-				State:  stateToString(a.State),
-				Type:   a.Type,
-				CPU:    "-", // TODO: Add resource usage
-				Memory: "-",
-				Uptime: 0, // TODO: Calculate from start time
-			})
-		}
-		done <- agents
-	})
-
-	req := &protopkg.AgentStatusRequest{}
-	anyReq, _ := anypb.New(req)
-	bus.Publish(eventbus.NewEvent("system", "", "agents/", "tui", anyReq, true))
-
-	select {
-	case agents := <-done:
-		return agentStatusMsg(agents)
-	case err := <-errChan:
 		return errMsg(err)
-	case <-time.After(2 * time.Second):
-		return errMsg(fmt.Errorf("timeout fetching agent status"))
 	}
+	return agentStatusMsg(agents)
 }
 
 func tickEvery(d time.Duration) tea.Cmd {
@@ -151,21 +115,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.logViewer, cmd = m.logViewer.Update(msg, m.agents, m.selectedIdx)
 			return m, tea.Batch(
-				fetchAgentStatus,
+				m.fetchAgentStatusCmd,
 				tickEvery(time.Second),
 				cmd,
 			)
 		}
 
 		return m, tea.Batch(
-			fetchAgentStatus,
+			m.fetchAgentStatusCmd,
 			tickEvery(time.Second),
 		)
 
 	case lifecycleActionMsg:
 		if msg.success {
 			// Refresh agent status immediately
-			return m, fetchAgentStatus
+			return m, m.fetchAgentStatusCmd
 		} else if msg.err != nil {
 			m.err = msg.err
 		}

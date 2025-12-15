@@ -141,7 +141,18 @@ var tuiCmd = &cobra.Command{
 	Short: "Interactive TUI for monitoring agents",
 	Long:  "Start an interactive terminal UI for real-time agent monitoring and control.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return tui.Run()
+		cfg, err := config.Load()
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		c, err := client.New(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to init client: %v", err)
+		}
+
+		ctrl := &LocalController{client: c}
+		return tui.Run(ctrl)
 	},
 }
 
@@ -248,4 +259,69 @@ func toProtoState(s protopkg.AgentState) string {
 	default:
 		return "unknown"
 	}
+}
+
+// LocalController implements tui.AgentControl using a local client
+type LocalController struct {
+	client *client.Client
+}
+
+func (l *LocalController) FetchStatus(ctx context.Context) ([]tui.AgentStatus, error) {
+	agents, err := l.client.AgentStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var status []tui.AgentStatus
+	for _, a := range agents {
+		// Convert proto state to string
+		// Reuse toProtoState helper? It returns lowercase.
+		// TUI expects specific strings or we just use what we get.
+		// TUI uses "RUNNING" or "running" check.
+		// Let's use toProtoState but uppercase it for consistency if needed,
+		// or just use the helper.
+		stateStr := toProtoState(a.State)
+
+		status = append(status, tui.AgentStatus{
+			ID:     a.Id,
+			State:  stateStr,
+			Type:   a.Type,
+			CPU:    "-", // TODO
+			Memory: "-", // TODO
+			Uptime: 0,   // TODO
+		})
+	}
+	return status, nil
+}
+
+func (l *LocalController) Lifecycle(ctx context.Context, id, action string) (bool, error) {
+	switch action {
+	case "start":
+		res := l.client.Start(ctx, []string{id})
+		// Check for errors in results
+		for _, r := range res {
+			if r.Err != nil {
+				return false, r.Err
+			}
+		}
+		return true, nil
+	case "stop":
+		res := l.client.Stop(ctx, []string{id})
+		for _, r := range res {
+			if r.Err != nil {
+				return false, r.Err
+			}
+		}
+		return true, nil
+	case "reload":
+		// Reload single agent not strictly supported by client.ReloadAgents (which reloads all?)
+		// Checking client.go... client.ReloadAgents() is global.
+		// If we want single agent reload, we might need a new method or assume global.
+		// For now, let's call global reload if id is empty, or warn.
+		// The TUI passes an ID.
+		// Client doesn't seem to have Reload(id).
+		// Let's implement it as a global reload for now or return error "not supported"
+		return false, fmt.Errorf("reload single agent not supported yet")
+	}
+	return false, fmt.Errorf("unknown action: %s", action)
 }
