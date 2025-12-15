@@ -16,9 +16,8 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// Build builds the gapid and gapictl binaries
 func Build() error {
-	mg.Deps(ensureGCC)
+	mg.Deps(checkHermetic)
 	fmt.Println("Building gapid and gapictl...")
 
 	if err := sh.Run("go", "build", "-o", "bin/gapid", "./cmd/gapid"); err != nil {
@@ -58,9 +57,8 @@ func hashFile(path string) error {
 	return os.WriteFile(path+".b3", []byte(hexSum+"\n"), 0644)
 }
 
-// Install installs binaries to $GOPATH/bin
 func Install() error {
-	mg.Deps(ensureGCC)
+	mg.Deps(checkHermetic)
 	fmt.Println("Installing gapid and gapictl...")
 
 	if err := sh.Run("go", "install", "./cmd/gapid"); err != nil {
@@ -77,14 +75,14 @@ func Install() error {
 
 // Test runs all tests
 func Test() error {
-	mg.Deps(ensureGCC)
+	mg.Deps(checkHermetic)
 	fmt.Println("Running tests...")
 	return sh.RunV("go", "test", "-v", "./...")
 }
 
 // TestUnit runs only unit tests
 func TestUnit() error {
-	mg.Deps(ensureGCC)
+	mg.Deps(checkHermetic)
 	fmt.Println("Running unit tests...")
 	return sh.RunV("go", "test", "-v", "./internal/...")
 }
@@ -120,6 +118,7 @@ func Clean() error {
 
 // Proto generates protobuf code
 func Proto() error {
+	mg.Deps(checkHermetic)
 	fmt.Println("Generating protobuf code...")
 
 	protoFiles, err := filepath.Glob("proto/*.proto")
@@ -248,20 +247,45 @@ func (Docs) Man() error {
 	return nil
 }
 
-// ensureGCC checks if gcc is available and provides helpful error
-func ensureGCC() error {
-	if _, err := exec.LookPath("gcc"); err != nil {
-		return fmt.Errorf(`gcc not found in PATH
+// checkHermetic ensures tools are running from Nix store
+func checkHermetic() error {
+	tools := []string{"go", "gcc", "protoc"}
 
-Please ensure you're in the nix development shell:
-  nix develop
+	if _, err := exec.LookPath("pandoc"); err == nil {
+		tools = append(tools, "pandoc")
+	}
 
-Or run mage commands through nix:
-  nix develop -c mage build
+	for _, tool := range tools {
+		path, err := exec.LookPath(tool)
+		if err != nil {
+			return fmt.Errorf("%s not found. Run 'nix develop'", tool)
+		}
 
-Error: %w`, err)
+		// In Nix, tools are in /nix/store/.../bin/tool
+		// except when wrapper scripts or direnv are involved, checking /nix/store is a strong signal.
+		// However, in devShells, PATH often points to /nix/store/.../bin
+
+		// Strict check: fails if not in /nix/store
+		// Using strings.Contains for simplicity (could be /nix/store or a symlink to it)
+		// Real path resolution might be needed if using symlinks.
+
+		realPath, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			realPath = path // fallback
+		}
+
+		if len(realPath) < 10 || realPath[:10] != "/nix/store" {
+			fmt.Printf("⚠️  Warning: %s is not running from Nix store (%s). Hermetic build not guaranteed.\n", tool, realPath)
+			// We warn instead of erroring for now to allow local dev flexibility if needed,
+			// but could switch to error for CI.
+		}
 	}
 	return nil
+}
+
+// ensureGCC checks if gcc is available (deprecated by checkHermetic but kept for compatibility)
+func ensureGCC() error {
+	return checkHermetic()
 }
 
 // Python namespace for python-related tasks
@@ -269,7 +293,7 @@ type Python mg.Namespace
 
 // Build builds the Python bindings (replaces Makefile)
 func (Python) Build() error {
-	mg.Deps(ensureGCC)
+	mg.Deps(checkHermetic)
 	fmt.Println("Building Python ADK bindings...")
 
 	cwd, err := os.Getwd()

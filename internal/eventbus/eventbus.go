@@ -18,20 +18,24 @@ import (
 type Event[T any] struct {
 	ID        string
 	Scope     string
+	Namespace string
 	Topic     string
 	Payload   T
 	Source    string
 	Broadcast bool
+	Tags      []string
 }
 
-func NewEvent[T any](scope, topic, source string, payload T, broadcast bool) Event[T] {
+func NewEvent[T any](scope, namespace, topic, source string, payload T, broadcast bool, tags ...string) Event[T] {
 	return Event[T]{
 		ID:        uuid.New().String(),
 		Scope:     scope,
+		Namespace: namespace,
 		Topic:     topic,
 		Source:    source,
 		Payload:   payload,
 		Broadcast: broadcast,
+		Tags:      tags,
 	}
 }
 
@@ -89,10 +93,16 @@ func ValidateEvent[T any](e Event[T]) error {
 	if strings.TrimSpace(e.Topic) == "" {
 		return fmt.Errorf("topic cannot be empty")
 	}
+	// Namespace can be empty (global/default)
 	return nil
 }
 
-func fullKey(scope, topic string) string { return scope + "/" + topic }
+func fullKey(scope, namespace, topic string) string {
+	if namespace == "" {
+		namespace = "default"
+	}
+	return scope + "/" + namespace + "/" + topic
+}
 
 func (b *EventBus[T]) ensureInitLocked() {
 	if b.subs == nil {
@@ -105,11 +115,11 @@ func (b *EventBus[T]) ensureInitLocked() {
 
 // ---- Subscription APIs ----
 
-func (b *EventBus[T]) Subscribe(scope, topic string, fn Handler[T]) error {
+func (b *EventBus[T]) Subscribe(scope, namespace, topic string, fn Handler[T]) error {
 	if !validScopes[scope] {
 		return fmt.Errorf("invalid scope: %s", scope)
 	}
-	k := fullKey(scope, topic)
+	k := fullKey(scope, namespace, topic)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -121,11 +131,11 @@ func (b *EventBus[T]) Subscribe(scope, topic string, fn Handler[T]) error {
 	return nil
 }
 
-func (b *EventBus[T]) SubscribePrefix(scope, topicPrefix string, fn Handler[T]) error {
+func (b *EventBus[T]) SubscribePrefix(scope, namespace, topicPrefix string, fn Handler[T]) error {
 	if !validScopes[scope] {
 		return fmt.Errorf("invalid scope: %s", scope)
 	}
-	k := "__MATCH:" + fullKey(scope, topicPrefix)
+	k := "__MATCH:" + fullKey(scope, namespace, topicPrefix)
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -138,21 +148,21 @@ func (b *EventBus[T]) SubscribePrefix(scope, topicPrefix string, fn Handler[T]) 
 }
 
 // SubscribeOnce calls handler at most once for the exact topic, then unsubscribes.
-func (bus *EventBus[T]) SubscribeOnce(scope, topic string, handler Handler[T]) error {
+func (bus *EventBus[T]) SubscribeOnce(scope, namespace, topic string, handler Handler[T]) error {
 	var once sync.Once
 	var wrapper Handler[T]
 	wrapper = func(e Event[T]) {
 		once.Do(func() {
 			handler(e)
-			bus.Unsubscribe(scope, topic, wrapper)
+			bus.Unsubscribe(scope, namespace, topic, wrapper)
 		})
 	}
-	return bus.Subscribe(scope, topic, wrapper)
+	return bus.Subscribe(scope, namespace, topic, wrapper)
 }
 
 // Unsubscribe removes a single handler from an exact topic.
-func (bus *EventBus[T]) Unsubscribe(scope, topic string, target Handler[T]) {
-	k := fullKey(scope, topic)
+func (bus *EventBus[T]) Unsubscribe(scope, namespace, topic string, target Handler[T]) {
+	k := fullKey(scope, namespace, topic)
 
 	bus.mu.Lock()
 	defer bus.mu.Unlock()
@@ -209,7 +219,7 @@ func (b *EventBus[T]) Publish(e Event[T]) error {
 }
 
 func (b *EventBus[T]) dispatch(e Event[T]) error {
-	k := fullKey(e.Scope, e.Topic)
+	k := fullKey(e.Scope, e.Namespace, e.Topic)
 
 	b.mu.RLock()
 	defer b.mu.RUnlock()

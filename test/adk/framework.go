@@ -51,7 +51,7 @@ func (h *TestHarness) Start() error {
 	// Set environment
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
-		fmt.Sprintf("GAPI_AGENTS_DIR=%s", h.agentsDir),
+		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
 		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
 	)
 

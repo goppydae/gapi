@@ -19,6 +19,7 @@
         };
         
         gapi = pkgs.callPackage ./nix/package.nix {};
+        gopy = pkgs.callPackage ./nix/gopy.nix {};
         
       in {
         # Package output
@@ -115,6 +116,8 @@
             pandoc
             python3Packages.mkdocs
             python3Packages.mkdocs-material
+            # Tools
+            gotools # for goimports
           ];
 
           shellHook = ''
@@ -130,13 +133,13 @@
 
             if ! command -v gopy &> /dev/null; then
               echo "Installing gopy..."
+              # Impure fallback until upstream fixes go.mod
               go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy
             fi
             if ! command -v goimports &> /dev/null; then
               echo "Installing goimports..."
               go build -mod=vendor -o $GOBIN/goimports golang.org/x/tools/cmd/goimports
             fi
-
             if [ -n "$ZSH_VERSION" ]; then
               PROMPT="$PROMPT (nix-shell)"
             else

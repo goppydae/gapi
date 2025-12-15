@@ -8,9 +8,8 @@
 
 ### Core Objectives
 1. **GAPI (Kernel)**: Local agent lifecycle management with strict contracts
-2. **Goblin (Orchestrator)**: Distributed coordination using GAPI as a library
-3. **Zero Boilerplate**: Self-describing agents, no manifest files
-4. **Production Ready**: Cryptographic security, reproducible builds, comprehensive testing
+2. **Zero Boilerplate**: Self-describing agents, no manifest files
+3. **Production Ready**: Cryptographic security, reproducible builds, comprehensive testing
 
 ### Success Criteria
 - ✅ Agents self-describe via introspection (`--describe` for Go, module attributes for Python)
@@ -23,7 +22,7 @@
 - ✅ Source-to-binary verification chain
 - ✅ Comprehensive test coverage (unit, integration, E2E, cross-ADK)
 - ✅ CI/CD integration (GitHub Actions)
-- 🔄 Distributed orchestration (Goblin) - Event bus complete, Serf/Raft in progress
+
 
 ---
 
@@ -56,7 +55,7 @@
   - `gapictl agent verify` command for verification
   - Verifies binary hash, signature, and source hash
   - No manifest files (embedded in binary)
-- [ ] **Hermetic Builds**: Explore Nix integration for reproducible Go builds
+- [x] **Hermetic Builds**: Explore Nix integration for reproducible Go builds
 
 ### Cross-ADK Testing
 - [x] **Test Framework**: Created comprehensive cross-ADK test suite (`test/adk/cross_adk_test.go`)
@@ -150,29 +149,14 @@
   - Legacy paths no longer supported
   - Migration complete ✅
 
-## Long-Term Vision (Goblin & Ecosystem)
-- [x] **Goblin Project Setup**: Created separate Go module for distributed orchestrator
-    - [x] `go.mod` with dependencies (Serf, Raft, Cobra)
-    - [x] Directory structure (`core/eventbus`, `core/cluster`, `core/consensus`)
-    - [x] README.md with architecture overview
-    - [x] Working `goblind` daemon
-- [x] **Distributed Event Bus**: Core messaging infrastructure
-    - [x] Event publication (Local, Cluster, Leader)
-    - [x] Intelligent routing based on topic prefixes
-    - [x] Async event handlers
-    - [x] Comprehensive tests (6/6 passing)
-- [x] **Goblin Orchestrator**: Cluster features (In Progress)
-    - [x] **Node Discovery**: Implement Serf-based discovery
-    - [x] **Consensus**: Implement Raft for cluster-wide state management
-    - [x] **Event Replication**: Gossip protocol for cluster-wide events
-    - [ ] **Namespacing & Tagging**: Daemon grouping and ACL control
+## Long-Term Vision & Architecture
 - [x] **Architecture Enforcement (GAPI as Library)**:
     - [x] **API Boundary Check**: Ensure no network/cluster logic leaks into `core/`
     - [x] **Library-First Design**: Verify `cmd/gapid` is just a thin wrapper around `gapi` package calls
     - [x] **Standalone Usability**: Verify GAPI usage in simple CLI tools without distributed overhead
 - [ ] **ADK Evolution**:
     - [x] **Schema Validation**: Formalize describe schema contracts
-    - [ ] **Native Channels**: Explore native `gopy` channel support
+    - [x] **Native Channels**: Explore native `gopy` channel support (PoC successful)
 
 ---
 
@@ -180,9 +164,7 @@
 - [x] **Documentation System**: Implemented dual-mode generation (`Magefile.go`)
   - **HTML Site**: MkDocs with Material theme (`docs:html`)
   - **Man Pages**: Pandoc generation for CLI manuals (`docs:man`)
-  - Applied to both GAPI and Goblin
-- [x] **Goblin Dev Environment**: Created reproducible `flake.nix`
-  - Includes Go tooling, Serf/Raft dependencies, and documentation tools
+
 
 ---
 
@@ -197,19 +179,8 @@
 6. ✅ **Documentation Polish** - README, getting-started guide
 7. ✅ **Documentation System** - HTML & Man page generation
 8. ✅ **Architecture Enforcement** - Library-first verification
+9. ✅ **Hermetic Builds** - Nix & Mage enforcement
 
-### Goblin (10 Features)
-9. ✅ **Project Setup** - go.mod, structure, README
-10. ✅ **Distributed Event Bus** - Core pub/sub
-11. ✅ **Routing Logic** - Topic-based strategies
-12. ✅ **Comprehensive Tests** - 6/6 passing
-13. ✅ **Working Daemon** - goblind operational
-14. ✅ **Node Discovery** - Serf integration
-15. ✅ **Consensus Layer** - Raft integration with FSM
-16. ✅ **Event Replication** - Gossip/Raft backed bus
-17. ✅ **Dev Environment** - Nix flake & documentation site
-18. ✅ **Multi-Node Support** - `goblinctl` flags for local clusters
-19. ✅ **Dependency Scheduling** - Strict `Requires` enforcement & Service autostart
-20. ✅ **OneShot Agents** - Blocking startup process & 'oneshot' schema type
 
-**Total**: 20 major features completed in one session! 🚀
+
+**Total**: 9 major features completed in one session! 🚀

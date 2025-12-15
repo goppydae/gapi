@@ -71,7 +71,7 @@ func NewController(id, host string, r Runner, bus *TypedBus, deps DependencyReso
 		stateCh:   make(chan statusEvt, 64),
 	}
 
-	_ = c.bus.Subscribe("system", "agent/lifecycle.status", func(ev eventbus.Event[*anypb.Any]) {
+	_ = c.bus.Subscribe("system", "", "agent/lifecycle.status", func(ev eventbus.Event[*anypb.Any]) {
 		if ev.Payload == nil {
 			return
 		}
@@ -238,7 +238,7 @@ func (c *Controller) ApplyWithContext(ctx context.Context, a Action) error {
 func (c *Controller) publishControl(a protopkg.LifecycleControl_Action) {
 	msg := &protopkg.LifecycleControl{AgentId: c.id, Action: a}
 	anyMsg, _ := anypb.New(msg)
-	c.bus.Publish(eventbus.NewEvent("system", "agent/lifecycle.control", c.id, anyMsg, true))
+	c.bus.Publish(eventbus.NewEvent("system", "", "agent/lifecycle.control", c.id, anyMsg, true))
 }
 
 func (c *Controller) publishStatus(state protopkg.AgentState, message string) {
@@ -250,7 +250,7 @@ func (c *Controller) publishStatus(state protopkg.AgentState, message string) {
 		Hostname: c.host,
 	}
 	anyMsg, _ := anypb.New(st)
-	c.bus.Publish(eventbus.NewEvent("system", "agent/lifecycle.status", c.id, anyMsg, true))
+	c.bus.Publish(eventbus.NewEvent("system", "", "agent/lifecycle.status", c.id, anyMsg, true))
 }
 
 func (c *Controller) awaitTarget(d time.Duration, want string) error {

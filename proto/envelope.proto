@@ -11,5 +11,7 @@ message Envelope {
   string type = 2;
   string topic = 3;
   string source = 4;
+  string namespace = 5;
   google.protobuf.Any payload = 6;
+  repeated string tags = 7;
 }

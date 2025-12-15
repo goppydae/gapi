@@ -82,9 +82,8 @@ func fetchAgentStatus() tea.Msg {
 	bus := eventbus.NewEventBus(t)
 
 	done := make(chan []AgentStatus)
-	errChan := make(chan error)
-
-	bus.SubscribeOnce("system", "agent/status.response", func(e eventbus.Event[*anypb.Any]) {
+	errChan := make(chan error) // Subscribe to detailed status
+	bus.SubscribeOnce("system", "", "agents.reply", func(e eventbus.Event[*anypb.Any]) {
 		var resp protopkg.AgentStatusResponse
 		if err := e.Payload.UnmarshalTo(&resp); err != nil {
 			errChan <- err
@@ -106,8 +105,8 @@ func fetchAgentStatus() tea.Msg {
 	})
 
 	req := &protopkg.AgentStatusRequest{}
-	packed, _ := anypb.New(req)
-	bus.Publish(eventbus.NewEvent("system", "agents/", "gapictl-tui", packed, true))
+	anyReq, _ := anypb.New(req)
+	bus.Publish(eventbus.NewEvent("system", "", "agents/", "tui", anyReq, true))
 
 	select {
 	case agents := <-done:

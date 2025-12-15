@@ -62,7 +62,6 @@ mage_output/
 
 # Nix build outputs
 result/
-flake.lock
 
 # Config backups and local overrides
 config/*.local.*

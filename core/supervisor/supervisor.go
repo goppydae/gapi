@@ -279,7 +279,7 @@ func (s *Supervisor) setupAgents() {
 
 func (s *Supervisor) registerHandlers() {
 	// Ping/Pong
-	s.bus.SubscribePrefix("system", "ping", func(e eventbus.Event[*anypb.Any]) {
+	err := s.bus.SubscribePrefix("system", "", "ping", func(e eventbus.Event[*anypb.Any]) {
 		s.logger.Info().Str("event", "handling_ping").Str("event_id", e.ID).Msg("received ping, preparing pong")
 		logevent.Lifecycle(s.logger, "gapid", "handle_ping", "gapid", version.BinaryVersion())
 
@@ -290,12 +290,15 @@ func (s *Supervisor) registerHandlers() {
 			return
 		}
 
-		response := eventbus.NewEvent("system", "pong", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "", "pong", "gapid", anyPayload, true)
 		_ = s.bus.Publish(response)
 	})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to subscribe to ping event")
+	}
 
 	// Agent Status
-	s.bus.SubscribePrefix("system", "agents/", func(e eventbus.Event[*anypb.Any]) {
+	err = s.bus.SubscribePrefix("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
 		s.logger.Info().Str("event_id", e.ID).Msg("received agent status request")
 
 		entries, err := s.registry.List()
@@ -332,20 +335,29 @@ func (s *Supervisor) registerHandlers() {
 			return
 		}
 
-		response := eventbus.NewEvent("system", "agents.reply", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "", "agents.reply", "gapid", anyPayload, true)
 		_ = s.bus.Publish(response)
 	})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to subscribe to agents event")
+	}
 
 	// Reload
-	s.bus.Subscribe("system", "agent.reload", func(e eventbus.Event[*anypb.Any]) {
+	err = s.bus.Subscribe("system", "", "agent.reload", func(e eventbus.Event[*anypb.Any]) {
 		s.logger.Info().Str("event_id", e.ID).Msg("received agent reload request")
 		s.setupAgents()
 	})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to subscribe to reload event")
+	}
 
 	// Lifecycle Actions
-	s.bus.SubscribePrefix("system", "agent/lifecycle.action", func(e eventbus.Event[*anypb.Any]) {
+	err = s.bus.Subscribe("system", "", "agent/lifecycle.action", func(e eventbus.Event[*anypb.Any]) {
 		s.handleLifecycleAction(e)
 	})
+	if err != nil {
+		s.logger.Error().Err(err).Msg("failed to subscribe to lifecycle event")
+	}
 }
 
 func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
@@ -429,7 +441,7 @@ func (s *Supervisor) replyStatus(agentID, state, msg string) {
 		Time:     timestamppb.Now(),
 		Hostname: s.host,
 	}); err == nil {
-		resp := eventbus.NewEvent("system", "agent/lifecycle.status", "gapid", anyPayload, true)
+		resp := eventbus.NewEvent("system", "", "agent/lifecycle.status", "gapid", anyPayload, true)
 		_ = s.bus.Publish(resp)
 	}
 }

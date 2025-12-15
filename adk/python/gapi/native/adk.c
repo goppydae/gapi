@@ -2038,17 +2038,56 @@ PyObject * _wrap__adk_Slice_uint8_append(PyObject * PYBINDGEN_UNUSED(dummy), PyO
 
 
 PyObject *
-_wrap__adk_adk_ComputeSchemaHash(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+_wrap__adk_adk_ChannelManager_CTor(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs))
+{
+    PyObject *py_retval;
+    int64_t retval;
+
+    retval = adk_ChannelManager_CTor();
+    py_retval = Py_BuildValue((char *) "L", retval);
+    return py_retval;
+}
+PyObject * _wrap__adk_adk_ChannelManager_CTor(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs));
+
+
+PyObject *
+_wrap__adk_adk_ChannelManager_Send(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_retval;
+    int64_t _handle;
+    char *msg;
+    bool goRun;
+    PyObject *py_goRun;
+    const char *keywords[] = {"_handle", "msg", "goRun", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "LsO", (char **) keywords, &_handle, &msg, &py_goRun)) {
+        return NULL;
+    }
+    goRun = (bool) PyObject_IsTrue(py_goRun);
+    adk_ChannelManager_Send(_handle, msg, goRun);
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+    Py_INCREF(Py_None);
+    py_retval = Py_None;
+    return py_retval;
+}
+PyObject * _wrap__adk_adk_ChannelManager_Send(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+
+
+PyObject *
+_wrap__adk_adk_ChannelManager_Receive(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
 {
     PyObject *py_retval;
     char *retval;
-    char *path;
-    const char *keywords[] = {"path", NULL};
+    int64_t _handle;
+    int64_t timeoutSeconds;
+    const char *keywords[] = {"_handle", "timeoutSeconds", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "s", (char **) keywords, &path)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "LL", (char **) keywords, &_handle, &timeoutSeconds)) {
         return NULL;
     }
-    retval = adk_ComputeSchemaHash(path);
+    retval = adk_ChannelManager_Receive(_handle, timeoutSeconds);
     if (PyErr_Occurred()) {
         if (retval != NULL) free(retval);
         return NULL;
@@ -2057,25 +2096,23 @@ _wrap__adk_adk_ComputeSchemaHash(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *a
     free(retval);
     return py_retval;
 }
-PyObject * _wrap__adk_adk_ComputeSchemaHash(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+PyObject * _wrap__adk_adk_ChannelManager_Receive(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
 
 
 PyObject *
-_wrap__adk_adk_Initialize(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+_wrap__adk_adk_ChannelManager_Close(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
 {
     PyObject *py_retval;
-    char *name;
-    char *version;
-    char *typeStr;
+    int64_t _handle;
     bool goRun;
     PyObject *py_goRun;
-    const char *keywords[] = {"name", "version", "typeStr", "goRun", NULL};
+    const char *keywords[] = {"_handle", "goRun", NULL};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "sssO", (char **) keywords, &name, &version, &typeStr, &py_goRun)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "LO", (char **) keywords, &_handle, &py_goRun)) {
         return NULL;
     }
     goRun = (bool) PyObject_IsTrue(py_goRun);
-    adk_Initialize(name, version, typeStr, goRun);
+    adk_ChannelManager_Close(_handle, goRun);
     if (PyErr_Occurred()) {
         return NULL;
     }
@@ -2083,31 +2120,41 @@ _wrap__adk_adk_Initialize(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, Py
     py_retval = Py_None;
     return py_retval;
 }
-PyObject * _wrap__adk_adk_Initialize(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+PyObject * _wrap__adk_adk_ChannelManager_Close(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
 
 
 PyObject *
-_wrap__adk_adk_InjectCommand(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+_wrap__adk_adk_NewChannelManager(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs))
 {
     PyObject *py_retval;
-    char *cmd;
-    bool goRun;
-    PyObject *py_goRun;
-    const char *keywords[] = {"cmd", "goRun", NULL};
+    int64_t retval;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "sO", (char **) keywords, &cmd, &py_goRun)) {
-        return NULL;
-    }
-    goRun = (bool) PyObject_IsTrue(py_goRun);
-    adk_InjectCommand(cmd, goRun);
+    retval = adk_NewChannelManager();
     if (PyErr_Occurred()) {
         return NULL;
     }
-    Py_INCREF(Py_None);
-    py_retval = Py_None;
+    py_retval = Py_BuildValue((char *) "L", retval);
     return py_retval;
 }
-PyObject * _wrap__adk_adk_InjectCommand(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+PyObject * _wrap__adk_adk_NewChannelManager(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs));
+
+
+PyObject *
+_wrap__adk_adk_AwaitCommand(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs))
+{
+    PyObject *py_retval;
+    char *retval;
+
+    retval = adk_AwaitCommand();
+    if (PyErr_Occurred()) {
+        if (retval != NULL) free(retval);
+        return NULL;
+    }
+    py_retval = Py_BuildValue((char *) "s", retval);
+    free(retval);
+    return py_retval;
+}
+PyObject * _wrap__adk_adk_AwaitCommand(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs));
 
 
 PyObject *
@@ -2205,12 +2252,17 @@ PyObject * _wrap__adk_adk_StartQUIC(PyObject * PYBINDGEN_UNUSED(dummy), PyObject
 
 
 PyObject *
-_wrap__adk_adk_AwaitCommand(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs))
+_wrap__adk_adk_ComputeSchemaHash(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
 {
     PyObject *py_retval;
     char *retval;
+    char *path;
+    const char *keywords[] = {"path", NULL};
 
-    retval = adk_AwaitCommand();
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "s", (char **) keywords, &path)) {
+        return NULL;
+    }
+    retval = adk_ComputeSchemaHash(path);
     if (PyErr_Occurred()) {
         if (retval != NULL) free(retval);
         return NULL;
@@ -2219,7 +2271,57 @@ _wrap__adk_adk_AwaitCommand(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDG
     free(retval);
     return py_retval;
 }
-PyObject * _wrap__adk_adk_AwaitCommand(PyObject *PYBINDGEN_UNUSED(_args), PyObject *PYBINDGEN_UNUSED(_kwargs));
+PyObject * _wrap__adk_adk_ComputeSchemaHash(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+
+
+PyObject *
+_wrap__adk_adk_Initialize(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_retval;
+    char *name;
+    char *version;
+    char *typeStr;
+    bool goRun;
+    PyObject *py_goRun;
+    const char *keywords[] = {"name", "version", "typeStr", "goRun", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "sssO", (char **) keywords, &name, &version, &typeStr, &py_goRun)) {
+        return NULL;
+    }
+    goRun = (bool) PyObject_IsTrue(py_goRun);
+    adk_Initialize(name, version, typeStr, goRun);
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+    Py_INCREF(Py_None);
+    py_retval = Py_None;
+    return py_retval;
+}
+PyObject * _wrap__adk_adk_Initialize(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
+
+
+PyObject *
+_wrap__adk_adk_InjectCommand(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs)
+{
+    PyObject *py_retval;
+    char *cmd;
+    bool goRun;
+    PyObject *py_goRun;
+    const char *keywords[] = {"cmd", "goRun", NULL};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, (char *) "sO", (char **) keywords, &cmd, &py_goRun)) {
+        return NULL;
+    }
+    goRun = (bool) PyObject_IsTrue(py_goRun);
+    adk_InjectCommand(cmd, goRun);
+    if (PyErr_Occurred()) {
+        return NULL;
+    }
+    Py_INCREF(Py_None);
+    py_retval = Py_None;
+    return py_retval;
+}
+PyObject * _wrap__adk_adk_InjectCommand(PyObject * PYBINDGEN_UNUSED(dummy), PyObject *args, PyObject *kwargs);
 
 static PyMethodDef _adk_functions[] = {
     {(char *) "GoPyInit", (PyCFunction) _wrap__adk_GoPyInit, METH_NOARGS, "GoPyInit()\n\n" },
@@ -2330,14 +2432,19 @@ static PyMethodDef _adk_functions[] = {
     {(char *) "Slice_uint8_subslice", (PyCFunction) _wrap__adk_Slice_uint8_subslice, METH_KEYWORDS|METH_VARARGS, "Slice_uint8_subslice(handle, st, ed)\n\ntype: handle: int64_t\ntype: st: int\ntype: ed: int" },
     {(char *) "Slice_uint8_set", (PyCFunction) _wrap__adk_Slice_uint8_set, METH_KEYWORDS|METH_VARARGS, "Slice_uint8_set(handle, idx, value)\n\ntype: handle: int64_t\ntype: idx: int\ntype: value: uint8_t" },
     {(char *) "Slice_uint8_append", (PyCFunction) _wrap__adk_Slice_uint8_append, METH_KEYWORDS|METH_VARARGS, "Slice_uint8_append(handle, value)\n\ntype: handle: int64_t\ntype: value: uint8_t" },
-    {(char *) "adk_ComputeSchemaHash", (PyCFunction) _wrap__adk_adk_ComputeSchemaHash, METH_KEYWORDS|METH_VARARGS, "adk_ComputeSchemaHash(path)\n\ntype: path: char *" },
-    {(char *) "adk_Initialize", (PyCFunction) _wrap__adk_adk_Initialize, METH_KEYWORDS|METH_VARARGS, "adk_Initialize(name, version, typeStr, goRun)\n\ntype: name: char *\ntype: version: char *\ntype: typeStr: char *\ntype: goRun: bool" },
-    {(char *) "adk_InjectCommand", (PyCFunction) _wrap__adk_adk_InjectCommand, METH_KEYWORDS|METH_VARARGS, "adk_InjectCommand(cmd, goRun)\n\ntype: cmd: char *\ntype: goRun: bool" },
+    {(char *) "adk_ChannelManager_CTor", (PyCFunction) _wrap__adk_adk_ChannelManager_CTor, METH_NOARGS, "adk_ChannelManager_CTor()\n\n" },
+    {(char *) "adk_ChannelManager_Send", (PyCFunction) _wrap__adk_adk_ChannelManager_Send, METH_KEYWORDS|METH_VARARGS, "adk_ChannelManager_Send(_handle, msg, goRun)\n\ntype: _handle: int64_t\ntype: msg: char *\ntype: goRun: bool" },
+    {(char *) "adk_ChannelManager_Receive", (PyCFunction) _wrap__adk_adk_ChannelManager_Receive, METH_KEYWORDS|METH_VARARGS, "adk_ChannelManager_Receive(_handle, timeoutSeconds)\n\ntype: _handle: int64_t\ntype: timeoutSeconds: int64_t" },
+    {(char *) "adk_ChannelManager_Close", (PyCFunction) _wrap__adk_adk_ChannelManager_Close, METH_KEYWORDS|METH_VARARGS, "adk_ChannelManager_Close(_handle, goRun)\n\ntype: _handle: int64_t\ntype: goRun: bool" },
+    {(char *) "adk_NewChannelManager", (PyCFunction) _wrap__adk_adk_NewChannelManager, METH_NOARGS, "adk_NewChannelManager()\n\n" },
+    {(char *) "adk_AwaitCommand", (PyCFunction) _wrap__adk_adk_AwaitCommand, METH_NOARGS, "adk_AwaitCommand()\n\n" },
     {(char *) "adk_SendEvent", (PyCFunction) _wrap__adk_adk_SendEvent, METH_KEYWORDS|METH_VARARGS, "adk_SendEvent(jsonStr, goRun)\n\ntype: jsonStr: char *\ntype: goRun: bool" },
     {(char *) "adk_SetSchemaHash", (PyCFunction) _wrap__adk_adk_SetSchemaHash, METH_KEYWORDS|METH_VARARGS, "adk_SetSchemaHash(hash, goRun)\n\ntype: hash: char *\ntype: goRun: bool" },
     {(char *) "adk_StartHeartbeat", (PyCFunction) _wrap__adk_adk_StartHeartbeat, METH_KEYWORDS|METH_VARARGS, "adk_StartHeartbeat(id, typeStr, goRun)\n\ntype: id: char *\ntype: typeStr: char *\ntype: goRun: bool" },
     {(char *) "adk_StartQUIC", (PyCFunction) _wrap__adk_adk_StartQUIC, METH_KEYWORDS|METH_VARARGS, "adk_StartQUIC(addr)\n\ntype: addr: char *" },
-    {(char *) "adk_AwaitCommand", (PyCFunction) _wrap__adk_adk_AwaitCommand, METH_NOARGS, "adk_AwaitCommand()\n\n" },
+    {(char *) "adk_ComputeSchemaHash", (PyCFunction) _wrap__adk_adk_ComputeSchemaHash, METH_KEYWORDS|METH_VARARGS, "adk_ComputeSchemaHash(path)\n\ntype: path: char *" },
+    {(char *) "adk_Initialize", (PyCFunction) _wrap__adk_adk_Initialize, METH_KEYWORDS|METH_VARARGS, "adk_Initialize(name, version, typeStr, goRun)\n\ntype: name: char *\ntype: version: char *\ntype: typeStr: char *\ntype: goRun: bool" },
+    {(char *) "adk_InjectCommand", (PyCFunction) _wrap__adk_adk_InjectCommand, METH_KEYWORDS|METH_VARARGS, "adk_InjectCommand(cmd, goRun)\n\ntype: cmd: char *\ntype: goRun: bool" },
     {NULL, NULL, 0, NULL}
 };
 #if PY_VERSION_HEX >= 0x03000000

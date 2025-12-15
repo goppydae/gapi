@@ -295,14 +295,22 @@ extern unsigned char Slice_uint8_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint8_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint8_set(long long int handle, GoInt _idx, unsigned char _vl);
 extern void Slice_uint8_append(long long int handle, unsigned char _vl);
-extern char* adk_ComputeSchemaHash(char* path);
-extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
-extern void adk_InjectCommand(char* cmd, char goRun);
+
+// --- wrapping struct: adk.ChannelManager ---
+//
+extern long long int adk_ChannelManager_CTor(void);
+extern void adk_ChannelManager_Send(long long int _handle, char* msg, char goRun);
+extern char* adk_ChannelManager_Receive(long long int _handle, long long int timeoutSeconds);
+extern void adk_ChannelManager_Close(long long int _handle, char goRun);
+extern long long int adk_NewChannelManager(void);
+extern char* adk_AwaitCommand(void);
 extern void adk_SendEvent(char* jsonStr, char goRun);
 extern void adk_SetSchemaHash(char* hash, char goRun);
 extern void adk_StartHeartbeat(char* id, char* typeStr, char goRun);
 extern char* adk_StartQUIC(char* addr);
-extern char* adk_AwaitCommand(void);
+extern char* adk_ComputeSchemaHash(char* path);
+extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
+extern void adk_InjectCommand(char* cmd, char goRun);
 
 #ifdef __cplusplus
 }

@@ -44,6 +44,69 @@ os.chdir(cwd)
 
 # ---- Structs ---
 
+# Python type for struct adk.ChannelManager
+class ChannelManager(go.GoClass):
+	"""ChannelManager manages a string channel for native communication between Go and Python.\nIt is designed to be exposed via gopy.\n"""
+	def __init__(self, *args, **kwargs):
+		"""
+		handle=A Go-side object is always initialized with an explicit handle=arg
+		otherwise parameters can be unnamed in order of field names or named fields
+		in which case a new Go object is constructed first
+		"""
+		if len(kwargs) == 1 and 'handle' in kwargs:
+			self.handle = kwargs['handle']
+			_adk.IncRef(self.handle)
+		elif len(args) == 1 and isinstance(args[0], go.GoClass):
+			self.handle = args[0].handle
+			_adk.IncRef(self.handle)
+		else:
+			self.handle = _adk.adk_ChannelManager_CTor()
+			_adk.IncRef(self.handle)
+	def __del__(self):
+		_adk.DecRef(self.handle)
+	def __str__(self):
+		pr = [(p, getattr(self, p)) for p in dir(self) if not p.startswith('__')]
+		sv = 'adk.ChannelManager{'
+		first = True
+		for v in pr:
+			if callable(v[1]):
+				continue
+			if first:
+				first = False
+			else:
+				sv += ', '
+			sv += v[0] + '=' + str(v[1])
+		return sv + '}'
+	def __repr__(self):
+		pr = [(p, getattr(self, p)) for p in dir(self) if not p.startswith('__')]
+		sv = 'adk.ChannelManager ( '
+		for v in pr:
+			if not callable(v[1]):
+				sv += v[0] + '=' + str(v[1]) + ', '
+		return sv + ')'
+	def Send(self, msg, goRun=False):
+		"""Send(str msg) 
+		
+		Send sends a message to the channel.
+		It is safe to call from multiple goroutines (or Python threads).
+		"""
+		_adk.adk_ChannelManager_Send(self.handle, msg, goRun)
+	def Receive(self, timeoutSeconds):
+		"""Receive(int timeoutSeconds) str, str
+		
+		Receive blocks until a message is received or timeout.
+		Returns the message and an error.
+		If the channel is closed, returns error "channel closed".
+		If timeout occurs, returns error "timeout".
+		"""
+		return _adk.adk_ChannelManager_Receive(self.handle, timeoutSeconds)
+	def Close(self, goRun=False):
+		"""Close() 
+		
+		Close closes the channel.
+		"""
+		_adk.adk_ChannelManager_Close(self.handle, goRun)
+
 
 # ---- Slices ---
 
@@ -52,28 +115,23 @@ os.chdir(cwd)
 
 
 # ---- Constructors ---
+def NewChannelManager():
+	"""NewChannelManager() object
+	
+	NewChannelManager creates a new manager.
+	"""
+	return ChannelManager(handle=_adk.adk_NewChannelManager())
 
 
 # ---- Functions ---
-def ComputeSchemaHash(path):
-	"""ComputeSchemaHash(str path) str
+def AwaitCommand():
+	"""AwaitCommand() str
 	
-	ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
-	Returns empty string on error to simplify binding logic.
+	AwaitCommand blocks until a command is received from the supervisor.
+	Returns the command string (e.g. "start", "stop").
+	In a real implementation, this would read from a QUIC stream or IPC socket.
 	"""
-	return _adk.adk_ComputeSchemaHash(path)
-def Initialize(name, version, typeStr, goRun=False):
-	"""Initialize(str name, str version, str typeStr) 
-	
-	Initialize sets up the agent identity.
-	"""
-	_adk.adk_Initialize(name, version, typeStr, goRun)
-def InjectCommand(cmd, goRun=False):
-	"""InjectCommand(str cmd) 
-	
-	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
-	"""
-	_adk.adk_InjectCommand(cmd, goRun)
+	return _adk.adk_AwaitCommand()
 def SendEvent(jsonStr, goRun=False):
 	"""SendEvent(str jsonStr) 
 	
@@ -98,13 +156,24 @@ def StartQUIC(addr):
 	StartQUIC initializes the QUIC connection to the supervisor.
 	"""
 	return _adk.adk_StartQUIC(addr)
-def AwaitCommand():
-	"""AwaitCommand() str
+def ComputeSchemaHash(path):
+	"""ComputeSchemaHash(str path) str
 	
-	AwaitCommand blocks until a command is received from the supervisor.
-	Returns the command string (e.g. "start", "stop").
-	In a real implementation, this would read from a QUIC stream or IPC socket.
+	ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
+	Returns empty string on error to simplify binding logic.
 	"""
-	return _adk.adk_AwaitCommand()
+	return _adk.adk_ComputeSchemaHash(path)
+def Initialize(name, version, typeStr, goRun=False):
+	"""Initialize(str name, str version, str typeStr) 
+	
+	Initialize sets up the agent identity.
+	"""
+	_adk.adk_Initialize(name, version, typeStr, goRun)
+def InjectCommand(cmd, goRun=False):
+	"""InjectCommand(str cmd) 
+	
+	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
+	"""
+	_adk.adk_InjectCommand(cmd, goRun)
 
 

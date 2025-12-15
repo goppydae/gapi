@@ -538,7 +538,7 @@ func (a *PythonAgent) publishStatus(state, message string) {
 		Hostname: a.hostname,
 	}
 	anyp, _ := anypb.New(st)
-	ev := eventbus.NewEvent[*anypb.Any]("system", "agent/lifecycle.status", a.id, anyp, true)
+	ev := eventbus.NewEvent[*anypb.Any]("system", "", "agent/lifecycle.status", a.id, anyp, true)
 	_ = a.bus.Publish(ev)
 }
 
@@ -553,7 +553,7 @@ func (a *PythonAgent) publishHeartbeat() {
 		Hostname: a.hostname,
 	}
 	anyp, _ := anypb.New(st)
-	hb := eventbus.NewEvent[*anypb.Any]("system", "agent/heartbeat", a.id, anyp, false)
+	hb := eventbus.NewEvent[*anypb.Any]("system", "", "agent/heartbeat", a.id, anyp, false)
 	_ = a.bus.Publish(hb)
 }
 
@@ -566,7 +566,7 @@ func (a *PythonAgent) publishLog(stream string, data any) {
 		"stream": stream, "time": time.Now().UTC().Format(time.RFC3339Nano),
 		"data": data,
 	}
-	ev := eventbus.NewEvent[*anypb.Any]("system", "logs", a.id, anyFromMap(m), false)
+	ev := eventbus.NewEvent[*anypb.Any]("system", "", "logs", a.id, anyFromMap(m), false)
 	_ = a.bus.Publish(ev)
 }
 

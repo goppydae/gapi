@@ -41,6 +41,14 @@ jobs:
             gapid
           retention-days: 7
 
+      - name: Trigger Goblin CI
+        if: success() && github.ref == 'refs/heads/main'
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.CI_PAT }}
+          repository: goppydae/goblin
+          event-type: gapi-build-success
+
   test-cross-adk:
     name: Cross-ADK Tests
     runs-on: ubuntu-latest

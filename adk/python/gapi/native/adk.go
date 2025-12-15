@@ -51,6 +51,7 @@ static inline void gopy_err_handle() {
 import "C"
 import (
 	"errors"
+	"reflect"
 	"unsafe"
 
 	"github.com/go-python/gopy/gopyh" // handler
@@ -1122,11 +1123,91 @@ func Slice_uint8_append(handle CGoHandle, _vl C.uchar) {
 
 // ---- Types ---
 
+// Converters for pointer handles for type: *adk.ChannelManager
+func ptrFromHandle_Ptr_adk_ChannelManager(h CGoHandle) *adk.ChannelManager {
+	p := gopyh.VarFromHandle((gopyh.CGoHandle)(h), "*adk.ChannelManager")
+	if p == nil {
+		return nil
+	}
+	return gopyh.Embed(p, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager)
+}
+func handleFromPtr_Ptr_adk_ChannelManager(p interface{}) CGoHandle {
+	return CGoHandle(gopyh.Register("*adk.ChannelManager", p))
+}
+
+// Converters for non-pointer handles for type: adk.ChannelManager
+func ptrFromHandle_adk_ChannelManager(h CGoHandle) *adk.ChannelManager {
+	p := gopyh.VarFromHandle((gopyh.CGoHandle)(h), "adk.ChannelManager")
+	if p == nil {
+		return nil
+	}
+	return gopyh.Embed(p, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager)
+}
+func handleFromPtr_adk_ChannelManager(p interface{}) CGoHandle {
+	return CGoHandle(gopyh.Register("adk.ChannelManager", p))
+}
+
 // ---- Global Variables: can only use functions to access ---
 
 // ---- Interfaces ---
 
 // ---- Structs ---
+
+// --- wrapping struct: adk.ChannelManager ---
+//
+//export adk_ChannelManager_CTor
+func adk_ChannelManager_CTor() CGoHandle {
+	return CGoHandle(handleFromPtr_adk_ChannelManager(&adk.ChannelManager{}))
+}
+
+//export adk_ChannelManager_Send
+func adk_ChannelManager_Send(_handle CGoHandle, msg *C.char, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	vifc, __err := gopyh.VarFromHandleTry((gopyh.CGoHandle)(_handle), "*adk.ChannelManager")
+	if __err != nil {
+		return
+	}
+	if boolPyToGo(goRun) {
+		go gopyh.Embed(vifc, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager).Send(C.GoString(msg))
+	} else {
+		gopyh.Embed(vifc, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager).Send(C.GoString(msg))
+	}
+}
+
+//export adk_ChannelManager_Receive
+func adk_ChannelManager_Receive(_handle CGoHandle, timeoutSeconds C.longlong) *C.char {
+	_saved_thread := C.PyEval_SaveThread()
+	vifc, __err := gopyh.VarFromHandleTry((gopyh.CGoHandle)(_handle), "*adk.ChannelManager")
+	if __err != nil {
+		return C.CString("")
+	}
+	cret, __err := gopyh.Embed(vifc, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager).Receive(int(timeoutSeconds))
+
+	C.PyEval_RestoreThread(_saved_thread)
+	if __err != nil {
+		estr := C.CString(__err.Error())
+		C.PyErr_SetString(C.PyExc_RuntimeError, estr)
+		C.free(unsafe.Pointer(estr))
+		return C.CString("")
+	}
+	return C.CString(cret)
+}
+
+//export adk_ChannelManager_Close
+func adk_ChannelManager_Close(_handle CGoHandle, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	vifc, __err := gopyh.VarFromHandleTry((gopyh.CGoHandle)(_handle), "*adk.ChannelManager")
+	if __err != nil {
+		return
+	}
+	if boolPyToGo(goRun) {
+		go gopyh.Embed(vifc, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager).Close()
+	} else {
+		gopyh.Embed(vifc, reflect.TypeOf(adk.ChannelManager{})).(*adk.ChannelManager).Close()
+	}
+}
 
 // ---- Slices ---
 
@@ -1134,36 +1215,22 @@ func Slice_uint8_append(handle CGoHandle, _vl C.uchar) {
 
 // ---- Constructors ---
 
+//export adk_NewChannelManager
+func adk_NewChannelManager() CGoHandle {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	return handleFromPtr_Ptr_adk_ChannelManager(adk.NewChannelManager())
+
+}
+
 // ---- Functions ---
 
-//export adk_ComputeSchemaHash
-func adk_ComputeSchemaHash(path *C.char) *C.char {
+//export adk_AwaitCommand
+func adk_AwaitCommand() *C.char {
 	_saved_thread := C.PyEval_SaveThread()
 	defer C.PyEval_RestoreThread(_saved_thread)
-	return C.CString(adk.ComputeSchemaHash(C.GoString(path)))
+	return C.CString(adk.AwaitCommand())
 
-}
-
-//export adk_Initialize
-func adk_Initialize(name *C.char, version *C.char, typeStr *C.char, goRun C.char) {
-	_saved_thread := C.PyEval_SaveThread()
-	defer C.PyEval_RestoreThread(_saved_thread)
-	if boolPyToGo(goRun) {
-		go adk.Initialize(C.GoString(name), C.GoString(version), C.GoString(typeStr))
-	} else {
-		adk.Initialize(C.GoString(name), C.GoString(version), C.GoString(typeStr))
-	}
-}
-
-//export adk_InjectCommand
-func adk_InjectCommand(cmd *C.char, goRun C.char) {
-	_saved_thread := C.PyEval_SaveThread()
-	defer C.PyEval_RestoreThread(_saved_thread)
-	if boolPyToGo(goRun) {
-		go adk.InjectCommand(C.GoString(cmd))
-	} else {
-		adk.InjectCommand(C.GoString(cmd))
-	}
 }
 
 //export adk_SendEvent
@@ -1214,10 +1281,32 @@ func adk_StartQUIC(addr *C.char) *C.char {
 	return C.CString("")
 }
 
-//export adk_AwaitCommand
-func adk_AwaitCommand() *C.char {
+//export adk_ComputeSchemaHash
+func adk_ComputeSchemaHash(path *C.char) *C.char {
 	_saved_thread := C.PyEval_SaveThread()
 	defer C.PyEval_RestoreThread(_saved_thread)
-	return C.CString(adk.AwaitCommand())
+	return C.CString(adk.ComputeSchemaHash(C.GoString(path)))
 
+}
+
+//export adk_Initialize
+func adk_Initialize(name *C.char, version *C.char, typeStr *C.char, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	if boolPyToGo(goRun) {
+		go adk.Initialize(C.GoString(name), C.GoString(version), C.GoString(typeStr))
+	} else {
+		adk.Initialize(C.GoString(name), C.GoString(version), C.GoString(typeStr))
+	}
+}
+
+//export adk_InjectCommand
+func adk_InjectCommand(cmd *C.char, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	if boolPyToGo(goRun) {
+		go adk.InjectCommand(C.GoString(cmd))
+	} else {
+		adk.InjectCommand(C.GoString(cmd))
+	}
 }

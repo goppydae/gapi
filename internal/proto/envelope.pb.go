@@ -28,7 +28,9 @@ type Envelope struct {
 	Type          string                 `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
 	Topic         string                 `protobuf:"bytes,3,opt,name=topic,proto3" json:"topic,omitempty"`
 	Source        string                 `protobuf:"bytes,4,opt,name=source,proto3" json:"source,omitempty"`
+	Namespace     string                 `protobuf:"bytes,5,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Payload       *anypb.Any             `protobuf:"bytes,6,opt,name=payload,proto3" json:"payload,omitempty"`
+	Tags          []string               `protobuf:"bytes,7,rep,name=tags,proto3" json:"tags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -91,9 +93,23 @@ func (x *Envelope) GetSource() string {
 	return ""
 }
 
+func (x *Envelope) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 func (x *Envelope) GetPayload() *anypb.Any {
 	if x != nil {
 		return x.Payload
+	}
+	return nil
+}
+
+func (x *Envelope) GetTags() []string {
+	if x != nil {
+		return x.Tags
 	}
 	return nil
 }
@@ -102,13 +118,15 @@ var File_proto_envelope_proto protoreflect.FileDescriptor
 
 const file_proto_envelope_proto_rawDesc = "" +
 	"\n" +
-	"\x14proto/envelope.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"\x8c\x01\n" +
+	"\x14proto/envelope.proto\x12\x05proto\x1a\x19google/protobuf/any.proto\"\xbe\x01\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12\x14\n" +
 	"\x05topic\x18\x03 \x01(\tR\x05topic\x12\x16\n" +
-	"\x06source\x18\x04 \x01(\tR\x06source\x12.\n" +
-	"\apayload\x18\x06 \x01(\v2\x14.google.protobuf.AnyR\apayloadB/Z-github.com/goppydae/gapi/internal/proto;protob\x06proto3"
+	"\x06source\x18\x04 \x01(\tR\x06source\x12\x1c\n" +
+	"\tnamespace\x18\x05 \x01(\tR\tnamespace\x12.\n" +
+	"\apayload\x18\x06 \x01(\v2\x14.google.protobuf.AnyR\apayload\x12\x12\n" +
+	"\x04tags\x18\a \x03(\tR\x04tagsB/Z-github.com/goppydae/gapi/internal/proto;protob\x06proto3"
 
 var (
 	file_proto_envelope_proto_rawDescOnce sync.Once

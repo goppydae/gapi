@@ -70,6 +70,7 @@ func (lsm *LifecycleStateMachine) emitLifecycleEvent(from, to string) {
 
 	event := eventbus.NewEvent(
 		"system",
+		"", // empty namespace
 		"agent/lifecycle.transition",
 		lsm.agentID,
 		anyMsg,

@@ -41,7 +41,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 	done := make(chan string, 1)
 	errCh := make(chan error, 1)
 
-	c.bus.SubscribeOnce("system", "pong", func(e eventbus.Event[*anypb.Any]) {
+	c.bus.SubscribeOnce("system", "", "pong", func(e eventbus.Event[*anypb.Any]) {
 		var pong protopkg.PingStatus
 		if err := e.Payload.UnmarshalTo(&pong); err != nil {
 			errCh <- fmt.Errorf("failed to unmarshal pong: %w", err)
@@ -56,7 +56,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to marshal ping: %w", err)
 	}
 
-	if err := c.bus.Publish(eventbus.NewEvent("system", "ping", "client", payload, true)); err != nil {
+	if err := c.bus.Publish(eventbus.NewEvent("system", "", "ping", "client", payload, true)); err != nil {
 		return "", fmt.Errorf("failed to publish ping: %w", err)
 	}
 
@@ -72,7 +72,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 
 // ReloadAgents triggers a reload of the agent registry on the daemon.
 func (c *Client) ReloadAgents(ctx context.Context) error {
-	evt := eventbus.NewEvent[*anypb.Any]("system", "agent.reload", "client", nil, true)
+	evt := eventbus.NewEvent[*anypb.Any]("system", "", "agent.reload", "client", nil, true)
 	if err := c.bus.Publish(evt); err != nil {
 		return fmt.Errorf("failed to publish reload: %w", err)
 	}
@@ -84,7 +84,7 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 	done := make(chan []*protopkg.AgentStatus, 1)
 	errCh := make(chan error, 1)
 
-	c.bus.SubscribeOnce("system", "agents.reply", func(e eventbus.Event[*anypb.Any]) {
+	c.bus.SubscribeOnce("system", "", "agents.reply", func(e eventbus.Event[*anypb.Any]) {
 		var res protopkg.AgentStatusResponse
 		if err := e.Payload.UnmarshalTo(&res); err != nil {
 			errCh <- fmt.Errorf("failed to unmarshal agent status: %w", err)
@@ -99,7 +99,7 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 		return nil, fmt.Errorf("failed to marshal status request: %w", err)
 	}
 
-	if err := c.bus.Publish(eventbus.NewEvent("system", "agents/", "client", packed, true)); err != nil {
+	if err := c.bus.Publish(eventbus.NewEvent("system", "", "agents/", "client", packed, true)); err != nil {
 		return nil, fmt.Errorf("failed to publish status request: %w", err)
 	}
 
@@ -127,7 +127,7 @@ func (c *Client) Lifecycle(ctx context.Context, agentIDs []string, action protop
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("marshal request: %w", err)}
 				return
 			}
-			ev := eventbus.NewEvent("system", "agent/lifecycle.action", "client", packed, true)
+			ev := eventbus.NewEvent("system", "", "agent/lifecycle.action", "client", packed, true)
 			if err := c.bus.Publish(ev); err != nil {
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("publish control: %w", err)}
 				return
@@ -146,6 +146,16 @@ func (c *Client) Lifecycle(ctx context.Context, agentIDs []string, action protop
 	return finalResults
 }
 
+// Start triggers the START action for the given agents.
+func (c *Client) Start(ctx context.Context, agentIDs []string) []Result {
+	return c.Lifecycle(ctx, agentIDs, protopkg.LifecycleControl_START)
+}
+
+// Stop triggers the STOP action for the given agents.
+func (c *Client) Stop(ctx context.Context, agentIDs []string) []Result {
+	return c.Lifecycle(ctx, agentIDs, protopkg.LifecycleControl_STOP)
+}
+
 func (c *Client) waitForPendingThenTerminal(
 	ctx context.Context,
 	agentID string,
@@ -156,7 +166,7 @@ func (c *Client) waitForPendingThenTerminal(
 	statusCh := make(chan *protopkg.LifecycleStatus, 8)
 
 	// Subscribe
-	c.bus.SubscribePrefix("system", "agent/lifecycle.status", func(e eventbus.Event[*anypb.Any]) {
+	c.bus.SubscribePrefix("system", "", "agent/lifecycle.status", func(e eventbus.Event[*anypb.Any]) {
 		var st protopkg.LifecycleStatus
 		if err := eventbus.UnmarshalAnyPayload(e, &st); err != nil {
 			return
