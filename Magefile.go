@@ -101,6 +101,20 @@ func TestE2E() error {
 	return sh.RunV("./test/e2e.sh")
 }
 
+// TestIntegrity runs integrity verification tests
+func TestIntegrity() error {
+	mg.Deps(Build)
+	fmt.Println("Running integrity tests...")
+	return sh.RunV("./test/test_integrity.sh")
+}
+
+// TestTimer runs timer agent tests
+func TestTimer() error {
+	mg.Deps(Build)
+	fmt.Println("Running timer tests...")
+	return sh.RunV("./test/test_timer.sh")
+}
+
 // Clean removes build artifacts
 func Clean() error {
 	fmt.Println("Cleaning build artifacts...")
