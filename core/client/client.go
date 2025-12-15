@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/internal/eventbus"
@@ -232,4 +233,76 @@ func (c *Client) waitForPendingThenTerminal(
 			}
 		}
 	}
+}
+
+// GetLogs subscribes to the logs for a specific agent and returns a channel of log lines.
+func (c *Client) GetLogs(ctx context.Context, agentID string) (<-chan string, error) {
+	ch := make(chan string, 100)
+
+	err := c.bus.SubscribePrefix("system", "", "logs", func(e eventbus.Event[*anypb.Any]) {
+		// e.Payload is Any, wrapping a Struct (from map)
+		// We unpacked it in python_agent as Struct -> Any
+		// We need to unpack it here.
+		// It's a bit dynamic.
+
+		m := e.Payload
+		// Reflection or unmarshal to structpb?
+		// We need to unmarshal Any -> Struct
+
+		st := &structpb.Struct{}
+		if err := m.UnmarshalTo(st); err != nil {
+			return
+		}
+
+		fields := st.GetFields()
+		// filter by ID
+		if idVal, ok := fields["id"]; ok {
+			if idVal.GetStringValue() != agentID {
+				return
+			}
+		} else {
+			return
+		}
+
+		stream := "stdout"
+		if sVal, ok := fields["stream"]; ok {
+			stream = sVal.GetStringValue()
+		}
+
+		dataStr := ""
+		if dVal, ok := fields["data"]; ok {
+			// data can be string or struct (if JSON)
+			if dVal.GetStringValue() != "" {
+				dataStr = dVal.GetStringValue()
+			} else if dVal.GetStructValue() != nil {
+				dataStr = dVal.GetStructValue().String()
+			}
+		}
+
+		ts := ""
+		if tVal, ok := fields["time"]; ok {
+			ts = tVal.GetStringValue()
+		}
+
+		msg := fmt.Sprintf("[%s] %s %s: %s", ts, agentID, stream, dataStr)
+
+		select {
+		case ch <- msg:
+		case <-ctx.Done():
+		default: // drop if full to avoid blocking bus
+		}
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Handle context cancellation to unsubscribe?
+	// EventBus doesn't support Unsubscribe easily by ID yet (wait, Subscribe returns error, not ID).
+	// We'll rely on the callback checking ctx.Done() implicitly via the select above,
+	// or ideally we fix EventBus to allow unsubscribe.
+	// For now, this leaks the subscription until process exit.
+	// TODO: Fix subscription leak.
+
+	return ch, nil
 }

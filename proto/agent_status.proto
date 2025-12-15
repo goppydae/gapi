@@ -26,6 +26,9 @@ message AgentStatus {
   string version   = 6;
   repeated string capabilities = 7;
   repeated string dependencies = 8;
+  double cpu_usage             = 9;
+  uint64 memory_usage          = 10;
+  int64 uptime_ns              = 11;
 }
 
 message AgentStatusRequest {} // usually empty or may filter by id/prefix

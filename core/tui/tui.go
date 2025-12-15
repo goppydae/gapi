@@ -13,6 +13,7 @@ import (
 type AgentControl interface {
 	FetchStatus(context.Context) ([]AgentStatus, error)
 	Lifecycle(ctx context.Context, id, action string) (bool, error)
+	GetLogs(ctx context.Context, id string) (<-chan string, error)
 }
 
 type ViewMode int
@@ -44,6 +45,7 @@ type Model struct {
 	err         error
 	quitting    bool
 	ctrl        AgentControl
+	logCancel   context.CancelFunc
 }
 
 func NewModel(ctrl AgentControl) Model {
@@ -69,6 +71,7 @@ func (m Model) Init() tea.Cmd {
 type agentStatusMsg []AgentStatus
 type tickMsg time.Time
 type errMsg error
+type logMsg string
 
 func (m Model) fetchAgentStatusCmd() tea.Msg {
 	// 5s timeout
@@ -228,7 +231,23 @@ func (m Model) handleListKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "l":
 		// Initialize log viewer for selected agent
 		if m.selectedIdx < len(m.agents) {
-			m.logViewer = NewLogViewer(m.agents[m.selectedIdx].ID, m.width, m.height)
+			id := m.agents[m.selectedIdx].ID
+			m.logViewer = NewLogViewer(id, m.width, m.height)
+			m.view = ViewLogs
+
+			// Start streaming
+			ctx, cancel := context.WithCancel(context.Background())
+			m.logCancel = cancel
+
+			logsCh, err := m.ctrl.GetLogs(ctx, id)
+			if err != nil {
+				m.err = err
+				cancel()
+				m.logCancel = nil
+				return m, nil
+			}
+			m.logViewer.sub = logsCh
+			return m, waitForLog(logsCh)
 		}
 		m.view = ViewLogs
 
@@ -443,6 +462,15 @@ func (m Model) renderDetail() string {
 	s += "\n"
 	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
 	s += footerStyle.Render("[esc] back  [s] start  [x] stop  [r] reload")
-
 	return s
+}
+
+func waitForLog(sub <-chan string) tea.Cmd {
+	return func() tea.Msg {
+		line, ok := <-sub
+		if !ok {
+			return nil
+		}
+		return logMsg(line)
+	}
 }

@@ -282,16 +282,47 @@ func (l *LocalController) FetchStatus(ctx context.Context) ([]tui.AgentStatus, e
 		// or just use the helper.
 		stateStr := toProtoState(a.State)
 
+		// Format CPU usage
+		cpuStr := "-"
+		if a.CpuUsage > 0 {
+			cpuStr = fmt.Sprintf("%.1f%%", a.CpuUsage)
+		}
+
+		// Format memory usage
+		memStr := "-"
+		if a.MemoryUsage > 0 {
+			memStr = formatBytes(a.MemoryUsage)
+		}
+
+		// Format uptime
+		var uptime time.Duration
+		if a.UptimeNs > 0 {
+			uptime = time.Duration(a.UptimeNs)
+		}
+
 		status = append(status, tui.AgentStatus{
 			ID:     a.Id,
 			State:  stateStr,
 			Type:   a.Type,
-			CPU:    "-", // TODO
-			Memory: "-", // TODO
-			Uptime: 0,   // TODO
+			CPU:    cpuStr,
+			Memory: memStr,
+			Uptime: uptime,
 		})
 	}
 	return status, nil
+}
+
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 func (l *LocalController) Lifecycle(ctx context.Context, id, action string) (bool, error) {
@@ -324,4 +355,8 @@ func (l *LocalController) Lifecycle(ctx context.Context, id, action string) (boo
 		return false, fmt.Errorf("reload single agent not supported yet")
 	}
 	return false, fmt.Errorf("unknown action: %s", action)
+}
+
+func (l *LocalController) GetLogs(ctx context.Context, id string) (<-chan string, error) {
+	return l.client.GetLogs(ctx, id)
 }

@@ -226,3 +226,39 @@ func readFirstLine(path string) (string, error) {
 	}
 	return strings.Split(string(b), "\n")[0], nil
 }
+
+// Stats holds resource usage statistics
+type Stats struct {
+	CPUUsage    float64 // Percentage (0-100)
+	MemoryUsage int64   // Bytes
+}
+
+// GetStats reads current resource usage from a cgroup
+func GetStats(name string) (Stats, error) {
+	root := serviceRoot
+	if root == "" {
+		var err error
+		root, err = detectRoot()
+		if err != nil {
+			return Stats{}, err
+		}
+	}
+
+	cgPath := filepath.Join(root, name)
+	var stats Stats
+
+	// Read memory usage
+	memCurrent, err := readFirstLine(filepath.Join(cgPath, "memory.current"))
+	if err == nil {
+		if val, err := strconv.ParseInt(memCurrent, 10, 64); err == nil {
+			stats.MemoryUsage = val
+		}
+	}
+
+	// Read CPU usage (this is cumulative microseconds)
+	// We'd need to track delta over time for accurate percentage
+	// For now, just return 0 as a placeholder
+	stats.CPUUsage = 0.0
+
+	return stats, nil
+}

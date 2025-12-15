@@ -101,6 +101,9 @@ type AgentStatus struct {
 	Version       string                 `protobuf:"bytes,6,opt,name=version,proto3" json:"version,omitempty"`
 	Capabilities  []string               `protobuf:"bytes,7,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	Dependencies  []string               `protobuf:"bytes,8,rep,name=dependencies,proto3" json:"dependencies,omitempty"`
+	CpuUsage      float64                `protobuf:"fixed64,9,opt,name=cpu_usage,json=cpuUsage,proto3" json:"cpu_usage,omitempty"`
+	MemoryUsage   uint64                 `protobuf:"varint,10,opt,name=memory_usage,json=memoryUsage,proto3" json:"memory_usage,omitempty"`
+	UptimeNs      int64                  `protobuf:"varint,11,opt,name=uptime_ns,json=uptimeNs,proto3" json:"uptime_ns,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -191,6 +194,27 @@ func (x *AgentStatus) GetDependencies() []string {
 	return nil
 }
 
+func (x *AgentStatus) GetCpuUsage() float64 {
+	if x != nil {
+		return x.CpuUsage
+	}
+	return 0
+}
+
+func (x *AgentStatus) GetMemoryUsage() uint64 {
+	if x != nil {
+		return x.MemoryUsage
+	}
+	return 0
+}
+
+func (x *AgentStatus) GetUptimeNs() int64 {
+	if x != nil {
+		return x.UptimeNs
+	}
+	return 0
+}
+
 type AgentStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -275,7 +299,7 @@ var File_proto_agent_status_proto protoreflect.FileDescriptor
 
 const file_proto_agent_status_proto_rawDesc = "" +
 	"\n" +
-	"\x18proto/agent_status.proto\x12\x05proto\"\xec\x01\n" +
+	"\x18proto/agent_status.proto\x12\x05proto\"\xc9\x02\n" +
 	"\vAgentStatus\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12'\n" +
@@ -284,7 +308,11 @@ const file_proto_agent_status_proto_rawDesc = "" +
 	"\blanguage\x18\x05 \x01(\tR\blanguage\x12\x18\n" +
 	"\aversion\x18\x06 \x01(\tR\aversion\x12\"\n" +
 	"\fcapabilities\x18\a \x03(\tR\fcapabilities\x12\"\n" +
-	"\fdependencies\x18\b \x03(\tR\fdependencies\"\x14\n" +
+	"\fdependencies\x18\b \x03(\tR\fdependencies\x12\x1b\n" +
+	"\tcpu_usage\x18\t \x01(\x01R\bcpuUsage\x12!\n" +
+	"\fmemory_usage\x18\n" +
+	" \x01(\x04R\vmemoryUsage\x12\x1b\n" +
+	"\tuptime_ns\x18\v \x01(\x03R\buptimeNs\"\x14\n" +
 	"\x12AgentStatusRequest\"A\n" +
 	"\x13AgentStatusResponse\x12*\n" +
 	"\x06agents\x18\x01 \x03(\v2\x12.proto.AgentStatusR\x06agents*\x92\x02\n" +

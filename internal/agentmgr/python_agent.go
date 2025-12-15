@@ -307,7 +307,7 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	)
 
 	// cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ() // start with env
 
 	if a.nextRunID != "" {
@@ -340,8 +340,13 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		return err
 	}
 
+	a.stderr, err = a.cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
 	go a.streamControl(a.stdout)
-	// go a.streamStderr(a.stderr)
+	go a.streamStderr(a.stderr)
 
 	if err := a.cmd.Start(); err != nil {
 		return fmt.Errorf("cmd.Start: %w", err)

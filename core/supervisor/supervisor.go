@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/crypto"
+	"github.com/goppydae/gapi/core/metrics"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/core/version"
 	"github.com/goppydae/gapi/internal/agentmgr"
@@ -30,12 +32,13 @@ import (
 
 // Supervisor manages the GAPI runtime lifecycle.
 type Supervisor struct {
-	cfg      *config.Config
-	logger   zerolog.Logger
-	manager  *agentmgr.AgentManager
-	bus      *eventbus.EventBus[*anypb.Any]
-	registry *agentreg.AgentRegistry
-	host     string
+	cfg           *config.Config
+	logger        zerolog.Logger
+	manager       *agentmgr.AgentManager
+	bus           *eventbus.EventBus[*anypb.Any]
+	registry      *agentreg.AgentRegistry
+	host          string
+	metricsServer *metrics.Server
 }
 
 // New creates a new Supervisor instance.
@@ -82,7 +85,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load verification key %q: %w", kp, err)
 		}
-		logger.Info().Str("key_path", kp).Msg("integrity verification enabled")
+		logger.Debug().Str("key_path", kp).Msg("integrity verification enabled")
 		pubKey = &pk
 	}
 
@@ -106,6 +109,18 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		host:     host,
 	}
 
+	// Initialize build info metrics and create server if enabled
+	if cfg.Metrics.Enabled {
+		metrics.BuildInfo.WithLabelValues(
+			version.GAPIVersion,
+			version.Commit,
+			runtime.Version(),
+		).Set(1)
+
+		s.metricsServer = metrics.NewServer(cfg.Metrics.Addr, logger)
+		logger.Debug().Str("addr", cfg.Metrics.Addr).Msg("metrics enabled")
+	}
+
 	return s, nil
 }
 
@@ -125,10 +140,52 @@ func (s *Supervisor) Run(ctx context.Context) error {
 
 	s.logger.Info().Str("host", s.host).Msg("supervisor running")
 
+	// Start periodic metrics collection if enabled
+	var metricsTicker *time.Ticker
+	if s.cfg.Metrics.Enabled {
+		metricsTicker = time.NewTicker(15 * time.Second)
+		defer metricsTicker.Stop()
+
+		startTime := time.Now()
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-metricsTicker.C:
+					s.collectMetrics(startTime)
+				}
+			}
+		}()
+		s.logger.Info().Msg("metrics collection started")
+
+		// Start metrics HTTP server
+		if s.metricsServer != nil {
+			go func() {
+				if err := s.metricsServer.Start(); err != nil {
+					s.logger.Error().Err(err).Msg("metrics server failed")
+				}
+			}()
+			s.logger.Info().Str("addr", s.cfg.Metrics.Addr).Msg("metrics server started")
+		}
+	}
+
 	// Wait for context done
 	<-ctx.Done()
 
 	s.logger.Warn().Msg("received shutdown signal via context")
+
+	// Shutdown metrics server if running
+	if s.metricsServer != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.metricsServer.Stop(shutdownCtx); err != nil {
+			s.logger.Error().Err(err).Msg("metrics server shutdown failed")
+		} else {
+			s.logger.Info().Msg("metrics server stopped")
+		}
+	}
+
 	if err := s.manager.StopAll(); err != nil {
 		s.logger.Error().Err(err).Msg("graceful stop of all agents failed")
 	}
@@ -216,7 +273,7 @@ func (s *Supervisor) setupAgents() {
 				continue
 			}
 
-			s.logger.Info().Str("agent_id", id).Msg("registered agent")
+			s.logger.Debug().Str("agent_id", id).Msg("registered agent")
 
 			desc := ag.Describe()
 			started := false
@@ -280,7 +337,7 @@ func (s *Supervisor) setupAgents() {
 func (s *Supervisor) registerHandlers() {
 	// Ping/Pong
 	err := s.bus.SubscribePrefix("system", "", "ping", func(e eventbus.Event[*anypb.Any]) {
-		s.logger.Info().Str("event", "handling_ping").Str("event_id", e.ID).Msg("received ping, preparing pong")
+		s.logger.Debug().Str("event", "handling_ping").Str("event_id", e.ID).Msg("received ping, preparing pong")
 		logevent.Lifecycle(s.logger, "gapid", "handle_ping", "gapid", version.BinaryVersion())
 
 		pong := &protopkg.PingStatus{Status: "pong"}
@@ -299,7 +356,7 @@ func (s *Supervisor) registerHandlers() {
 
 	// Agent Status
 	err = s.bus.SubscribePrefix("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
-		s.logger.Info().Str("event_id", e.ID).Msg("received agent status request")
+		s.logger.Debug().Str("event_id", e.ID).Msg("received agent status request")
 
 		entries, err := s.registry.List()
 		if err != nil {
@@ -319,12 +376,27 @@ func (s *Supervisor) registerHandlers() {
 				s.logger.Warn().Err(err).Str("agent", entry.ID).Msg("failed to resolve graph deps")
 			}
 
+			// Collect metrics from cgroups if available
+			var cpuUsage float64
+			var memUsage uint64
+			cgName := fmt.Sprintf("gapid-%s", entry.ID)
+			if stats, err := cgroups.GetStats(cgName); err == nil {
+				cpuUsage = stats.CPUUsage
+				memUsage = uint64(stats.MemoryUsage)
+			}
+
+			// Calculate uptime (placeholder - would need process start time tracking)
+			var uptimeNs int64 = 0
+
 			agentStatuses = append(agentStatuses, &protopkg.AgentStatus{
 				Id:           entry.ID,
 				Type:         entry.Type,
 				State:        st,
 				Dependencies: deps,
 				Capabilities: entry.Capabilities,
+				CpuUsage:     cpuUsage,
+				MemoryUsage:  memUsage,
+				UptimeNs:     uptimeNs,
 			})
 		}
 
@@ -344,7 +416,7 @@ func (s *Supervisor) registerHandlers() {
 
 	// Reload
 	err = s.bus.Subscribe("system", "", "agent.reload", func(e eventbus.Event[*anypb.Any]) {
-		s.logger.Info().Str("event_id", e.ID).Msg("received agent reload request")
+		s.logger.Debug().Str("event_id", e.ID).Msg("received agent reload request")
 		s.setupAgents()
 	})
 	if err != nil {
@@ -361,7 +433,7 @@ func (s *Supervisor) registerHandlers() {
 }
 
 func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
-	s.logger.Info().Str("event_id", e.ID).Str("topic", e.Topic).Msg("received lifecycle control event")
+	s.logger.Debug().Str("event_id", e.ID).Str("topic", e.Topic).Msg("received lifecycle control event")
 
 	var cmd protopkg.LifecycleControl
 	if err := eventbus.UnmarshalAnyPayload(e, &cmd); err != nil {
@@ -382,18 +454,32 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 	s.replyStatus(targetID, "PENDING", "accepted")
 
 	action := actionFromEnum(cmd.GetAction())
+	desc := ag.Describe()
 	var applyErr error
 	switch action {
 	case "initialize":
 		applyErr = ag.Controller().Apply(lifecycle.ActionInitialize)
 	case "start":
 		applyErr = ag.Controller().Apply(lifecycle.ActionStart)
+		if applyErr == nil {
+			// Record successful start
+			metrics.RecordAgentStart(targetID, desc["type"])
+		}
 	case "stop":
 		applyErr = ag.Controller().Apply(lifecycle.ActionStop)
+		if applyErr == nil {
+			// Record successful stop
+			metrics.RecordAgentStop(targetID, desc["type"])
+		}
 	case "reload":
 		applyErr = ag.Controller().Apply(lifecycle.ActionReload)
 	case "restart":
 		applyErr = ag.Controller().Apply(lifecycle.ActionRestart)
+		if applyErr == nil {
+			// Record restart as stop + start
+			metrics.RecordAgentStop(targetID, desc["type"])
+			metrics.RecordAgentStart(targetID, desc["type"])
+		}
 	default:
 		applyErr = fmt.Errorf("unknown action %q", action)
 	}
@@ -409,6 +495,8 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 		if !(isOkStart || isOkStop) {
 			state = lifecycle.StateError
 			msg = applyErr.Error()
+			// Record failure
+			metrics.RecordAgentFailure(targetID, desc["type"], action)
 		}
 
 		s.replyStatus(targetID, state, msg)

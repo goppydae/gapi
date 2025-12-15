@@ -196,3 +196,18 @@
 - **Refactoring**: Aligned with "GAPI as Library" goal by moving client logic out of `cmd/gapictl`.
 - **Integration**: Unblocked Goblin by implementing missing lifecycle methods.
 - **CI/CD**: Fully automated pipeline with cross-repo triggering.
+
+---
+
+## Proposed Enhancements
+
+### TUI Completeness
+- [ ] **Log Streaming**: Implement WebSocket or TTY-based log streaming in `gapi`/`gapictl` (replacing TODOs).
+- [ ] **Real Metrics**: Hook up `cgroups` stats to `FetchStatus` to populate CPU/Memory/Uptime fields.
+
+### Plugin Architecture
+- [ ] **Go Plugin System**: formalized support for loading agents as `.so` plugins for hot-reloading without binary recompilation.
+
+### Observability
+- [ ] **Metrics**: Expose Prometheus metrics for agent resource usage.
+- [ ] **Logs**: Integrated log shipping or structured logging adapter.

@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/goppydae/gapi/core/metrics"
 	"github.com/goppydae/gapi/internal/logging/logcore"
 	"github.com/goppydae/gapi/internal/logging/logevent"
 )
@@ -128,6 +129,10 @@ func (b *EventBus[T]) Subscribe(scope, namespace, topic string, fn Handler[T]) e
 	}
 	b.ensureInitLocked()
 	b.subs[k] = append(b.subs[k], fn)
+
+	// Update subscriber count metric
+	metrics.UpdateSubscriberCount(topic, len(b.subs[k]))
+
 	return nil
 }
 
@@ -214,6 +219,11 @@ func (b *EventBus[T]) Publish(e Event[T]) error {
 				Str("topic", e.Topic).Msg("transport publish failed")
 		}
 	}
+
+	// Record event publish metric
+	metrics.RecordEvent(e.Topic)
+
+	logcore.Debug().Str("topic", e.Topic).Str("event_id", e.ID).Str("scope", e.Scope).Msg("publishing event")
 
 	return b.dispatch(e)
 }

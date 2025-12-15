@@ -23,6 +23,7 @@ type LogViewer struct {
 	ready    bool
 	width    int
 	height   int
+	sub      <-chan string
 }
 
 func NewLogViewer(agentID string, width, height int) LogViewer {
@@ -51,24 +52,23 @@ func (l LogViewer) Update(msg tea.Msg, agents []AgentStatus, selectedIdx int) (L
 		l.viewport.Width = msg.Width
 		l.viewport.Height = msg.Height - 4
 
-	case tickMsg:
-		// Simulate log entries for now
-		// In production, this would come from event bus
-		if len(agents) > selectedIdx {
-			l.logs = append(l.logs, LogEntry{
-				Timestamp: time.Now(),
-				Level:     "INFO",
-				AgentID:   agents[selectedIdx].ID,
-				Message:   fmt.Sprintf("Agent %s is %s", agents[selectedIdx].ID, agents[selectedIdx].State),
-			})
+	case logMsg:
+		l.logs = append(l.logs, LogEntry{
+			Timestamp: time.Now(),
+			Level:     "INFO", // Parse from msg likely?
+			AgentID:   l.agentID,
+			Message:   string(msg),
+		})
 
-			// Keep last 100 entries
-			if len(l.logs) > 100 {
-				l.logs = l.logs[len(l.logs)-100:]
-			}
-			l.viewport.SetContent(l.renderLogs())
-			l.viewport.GotoBottom()
+		// Keep last 100 entries
+		if len(l.logs) > 100 {
+			l.logs = l.logs[len(l.logs)-100:]
 		}
+		l.viewport.SetContent(l.renderLogs())
+		l.viewport.GotoBottom()
+
+		// Continue waiting
+		return l, waitForLog(l.sub)
 	}
 
 	l.viewport, cmd = l.viewport.Update(msg)
