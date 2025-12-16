@@ -148,7 +148,12 @@ func (h *TestHarness) WaitForState(id, expectedState string, timeout time.Durati
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	// Final check before erroring
 	currentState, err := h.GetAgentState(id)
+	if err == nil && strings.EqualFold(currentState, expectedState) {
+		return nil
+	}
+
 	if err != nil {
 		return fmt.Errorf("timeout waiting for %s to reach state %s (last error: %v)", id, expectedState, err)
 	}

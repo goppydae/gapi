@@ -1,7 +1,7 @@
 ENABLED = True
 TYPE = "timer"
 ID = "simple_timer"
-SCHEDULE = "OnUnitActiveSec=1s"
+SCHEDULE = "OnUnitActiveSec=5s"
 
 def start():
     print("Timer tick!")
