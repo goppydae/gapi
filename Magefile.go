@@ -89,14 +89,14 @@ func TestUnit() error {
 
 // TestADK runs ADK integration tests
 func TestADK() error {
-	mg.Deps(Build)
+	mg.Deps(Build, Python{}.Build)
 	fmt.Println("Running ADK integration tests...")
 	return sh.RunV("go", "test", "-v", "./test/adk/...")
 }
 
 // TestE2E runs end-to-end tests
 func TestE2E() error {
-	mg.Deps(Build)
+	mg.Deps(Build, Python{}.Build)
 	fmt.Println("Running E2E tests...")
 	return sh.RunV("./test/e2e.sh")
 }
@@ -110,7 +110,7 @@ func TestIntegrity() error {
 
 // TestTimer runs timer agent tests
 func TestTimer() error {
-	mg.Deps(Build)
+	mg.Deps(Build, Python{}.Build)
 	fmt.Println("Running timer tests...")
 	return sh.RunV("./test/test_timer.sh")
 }
@@ -202,7 +202,7 @@ func Tidy() error {
 
 // Dev runs the development build and starts gapid
 func Dev() error {
-	mg.Deps(Build)
+	mg.Deps(Build, Python{}.Build)
 	fmt.Println("Starting gapid in development mode...")
 	return sh.RunV("./bin/gapid")
 }

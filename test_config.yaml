@@ -1,0 +1,4 @@
+security:
+  verify_key: ''
+transport:
+  listen_address: 127.0.0.1:4242

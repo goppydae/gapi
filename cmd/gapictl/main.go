@@ -1,26 +1,15 @@
 package main
 
 import (
-	"log"
+	"fmt"
+	"os"
 
-	"github.com/goppydae/gapi/core/version"
+	"github.com/goppydae/gapi/pkg/cli"
 )
 
-func Execute() error {
-	return rootCmd.Execute()
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(pingCmd)
-	rootCmd.AddCommand(agentReloadCmd)
-	rootCmd.AddCommand(agentStatusCmd)
-
-	version.SetBinaryNameAndVersion("gapictl", "0.1.0")
-}
-
 func main() {
-	if err := Execute(); err != nil {
-		log.Fatal(err)
+	if err := cli.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

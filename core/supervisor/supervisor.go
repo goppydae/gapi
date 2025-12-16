@@ -128,7 +128,13 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	return s, nil
 }
 
+// Bus returns the internal event bus.
+func (s *Supervisor) Bus() *eventbus.EventBus[*anypb.Any] {
+	return s.bus
+}
+
 // Start runs the supervisor logic. It blocks until Stop is called or an error occurs.
+
 // Note: In a real library, Start might be non-blocking or accept a context.
 // For now, we mirror the existing blocking behavior but allow external control via context cancellation if needed?
 // The original used `runSupervisor()` which blocked on signal.

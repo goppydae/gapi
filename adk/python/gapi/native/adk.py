@@ -124,26 +124,6 @@ def NewChannelManager():
 
 
 # ---- Functions ---
-def AwaitCommand():
-	"""AwaitCommand() str
-	
-	AwaitCommand blocks until a command is received from the supervisor.
-	Returns the command string (e.g. "start", "stop").
-	In a real implementation, this would read from a QUIC stream or IPC socket.
-	"""
-	return _adk.adk_AwaitCommand()
-def SendEvent(jsonStr, goRun=False):
-	"""SendEvent(str jsonStr) 
-	
-	SendEvent sends a generic event to the supervisor via QUIC.
-	"""
-	_adk.adk_SendEvent(jsonStr, goRun)
-def SetSchemaHash(hash, goRun=False):
-	"""SetSchemaHash(str hash) 
-	
-	SetSchemaHash sets the schema hash for the agent.
-	"""
-	_adk.adk_SetSchemaHash(hash, goRun)
 def StartHeartbeat(id, typeStr, goRun=False):
 	"""StartHeartbeat(str id, str typeStr) 
 	
@@ -156,6 +136,26 @@ def StartQUIC(addr):
 	StartQUIC initializes the QUIC connection to the supervisor.
 	"""
 	return _adk.adk_StartQUIC(addr)
+def AwaitCommand():
+	"""AwaitCommand() str
+	
+	AwaitCommand blocks until a command is received from the supervisor.
+	Returns the command string (e.g. "start", "stop").
+	In a real implementation, this would read from a QUIC stream or IPC socket.
+	"""
+	return _adk.adk_AwaitCommand()
+def InjectCommand(cmd, goRun=False):
+	"""InjectCommand(str cmd) 
+	
+	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
+	"""
+	_adk.adk_InjectCommand(cmd, goRun)
+def SetSchemaHash(hash, goRun=False):
+	"""SetSchemaHash(str hash) 
+	
+	SetSchemaHash sets the schema hash for the agent.
+	"""
+	_adk.adk_SetSchemaHash(hash, goRun)
 def ComputeSchemaHash(path):
 	"""ComputeSchemaHash(str path) str
 	
@@ -169,11 +169,11 @@ def Initialize(name, version, typeStr, goRun=False):
 	Initialize sets up the agent identity.
 	"""
 	_adk.adk_Initialize(name, version, typeStr, goRun)
-def InjectCommand(cmd, goRun=False):
-	"""InjectCommand(str cmd) 
+def SendEvent(jsonStr, goRun=False):
+	"""SendEvent(str jsonStr) 
 	
-	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
+	SendEvent sends a generic event to the supervisor via QUIC.
 	"""
-	_adk.adk_InjectCommand(cmd, goRun)
+	_adk.adk_SendEvent(jsonStr, goRun)
 
 
