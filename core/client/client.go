@@ -114,15 +114,31 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 	}
 }
 
+// LifecycleOptions defines optional parameters for lifecycle actions.
+type LifecycleOptions struct {
+	Env           map[string]string
+	RestartPolicy string
+}
+
 // Lifecycle sends a lifecycle action to a set of agents and waits for their transition.
 func (c *Client) Lifecycle(ctx context.Context, agentIDs []string, action protopkg.LifecycleControl_Action) []Result {
+	return c.LifecycleWithOpts(ctx, agentIDs, action, LifecycleOptions{})
+}
+
+// LifecycleWithOpts sends a lifecycle action with options.
+func (c *Client) LifecycleWithOpts(ctx context.Context, agentIDs []string, action protopkg.LifecycleControl_Action, opts LifecycleOptions) []Result {
 	results := make(chan Result, len(agentIDs))
 
 	for _, id := range agentIDs {
 		agentID := id // capture loop var
 		go func() {
 			// Publish control request
-			req := &protopkg.LifecycleControl{AgentId: agentID, Action: action}
+			req := &protopkg.LifecycleControl{
+				AgentId:       agentID,
+				Action:        action,
+				Env:           opts.Env,
+				RestartPolicy: opts.RestartPolicy,
+			}
 			packed, err := anypb.New(req)
 			if err != nil {
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("marshal request: %w", err)}
@@ -150,6 +166,11 @@ func (c *Client) Lifecycle(ctx context.Context, agentIDs []string, action protop
 // Start triggers the START action for the given agents.
 func (c *Client) Start(ctx context.Context, agentIDs []string) []Result {
 	return c.Lifecycle(ctx, agentIDs, protopkg.LifecycleControl_START)
+}
+
+// StartWithOpts triggers the START action with options.
+func (c *Client) StartWithOpts(ctx context.Context, agentIDs []string, opts LifecycleOptions) []Result {
+	return c.LifecycleWithOpts(ctx, agentIDs, protopkg.LifecycleControl_START, opts)
 }
 
 // Stop triggers the STOP action for the given agents.

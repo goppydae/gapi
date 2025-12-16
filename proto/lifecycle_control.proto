@@ -10,6 +10,12 @@ message LifecycleControl {
   // Enum for supported lifecycle actions
   Action action = 2;
 
+  // Environment variables for the agent (only used for START/RESTART)
+  map<string, string> env = 3;
+
+  // Restart policy (e.g. "always", "on-failure", "never")
+  string restart_policy = 4;
+
   enum Action {
     ACTION_UNSPECIFIED = 0;
     INITIALIZE = 1;

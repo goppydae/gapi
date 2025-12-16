@@ -34,6 +34,12 @@ func AgentSearchPaths() []string {
 
 	// Current directory ./agents (development)
 	if cwd, err := os.Getwd(); err == nil {
+		// Built Go agents (highest/dev priority)
+		buildDir := filepath.Join(cwd, "agents", "build", "go")
+		if _, err := os.Stat(buildDir); err == nil {
+			paths = append(paths, buildDir)
+		}
+
 		agentsDir := filepath.Join(cwd, "agents")
 		if _, err := os.Stat(agentsDir); err == nil {
 			paths = append(paths, agentsDir)

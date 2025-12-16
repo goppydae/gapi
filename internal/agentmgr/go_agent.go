@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -17,7 +16,6 @@ import (
 
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/types/known/anypb"
-	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/goppydae/gapi/internal/cgroups"
@@ -26,11 +24,10 @@ import (
 	protopkg "github.com/goppydae/gapi/internal/proto"
 )
 
-type PythonAgent struct {
+type GoAgent struct {
 	id       string
 	typ      string
-	path     string
-	runner   string
+	path     string // Path to binary
 	hostname string
 
 	stdout io.ReadCloser
@@ -43,7 +40,7 @@ type PythonAgent struct {
 	requires     []string
 	wants        []string
 	wantedBy     []string
-	requiredBy   []string // includedBy
+	requiredBy   []string
 	capabilities []string
 
 	listenSpec string
@@ -60,18 +57,18 @@ type PythonAgent struct {
 	bus       *eventbus.EventBus[*anypb.Any]
 }
 
-func NewPythonAgent(
-	id, typ, modulePath, runnerPath string,
+func NewGoAgent(
+	id, typ, binaryPath string,
 	reqs, wants, wantedBy, requiredBy []string,
-	listenStream string, // Added listenStream parameter
+	listenStream string,
 	cpuLimit, memLimit string,
 	caps []string,
 	globalBus *eventbus.EventBus[*anypb.Any],
 	depView lifecycle.DependencyResolver,
-) *PythonAgent {
+) *GoAgent {
 	host, _ := os.Hostname()
-	a := &PythonAgent{
-		id: id, typ: typ, path: modulePath, runner: runnerPath,
+	a := &GoAgent{
+		id: id, typ: typ, path: binaryPath,
 		requires:     append([]string(nil), reqs...),
 		wants:        append([]string(nil), wants...),
 		wantedBy:     append([]string(nil), wantedBy...),
@@ -86,12 +83,9 @@ func NewPythonAgent(
 	}
 	a.ctrl = lifecycle.NewController(id, host, a, a.bus, depView)
 
-	// Eagerly bind the socket if configured (Socket Activation / Supervisor Managed)
+	// Eager bind
 	if listenStream != "" {
 		if _, err := a.EnsureListener(); err != nil {
-			// We can't return error here easily, but we can log or set state to Error via controller later?
-			// For now, let's just log to stdout/stderr (discovery logs it)
-			// Or better, let Start() handle the error if it persists, but we try to bind now.
 			fmt.Fprintf(os.Stderr, "[gapi] agent %s: failed to eager bind %s: %v\n", id, listenStream, err)
 		}
 	}
@@ -99,39 +93,38 @@ func NewPythonAgent(
 	return a
 }
 
-func (a *PythonAgent) ID() string         { return a.id }
-func (a *PythonAgent) Type() string       { return a.typ }
-func (a *PythonAgent) Lang() string       { return "python" }
-func (a *PythonAgent) Requires() []string { return a.requires }
-func (a *PythonAgent) Wants() []string    { return a.wants }
-func (a *PythonAgent) Dependencies() []string {
+func (a *GoAgent) ID() string         { return a.id }
+func (a *GoAgent) Type() string       { return a.typ }
+func (a *GoAgent) Lang() string       { return "go" }
+func (a *GoAgent) Requires() []string { return a.requires }
+func (a *GoAgent) Wants() []string    { return a.wants }
+func (a *GoAgent) Dependencies() []string {
 	return append(append([]string(nil), a.requires...), a.wants...)
 }
-func (a *PythonAgent) Controller() *lifecycle.Controller { return a.ctrl }
-func (a *PythonAgent) Describe() map[string]string {
+func (a *GoAgent) Controller() *lifecycle.Controller { return a.ctrl }
+func (a *GoAgent) Describe() map[string]string {
 	return map[string]string{
 		"id":            a.id,
 		"type":          a.typ,
-		"lang":          "python",
+		"lang":          "go",
 		"state":         a.ctrl.State(),
 		"requires":      strings.Join(a.requires, ","),
 		"wants":         strings.Join(a.wants, ","),
 		"wanted_by":     strings.Join(a.wantedBy, ","),
 		"required_by":   strings.Join(a.requiredBy, ","),
 		"capabilities":  strings.Join(a.capabilities, ","),
-		"listen_stream": a.listenSpec, // Added listen_stream to description
-		// backward compat?
-		"deps": strings.Join(a.requires, ","),
+		"listen_stream": a.listenSpec,
+		"deps":          strings.Join(a.requires, ","),
 	}
 }
 
-func (a *PythonAgent) SetRunID(id string) {
+func (a *GoAgent) SetRunID(id string) {
 	a.mu.Lock()
 	a.nextRunID = id
 	a.mu.Unlock()
 }
 
-func (a *PythonAgent) Uptime() time.Duration {
+func (a *GoAgent) Uptime() time.Duration {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if a.startTime.IsZero() {
@@ -141,25 +134,23 @@ func (a *PythonAgent) Uptime() time.Duration {
 }
 
 // EnsureListener creates the listener if it doesn't exist.
-func (a *PythonAgent) EnsureListener() (*os.File, error) {
+func (a *GoAgent) EnsureListener() (*os.File, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.ensureListenerLocked()
 }
 
-func (a *PythonAgent) ensureListenerLocked() (*os.File, error) {
+func (a *GoAgent) ensureListenerLocked() (*os.File, error) {
 	if a.listenSpec == "" {
 		return nil, nil // No socket activation
 	}
 
 	if a.listener == nil {
-		// Detect network: unix vs tcp
 		network := "tcp"
 		addr := a.listenSpec
 		if strings.HasPrefix(addr, "/") || strings.HasPrefix(addr, "@") {
 			network = "unix"
 		}
-		// Basic port assume tcp
 		if !strings.Contains(addr, ":") && network == "tcp" {
 			addr = ":" + addr
 		}
@@ -178,38 +169,30 @@ func (a *PythonAgent) ensureListenerLocked() (*os.File, error) {
 	return f, nil
 }
 
-func (a *PythonAgent) SetTrafficHandler(fn func()) {
+func (a *GoAgent) SetTrafficHandler(fn func()) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.trafficHandler = fn
 }
 
-func (a *PythonAgent) Arm() error {
+func (a *GoAgent) Arm() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.armLocked()
 }
 
-func (a *PythonAgent) armLocked() error {
+func (a *GoAgent) armLocked() error {
 	if a.watchCancel != nil {
-		return nil // Already armed
+		return nil
 	}
 	if a.trafficHandler == nil {
 		return fmt.Errorf("no traffic handler set")
 	}
 
-	// Ensure listener exists
 	f, err := a.ensureListenerLocked()
 	if err != nil {
 		return err
 	}
-	// We need the raw FD for polling. calling File() returns a copy that we own.
-	// But ensuring listener locked gives us a copy.
-	// We'll close it in the loop logic or pass ownership?
-	// The loop will duplicate it or we keep this one open?
-	// If we keep it open, we must close it when disarming.
-	// Better: loop creates/closes its own copy to avoid leaking?
-	// Actually, just pass this 'f' to background and let bg close it.
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.watchCancel = cancel
@@ -218,10 +201,9 @@ func (a *PythonAgent) armLocked() error {
 	return nil
 }
 
-func (a *PythonAgent) watchLoop(ctx context.Context, f *os.File) {
+func (a *GoAgent) watchLoop(ctx context.Context, f *os.File) {
 	defer f.Close()
 
-	// Get raw FD
 	rawConn, err := f.SyscallConn()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "[gapid] watchLoop SyscallConn error: %v\n", err)
@@ -244,23 +226,20 @@ func (a *PythonAgent) watchLoop(ctx context.Context, f *os.File) {
 		default:
 		}
 
-		// periodic poll to check context
-		n, err := unix.Poll(pollFd, 250) // 250ms
+		n, err := unix.Poll(pollFd, 250)
 		if err != nil {
 			if err == unix.EINTR {
 				continue
 			}
 			fmt.Fprintf(os.Stderr, "[gapid] watchLoop Poll error: %v\n", err)
-			return // Should we retry?
+			return
 		}
 
 		if n > 0 {
 			if pollFd[0].Revents&unix.POLLIN != 0 {
-				// Traffic detected!
-				// Disarm first to avoid repeated firing
 				a.mu.Lock()
 				if a.watchCancel != nil {
-					a.watchCancel() // Cancel self/others
+					a.watchCancel()
 					a.watchCancel = nil
 				}
 				handler := a.trafficHandler
@@ -275,19 +254,12 @@ func (a *PythonAgent) watchLoop(ctx context.Context, f *os.File) {
 	}
 }
 
-func (a *PythonAgent) Start(ctx context.Context) error {
+func (a *GoAgent) Start(ctx context.Context) error {
 	a.mu.Lock()
-	// Disarm watcher if active
 	if a.watchCancel != nil {
 		a.watchCancel()
 		a.watchCancel = nil
 	}
-	// Note: We don't wait for watchLoop to exit, but it should exit quickly (250ms)
-
-	// Reset listener if needed? No, listener is persistent.
-	// But if we just accepted a connection in watchLoop (we didn't accept, just polled),
-	// the connection is still in backlog. The agent will accept it.
-
 	defer a.mu.Unlock()
 
 	if a.cmd != nil && a.cmd.Process != nil {
@@ -302,24 +274,14 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		}
 		if socketFile != nil {
 			extraFiles = append(extraFiles, socketFile)
-			// Defer close? Start() consumes it?
-			// exec.Command duplicates. We should close our copy.
 			defer socketFile.Close()
 		}
 	}
 
-	cmd := exec.CommandContext(
-		ctx, "python3", "-u", a.runner,
-		"--module", a.path,
-		"--id", a.id,
-		"--type", a.typ,
-		"--start",
-	)
+	// Direct execution of the binary
+	cmd := exec.CommandContext(ctx, a.path, "--start")
 
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ() // start with env
-
+	cmd.Env = os.Environ()
 	if a.nextRunID != "" {
 		cmd.Env = append(cmd.Env, "GAPI_RUN_ID="+a.nextRunID)
 	}
@@ -328,22 +290,11 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		cmd.ExtraFiles = extraFiles
 		cmd.Env = append(cmd.Env,
 			fmt.Sprintf("LISTEN_FDS=%d", len(extraFiles)),
-			"LISTEN_PID=self", // or just ignore
+			"LISTEN_PID=self",
 		)
 	}
 	a.cmd = cmd
 	a.startTime = time.Now()
-
-	// The original code used pipes and streamed output.
-	// The new code uses os.Stdout/Stderr directly, so streamControl/streamStderr
-	// would not receive anything.
-	// For now, we'll keep the pipe logic for control messages and direct stderr.
-	// This means we need to revert the cmd.Stdout/Stderr assignments and keep the pipe logic.
-	// Re-reading the instruction, it seems the intent was to *restore* socket logic,
-	// but the provided diff also changes stdout	// a.stderr, err = a.cmd.StderrPipe()
-	// if err != nil {
-	// 	return err
-	// }
 
 	var err error
 	a.stdout, err = a.cmd.StdoutPipe()
@@ -377,10 +328,8 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		}
 	}
 
-	// Oneshot behavior: Wait for completion
 	if a.typ == "oneshot" {
 		a.publishStatus("STARTING", "oneshot running")
-		// Wait for exit
 		err := a.cmd.Wait()
 		if err != nil {
 			a.publishStatus("FAILED", fmt.Sprintf("oneshot failed: %v", err))
@@ -395,7 +344,7 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	return nil
 }
 
-func (a *PythonAgent) Stop(ctx context.Context) error {
+func (a *GoAgent) Stop(ctx context.Context) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -412,7 +361,6 @@ func (a *PythonAgent) Stop(ctx context.Context) error {
 	case err := <-done:
 		a.publishStatus("STOPPED", "process exited")
 		a.cleanupAfterExit()
-		// Re-arm lazy activation
 		if a.listenSpec != "" && a.trafficHandler != nil {
 			_ = a.armLocked()
 		}
@@ -425,7 +373,6 @@ func (a *PythonAgent) Stop(ctx context.Context) error {
 		}
 		a.publishStatus("STOPPED", "killed after timeout")
 		a.cleanupAfterExit()
-		// Re-arm lazy activation
 		if a.listenSpec != "" && a.trafficHandler != nil {
 			_ = a.armLocked()
 		}
@@ -433,7 +380,7 @@ func (a *PythonAgent) Stop(ctx context.Context) error {
 	}
 }
 
-func (a *PythonAgent) cleanupAfterExit() {
+func (a *GoAgent) cleanupAfterExit() {
 	if a.cpuLimit != "" || a.memLimit != "" {
 		cgName := fmt.Sprintf("gapid-%s", a.id)
 		_ = cgroups.Cleanup(cgName)
@@ -450,34 +397,40 @@ func (a *PythonAgent) cleanupAfterExit() {
 	a.startTime = time.Time{}
 }
 
-func (a *PythonAgent) Reload(ctx context.Context) error {
+func (a *GoAgent) Reload(ctx context.Context) error {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if a.cmd == nil || a.cmd.Process == nil {
 		return fmt.Errorf("agent not running")
 	}
-	pythonBin := "python"
-	if _, err := exec.LookPath(pythonBin); err != nil {
-		if _, err3 := exec.LookPath("python3"); err3 == nil {
-			pythonBin = "python3"
-		}
-	}
-	cmd := exec.CommandContext(ctx, pythonBin, a.runner,
-		"--module", a.path, "--id", a.id, "--type", a.typ, "--reload",
-	)
-	if a.nextRunID != "" {
-		cmd.Env = append(os.Environ(), "GAPI_RUN_ID="+a.nextRunID)
-	}
-	return cmd.Run()
+
+	// Just send SIGHUP for now, or exec new binary?
+	// Standard for compiled daemons is often SIGHUP.
+	// But our lifecycle assumes full replacement or re-execution.
+	// Let's assume standard graceful reload via SIGHUP for now,
+	// or full restart if the binary differs?
+	// We'll mimic Python's "Call with --reload", but since it's already running...
+	// We could run a separate "reloader" process?
+	// Or just do a Restart().
+	// For Go Service Agents, normally we expect SIGHUP support.
+	// But `gapid` manages the process.
+	// Let's implement as Stop+Start for now (Restart) unless SIGHUP is preferred.
+	// User guide says Reload triggers `ActionReload`.
+	// We'll send SIGUSR1 or something?
+	// Let's stick to Restart semantics via Stop/Start for safety if binary changed?
+	// Actually, `lifecycle` has separate Restart.
+	// We'll trust the agent handles `SIGHUP` if we send it.
+	_ = a.cmd.Process.Signal(syscall.SIGHUP)
+	return nil
 }
 
-func (a *PythonAgent) Reset() {
+func (a *GoAgent) Reset() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cleanupAfterExit()
 }
 
-func (a *PythonAgent) streamControl(r io.Reader) {
+func (a *GoAgent) streamControl(r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
@@ -513,12 +466,11 @@ func (a *PythonAgent) streamControl(r io.Reader) {
 		case "heartbeat":
 			a.publishHeartbeat()
 		default:
-			// no control topic publications from agents — by design
 		}
 	}
 }
 
-func (a *PythonAgent) streamStderr(r io.Reader) {
+func (a *GoAgent) streamStderr(r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
@@ -526,13 +478,7 @@ func (a *PythonAgent) streamStderr(r io.Reader) {
 	}
 }
 
-func anyFromMap(m map[string]any) *anypb.Any {
-	s, _ := structpb.NewStruct(m)
-	anyp, _ := anypb.New(s)
-	return anyp
-}
-
-func (a *PythonAgent) publishStatus(state, message string) {
+func (a *GoAgent) publishStatus(state, message string) {
 	if a.bus == nil {
 		return
 	}
@@ -559,7 +505,7 @@ func (a *PythonAgent) publishStatus(state, message string) {
 	_ = a.bus.Publish(ev)
 }
 
-func (a *PythonAgent) publishHeartbeat() {
+func (a *GoAgent) publishHeartbeat() {
 	if a.bus == nil {
 		return
 	}
@@ -574,7 +520,7 @@ func (a *PythonAgent) publishHeartbeat() {
 	_ = a.bus.Publish(hb)
 }
 
-func (a *PythonAgent) publishLog(stream string, data any) {
+func (a *GoAgent) publishLog(stream string, data any) {
 	if a.bus == nil {
 		return
 	}
@@ -585,60 +531,4 @@ func (a *PythonAgent) publishLog(stream string, data any) {
 	}
 	ev := eventbus.NewEvent[*anypb.Any]("system", "", "logs", a.id, anyFromMap(m), false)
 	_ = a.bus.Publish(ev)
-}
-
-func getString(m map[string]any, key string) (string, bool) {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return "", false
-	}
-	switch t := v.(type) {
-	case string:
-		return t, true
-	default:
-		return fmt.Sprintf("%v", t), true
-	}
-}
-
-func parseLimits(cpu, mem string) cgroups.ResourceSpec {
-	spec := cgroups.ResourceSpec{}
-
-	// CPU: "0.5" or "500m" -> float64
-	if cpu != "" {
-		if strings.HasSuffix(cpu, "m") {
-			if v, err := strconv.Atoi(strings.TrimSuffix(cpu, "m")); err == nil {
-				spec.CPU = float64(v) / 1000.0
-			}
-		} else {
-			if v, err := strconv.ParseFloat(cpu, 64); err == nil {
-				spec.CPU = v
-			}
-		}
-	}
-
-	// Mem: "100MB", "1G", "1024" -> bytes
-	if mem != "" {
-		upper := strings.ToUpper(mem)
-		var mult int64 = 1
-		var numStr = upper
-		if strings.HasSuffix(upper, "KB") || strings.HasSuffix(upper, "K") {
-			mult = 1024
-			numStr = strings.TrimRight(upper, "KB")
-			numStr = strings.TrimRight(numStr, "K")
-		} else if strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "M") {
-			mult = 1024 * 1024
-			numStr = strings.TrimRight(upper, "MB")
-			numStr = strings.TrimRight(numStr, "M")
-		} else if strings.HasSuffix(upper, "GB") || strings.HasSuffix(upper, "G") {
-			mult = 1024 * 1024 * 1024
-			numStr = strings.TrimRight(upper, "GB")
-			numStr = strings.TrimRight(numStr, "G")
-		}
-
-		if v, err := strconv.ParseInt(numStr, 10, 64); err == nil {
-			spec.Memory = v * mult
-		}
-	}
-
-	return spec
 }

@@ -385,8 +385,11 @@ func (s *Supervisor) registerHandlers() {
 				memUsage = uint64(stats.MemoryUsage)
 			}
 
-			// Calculate uptime (placeholder - would need process start time tracking)
+			// Calculate uptime
 			var uptimeNs int64 = 0
+			if uptimeable, ok := getAgentCI(s.manager, entry.ID).(interface{ Uptime() time.Duration }); ok {
+				uptimeNs = int64(uptimeable.Uptime())
+			}
 
 			agentStatuses = append(agentStatuses, &protopkg.AgentStatus{
 				Id:           entry.ID,

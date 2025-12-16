@@ -16,8 +16,8 @@
 
 ```bash
 # Install
-nix develop -c go build ./cmd/gapid
-nix develop -c go build ./cmd/gapictl
+# Install
+nix develop -c mage build
 
 # Create agent
 gapictl agent new my_service

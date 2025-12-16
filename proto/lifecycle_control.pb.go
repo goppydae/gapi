@@ -83,7 +83,11 @@ type LifecycleControl struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	AgentId string                 `protobuf:"bytes,1,opt,name=agent_id,json=agentId,proto3" json:"agent_id,omitempty"`
 	// Enum for supported lifecycle actions
-	Action        LifecycleControl_Action `protobuf:"varint,2,opt,name=action,proto3,enum=proto.LifecycleControl_Action" json:"action,omitempty"`
+	Action LifecycleControl_Action `protobuf:"varint,2,opt,name=action,proto3,enum=proto.LifecycleControl_Action" json:"action,omitempty"`
+	// Environment variables for the agent (only used for START/RESTART)
+	Env map[string]string `protobuf:"bytes,3,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Restart policy (e.g. "always", "on-failure", "never")
+	RestartPolicy string `protobuf:"bytes,4,opt,name=restart_policy,json=restartPolicy,proto3" json:"restart_policy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -132,14 +136,33 @@ func (x *LifecycleControl) GetAction() LifecycleControl_Action {
 	return LifecycleControl_ACTION_UNSPECIFIED
 }
 
+func (x *LifecycleControl) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *LifecycleControl) GetRestartPolicy() string {
+	if x != nil {
+		return x.RestartPolicy
+	}
+	return ""
+}
+
 var File_proto_lifecycle_control_proto protoreflect.FileDescriptor
 
 const file_proto_lifecycle_control_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/lifecycle_control.proto\x12\x05proto\"\xc5\x01\n" +
+	"\x1dproto/lifecycle_control.proto\x12\x05proto\"\xd8\x02\n" +
 	"\x10LifecycleControl\x12\x19\n" +
 	"\bagent_id\x18\x01 \x01(\tR\aagentId\x126\n" +
-	"\x06action\x18\x02 \x01(\x0e2\x1e.proto.LifecycleControl.ActionR\x06action\"^\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x1e.proto.LifecycleControl.ActionR\x06action\x122\n" +
+	"\x03env\x18\x03 \x03(\v2 .proto.LifecycleControl.EnvEntryR\x03env\x12%\n" +
+	"\x0erestart_policy\x18\x04 \x01(\tR\rrestartPolicy\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"^\n" +
 	"\x06Action\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -163,18 +186,20 @@ func file_proto_lifecycle_control_proto_rawDescGZIP() []byte {
 }
 
 var file_proto_lifecycle_control_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_proto_lifecycle_control_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_proto_lifecycle_control_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_lifecycle_control_proto_goTypes = []any{
 	(LifecycleControl_Action)(0), // 0: proto.LifecycleControl.Action
 	(*LifecycleControl)(nil),     // 1: proto.LifecycleControl
+	nil,                          // 2: proto.LifecycleControl.EnvEntry
 }
 var file_proto_lifecycle_control_proto_depIdxs = []int32{
 	0, // 0: proto.LifecycleControl.action:type_name -> proto.LifecycleControl.Action
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 1: proto.LifecycleControl.env:type_name -> proto.LifecycleControl.EnvEntry
+	2, // [2:2] is the sub-list for method output_type
+	2, // [2:2] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_proto_lifecycle_control_proto_init() }
@@ -188,7 +213,7 @@ func file_proto_lifecycle_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_lifecycle_control_proto_rawDesc), len(file_proto_lifecycle_control_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -145,7 +145,8 @@
             else
               export PS1="$PS1 (nix-shell)"
             fi
-            echo "Welcome to the GoPPydae dev shell. Goblin stands ready."
+            echo "🐙 GAPI Dev Shell Active"
+            echo "Use 'mage build' to build binaries."
             echo ""
             echo "Available nixos-generators formats:"
             echo "  nix build .#iso          - Bootable ISO"

@@ -159,76 +159,150 @@ func (am *AgentManager) discoverFromSinglePath(root string, pathType config.Path
 			return err
 		}
 
-		// Python agents: *.py.service, *.py.timer, *.py.socket
-		if !strings.HasSuffix(d.Name(), ".service") && !strings.HasSuffix(d.Name(), ".timer") && !strings.HasSuffix(d.Name(), ".socket") {
-			return nil
-		}
-		if !strings.Contains(d.Name(), ".py.") {
-			return nil
-		}
-
-		desc, err := am.pythonDescribe(p)
+		info, err := d.Info()
 		if err != nil {
-			println(err.Error())
 			return nil
 		}
 
-		// Validate agent metadata
-		if err := schema.ValidateAgentDescribe(schema.AgentDescribe{
-			ID:           desc.Describe.ID,
-			Type:         desc.Describe.Type,
-			CPULimit:     desc.Describe.CPULimit,
-			MemoryLimit:  desc.Describe.MemoryLimit,
-			Schedule:     desc.Describe.Schedule,
-			ListenStream: desc.Describe.ListenStream,
-			Requires:     desc.Describe.Requires,
-			Wants:        desc.Describe.Wants,
-			WantedBy:     desc.Describe.WantedBy,
-			RequiredBy:   desc.Describe.RequiredBy,
-			Capabilities: desc.Describe.Capabilities,
-		}); err != nil {
-			println(fmt.Sprintf("validation failed for %s: %v", p, err))
-			return nil
-		}
-
-		meta := Discovered{
-			ID: desc.Describe.ID, Type: strings.ToLower(desc.Describe.Type),
-			Lang: "python", Path: p,
-			Requires:     append([]string(nil), desc.Describe.Requires...),
-			Wants:        append([]string(nil), desc.Describe.Wants...),
-			WantedBy:     append([]string(nil), desc.Describe.WantedBy...),
-			RequiredBy:   append([]string(nil), desc.Describe.RequiredBy...),
-			ListenStream: desc.Describe.ListenStream,
-			Capabilities: append([]string(nil), desc.Describe.Capabilities...),
-		}
-
-		var a Agent
-		if meta.Type == "timer" {
-			// Create TimerAgent
-			schedule := desc.Describe.Schedule
-			if schedule == "" {
-				schedule = "OnUnitActiveSec=60s" // default systemd-style
+		// Python agents: *.py.service, *.py.timer, *.py.socket
+		if strings.Contains(d.Name(), ".py.") && (strings.HasSuffix(d.Name(), ".service") || strings.HasSuffix(d.Name(), ".timer") || strings.HasSuffix(d.Name(), ".socket")) {
+			// Handle Python Agent
+			desc, err := am.pythonDescribe(p)
+			if err != nil {
+				// println(err.Error()) // quiet for mixed folders
+				return nil
 			}
-			a = NewTimerAgent(meta.ID, meta.Path, schedule, am.pyRun, am.bus, am.lbus)
-		} else {
-			// Create PythonAgent (service/socket)
-			a = NewPythonAgent(
-				meta.ID, meta.Type, meta.Path, am.pyRun,
-				meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
-				desc.Describe.ListenStream,
-				desc.Describe.CPULimit,
-				desc.Describe.MemoryLimit,
-				meta.Capabilities,
-				am.bus,
-				depView{am},
-			)
+			return am.processDiscovered(p, desc.Describe, &agents)
 		}
 
-		agents = append(agents, a)
+		// Go/Binary Agents: executable and not a source/config file
+		// Naive check: executable bit and no extension or .bin?
+		// Better: try to run --describe on anything executable that isn't excluded.
+		// Exclude known extensions
+		ext := filepath.Ext(d.Name())
+		if ext == ".go" || ext == ".md" || ext == ".json" || ext == ".b3" || ext == ".sig" {
+			return nil
+		}
+
+		if info.Mode()&0111 != 0 {
+			// Executable
+			desc, err := am.binaryDescribe(p)
+			if err != nil {
+				// Not a GAPI agent binary
+				return nil
+			}
+			return am.processDiscovered(p, desc.Describe, &agents)
+		}
+
 		return nil
 	})
 
 	return agents, err
+}
+
+func (am *AgentManager) processDiscovered(path string, d struct {
+	ID           string   `json:"id"`
+	Type         string   `json:"type"`
+	Requires     []string `json:"requires"`
+	Wants        []string `json:"wants"`
+	WantedBy     []string `json:"wanted_by"`
+	RequiredBy   []string `json:"required_by"`
+	Enabled      bool     `json:"enabled"`
+	ListenStream string   `json:"listen_stream"`
+	CPULimit     string   `json:"cpu_limit"`
+	MemoryLimit  string   `json:"memory_limit"`
+	Schedule     string   `json:"schedule"`
+	Capabilities []string `json:"capabilities"`
+}, agents *[]Agent) error {
+
+	// Validate agent metadata
+	if err := schema.ValidateAgentDescribe(schema.AgentDescribe{
+		ID:           d.ID,
+		Type:         d.Type,
+		CPULimit:     d.CPULimit,
+		MemoryLimit:  d.MemoryLimit,
+		Schedule:     d.Schedule,
+		ListenStream: d.ListenStream,
+		Requires:     d.Requires,
+		Wants:        d.Wants,
+		WantedBy:     d.WantedBy,
+		RequiredBy:   d.RequiredBy,
+		Capabilities: d.Capabilities,
+	}); err != nil {
+		println(fmt.Sprintf("validation failed for %s: %v", path, err))
+		return nil
+	}
+
+	meta := Discovered{
+		ID: d.ID, Type: strings.ToLower(d.Type),
+		Path:         path,
+		Requires:     append([]string(nil), d.Requires...),
+		Wants:        append([]string(nil), d.Wants...),
+		WantedBy:     append([]string(nil), d.WantedBy...),
+		RequiredBy:   append([]string(nil), d.RequiredBy...),
+		ListenStream: d.ListenStream,
+		Capabilities: append([]string(nil), d.Capabilities...),
+	}
+
+	var a Agent
+	if meta.Type == "timer" && strings.HasSuffix(path, ".py") { // Python Timer
+		schedule := d.Schedule
+		if schedule == "" {
+			schedule = "OnUnitActiveSec=60s"
+		}
+		a = NewTimerAgent(meta.ID, meta.Path, schedule, am.pyRun, am.bus, am.lbus)
+	} else if strings.HasSuffix(path, ".py") || strings.Contains(filepath.Base(path), ".py.") { // Python Service
+		a = NewPythonAgent(
+			meta.ID, meta.Type, meta.Path, am.pyRun,
+			meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
+			d.ListenStream,
+			d.CPULimit,
+			d.MemoryLimit,
+			meta.Capabilities,
+			am.bus,
+			depView{am},
+		)
+	} else {
+		// Go/Binary Agent
+		a = NewGoAgent(
+			meta.ID, meta.Type, meta.Path,
+			meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
+			d.ListenStream,
+			d.CPULimit,
+			d.MemoryLimit,
+			meta.Capabilities,
+			am.bus,
+			depView{am},
+		)
+	}
+
+	*agents = append(*agents, a)
+	return nil
+}
+
+func (am *AgentManager) binaryDescribe(binPath string) (*pyDescribe, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, binPath, "--describe")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	out := bytes.TrimSpace(stdout.Bytes())
+	if len(out) == 0 {
+		return nil, fmt.Errorf("empty output")
+	}
+
+	var d pyDescribe
+	if err := json.Unmarshal(out, &d); err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 func (am *AgentManager) pythonDescribe(modulePath string) (*pyDescribe, error) {

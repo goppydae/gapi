@@ -414,24 +414,6 @@ func (m Model) renderList() string {
 	return s
 }
 
-func (m Model) renderLogs() string {
-	var s string
-
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("205"))
-
-	if m.selectedIdx < len(m.agents) {
-		s += headerStyle.Render(fmt.Sprintf("Logs: %s", m.agents[m.selectedIdx].ID)) + "\n\n"
-	}
-
-	// TODO: Show actual logs
-	s += "Log streaming not yet implemented\n"
-	s += "Press ESC to go back\n"
-
-	return s
-}
-
 func (m Model) renderDetail() string {
 	if m.selectedIdx >= len(m.agents) {
 		return "No agent selected"

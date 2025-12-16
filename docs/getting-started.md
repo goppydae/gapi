@@ -8,8 +8,7 @@ This guide will help you create, build, and run your first GAPI agent.
 
 ```bash
 cd gapi
-nix develop -c go build ./cmd/gapid
-nix develop -c go build ./cmd/gapictl
+nix develop -c mage build
 ```
 
 ### Using Go Directly
