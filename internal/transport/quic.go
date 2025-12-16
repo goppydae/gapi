@@ -150,7 +150,9 @@ func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
 		return io.ErrUnexpectedEOF
 	}
 
-	s, err := conn.OpenStreamSync(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	s, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		return err
 	}
