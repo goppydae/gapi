@@ -27,8 +27,8 @@ import (
 	"github.com/goppydae/gapi/internal/lifecycle"
 	"github.com/goppydae/gapi/internal/logging/logcore"
 	"github.com/goppydae/gapi/internal/logging/logevent"
-	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/goppydae/gapi/internal/transport"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/rs/zerolog"
 )
 
@@ -187,7 +187,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 
 	// Shutdown metrics server if running
 	if s.metricsServer != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), config.SupervisorShutdownTimeout)
 		defer cancel()
 		if err := s.metricsServer.Stop(shutdownCtx); err != nil {
 			s.logger.Error().Err(err).Msg("metrics server shutdown failed")
@@ -522,7 +522,7 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 	}
 
 	// Wait for settlement
-	deadline := s.clock.Now().Add(20 * time.Second)
+	deadline := s.clock.Now().Add(config.SupervisorStartDeadline)
 	finalState := ag.Controller().State()
 	for isInFlight(finalState) && s.clock.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)

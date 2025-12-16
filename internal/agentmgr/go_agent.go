@@ -524,11 +524,37 @@ func (a *GoAgent) publishLog(stream string, data any) {
 	if a.bus == nil {
 		return
 	}
-	m := map[string]any{
-		"id": a.id, "type": a.typ, "host": a.hostname,
-		"stream": stream, "time": time.Now().UTC().Format(time.RFC3339Nano),
-		"data": data,
+
+	// Convert data to string message
+	var message string
+	switch v := data.(type) {
+	case string:
+		message = v
+	case map[string]any:
+		// JSON marshal for structured logs
+		if b, err := json.Marshal(v); err == nil {
+			message = string(b)
+		} else {
+			message = fmt.Sprintf("%v", v)
+		}
+	default:
+		message = fmt.Sprintf("%v", v)
 	}
-	ev := eventbus.NewEvent[*anypb.Any]("system", "", "logs", a.id, anyFromMap(m), false)
+
+	// Map stream to log level
+	level := "INFO"
+	if stream == "stderr" {
+		level = "ERROR"
+	}
+
+	logMsg := &protopkg.LogMessage{
+		AgentId:   a.id,
+		Level:     level,
+		Message:   message,
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	anyp, _ := anypb.New(logMsg)
+	ev := eventbus.NewEvent[*anypb.Any]("system", "", "logs", a.id, anyp, false)
 	_ = a.bus.Publish(ev)
 }

@@ -1,6 +1,7 @@
 package adk
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,8 +11,8 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/internal/eventbus"
-	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/goppydae/gapi/internal/transport"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -132,7 +133,7 @@ func SendEvent(jsonStr string) {
 		Source:  "agent:" + id,
 	}
 
-	if err := quicClient.PublishRemote(ev); err != nil {
+	if err := quicClient.PublishRemote(context.Background(), ev); err != nil {
 		log.Printf("[GAPI-ADK] QUIC publish error: %v", err)
 		// Fallback
 		fmt.Println(jsonStr)

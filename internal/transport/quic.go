@@ -8,8 +8,8 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	quic "github.com/quic-go/quic-go"
@@ -33,8 +33,8 @@ func NewQUICServer(addr string, cert tls.Certificate) (*QUIC, error) {
 		NextProtos:   []string{"gapi-quic"},
 	}
 	quicConfig := &quic.Config{
-		KeepAlivePeriod: 10 * time.Second,
-		MaxIdleTimeout:  60 * time.Second,
+		KeepAlivePeriod: config.QUICStreamTimeout,
+		MaxIdleTimeout:  config.QUICIdleTimeout,
 	}
 	ln, err := quic.ListenAddr(addr, tlsConf, quicConfig)
 	if err != nil {
@@ -54,8 +54,8 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 		tlsConf.Certificates = []tls.Certificate{*cert}
 	}
 	quicConfig := &quic.Config{
-		KeepAlivePeriod: 10 * time.Second,
-		MaxIdleTimeout:  60 * time.Second,
+		KeepAlivePeriod: config.QUICStreamTimeout,
+		MaxIdleTimeout:  config.QUICIdleTimeout,
 	}
 	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, quicConfig)
 	if err != nil {
@@ -142,7 +142,7 @@ func (q *QUIC) handleStream(s *quic.Stream) {
 
 // ---- Publish / Broadcast ----
 
-func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
+func (q *QUIC) PublishRemote(ctx context.Context, e eventbus.Event[*anypb.Any]) error {
 	q.mu.Lock()
 	conn := q.conn
 	q.mu.Unlock()
@@ -156,11 +156,11 @@ func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
 		wireTopic = e.Scope + "/" + e.Topic
 	}
 
-	// Async publish to prevent preventing blocking on dead clients
+	// Async publish to prevent blocking on dead clients
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		timeoutCtx, cancel := context.WithTimeout(ctx, config.QUICStreamTimeout)
 		defer cancel()
-		s, err := conn.OpenStreamSync(ctx)
+		s, err := conn.OpenStreamSync(timeoutCtx)
 		if err != nil {
 			return
 		}
@@ -194,7 +194,9 @@ func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
 	return nil
 }
 
-func (q *QUIC) Broadcast(e eventbus.Event[*anypb.Any]) error { return q.PublishRemote(e) }
+func (q *QUIC) Broadcast(e eventbus.Event[*anypb.Any]) error {
+	return q.PublishRemote(context.Background(), e)
+}
 
 func (q *QUIC) OnRemoteEvent(fn func(eventbus.Event[*anypb.Any])) { q.onRemote = fn }
 

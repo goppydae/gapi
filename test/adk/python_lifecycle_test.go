@@ -3,6 +3,8 @@ package adk
 import (
 	"testing"
 	"time"
+
+	"github.com/goppydae/gapi/core/config"
 )
 
 func TestPythonAgent_StartStop(t *testing.T) {
@@ -19,7 +21,7 @@ func TestPythonAgent_StartStop(t *testing.T) {
 	agentID := "simple_service"
 
 	// Agent should start automatically
-	if err := h.WaitForState(agentID, "running", 120*time.Second); err != nil {
+	if err := h.WaitForState(agentID, "running", config.TestAgentStartTimeout); err != nil {
 		t.Errorf("Agent did not start: %v", err)
 	}
 
@@ -29,7 +31,7 @@ func TestPythonAgent_StartStop(t *testing.T) {
 	}
 
 	// Wait for stopped state
-	if err := h.WaitForState(agentID, "stopped", 60*time.Second); err != nil {
+	if err := h.WaitForState(agentID, "stopped", config.TestAgentStopTimeout); err != nil {
 		t.Errorf("Agent did not stop: %v", err)
 	}
 }
@@ -48,7 +50,7 @@ func TestPythonAgent_Reload(t *testing.T) {
 	agentID := "simple_service"
 
 	// Wait for running
-	if err := h.WaitForState(agentID, "running", 60*time.Second); err != nil {
+	if err := h.WaitForState(agentID, "running", config.TestAgentStopTimeout); err != nil {
 		t.Fatalf("Agent did not start: %v", err)
 	}
 
@@ -82,7 +84,7 @@ func TestTimerAgent_Execution(t *testing.T) {
 	agentID := "simple_timer"
 
 	// Timer should auto-start
-	if err := h.WaitForState(agentID, "running", 60*time.Second); err != nil {
+	if err := h.WaitForState(agentID, "running", config.TestAgentStopTimeout); err != nil {
 		t.Errorf("Timer agent did not start: %v", err)
 	}
 
@@ -91,7 +93,7 @@ func TestTimerAgent_Execution(t *testing.T) {
 		t.Errorf("Failed to stop timer: %v", err)
 	}
 
-	if err := h.WaitForState(agentID, "stopped", 60*time.Second); err != nil {
+	if err := h.WaitForState(agentID, "stopped", config.TestAgentStopTimeout); err != nil {
 		t.Errorf("Timer did not stop: %v", err)
 	}
 }

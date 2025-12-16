@@ -30,6 +30,13 @@ except ImportError as e:
     
     # Instantiate the dummy ADK
     adk = DummyAdk()
+    
+    # Warn if not explicitly forced
+    if not os.getenv("RUNTIME_FORCE_DUMMY_ADK"):
+        print("[WARNING] Running with DummyAdk (stdout fallback mode). "
+              "This should only be used for development/testing. "
+              "Set RUNTIME_FORCE_DUMMY_ADK=1 to suppress this warning.", 
+              file=sys.stderr)
 
 try:
     from gapi.schemas import AgentMetadata
