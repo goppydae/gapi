@@ -36,3 +36,34 @@ This file contains lessons learned the hard way. Read this before debugging "imp
 **Symptom:** `go build` fails in tests with "no Go files in ..."
 **Cause:** `cross_adk_test.go` pointing to the directory (package) rather than `main.go` when the fixture is a `main` package.
 **Fix:** Point to `fixtures/go/my_agent/main.go`, not just the directory.
+
+## quic-go API: The Type Confusion Chronicles (Dec 2024)
+
+**TL;DR**: `quic.Connection` doesn't exist. Use `*quic.Conn`. Streams are already pointers.
+
+**Why it's cursed**: Documentation shows `Connection`, but only `*quic.Conn` exists in the API.
+
+```go
+// ❌ WRONG
+var conn quic.Connection  // undefined!
+
+// ✅ CORRECT  
+var conn *quic.Conn
+stream, err := conn.AcceptStream(ctx)  // stream is *quic.Stream
+io.ReadFull(stream, buf)  // Use directly, already implements io.Reader
+```
+
+**Discovery Time**: 30+ iterations, 45+ tool calls.
+
+## Protobuf Package Organization
+
+**The Problem**: Multiple `.proto` files in same directory MUST use identical package names.
+
+```protobuf
+// Both files must match:
+package goblin.v1.proto;
+option go_package = "github.com/org/project/internal/proto;goblinv1";
+```
+
+**The Error**: `found packages goblinv1 (file1.pb.go) and proto (file2.pb.go)`  
+**The Fix**: Align both `package` and `go_package` declarations across all `.proto` files.

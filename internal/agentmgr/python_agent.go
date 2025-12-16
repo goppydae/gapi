@@ -23,7 +23,7 @@ import (
 	"github.com/goppydae/gapi/internal/cgroups"
 	"github.com/goppydae/gapi/internal/eventbus"
 	"github.com/goppydae/gapi/internal/lifecycle"
-	protopkg "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
 
 type PythonAgent struct {
@@ -492,7 +492,14 @@ func (a *PythonAgent) Reload(ctx context.Context) error {
 	if a.nextRunID != "" {
 		cmd.Env = append(os.Environ(), "RUNTIME_RUN_ID="+a.nextRunID)
 	}
-	return cmd.Run()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	a.publishStatusWithRunID("RUNNING", "reload complete", a.nextRunID)
+	return nil
 }
 
 func (a *PythonAgent) Reset() {
@@ -529,6 +536,8 @@ func (a *PythonAgent) streamControl(r io.Reader) {
 			a.publishStatus("PENDING", "agent stopping")
 		case "stopped":
 			a.publishStatus("STOPPED", "agent stopped")
+		case "reloaded":
+			a.publishStatus("RUNNING", "agent reloaded")
 		case "error":
 			msg, _ := getString(m, "error")
 			if msg == "" {

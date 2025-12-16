@@ -27,7 +27,7 @@ import (
 	"github.com/goppydae/gapi/internal/lifecycle"
 	"github.com/goppydae/gapi/internal/logging/logcore"
 	"github.com/goppydae/gapi/internal/logging/logevent"
-	protopkg "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/goppydae/gapi/internal/transport"
 	"github.com/rs/zerolog"
 )

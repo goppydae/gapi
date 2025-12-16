@@ -248,6 +248,30 @@ class AgentWrapper:
             _notify("stopped", id=self.agent_id, type=self.agent_type)
             self.stop_evt = threading.Event()
 
+    def reload(self):
+        if self.fn_reload:
+            _notify("reloading", id=self.agent_id, type=self.agent_type)
+            with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+                self.fn_reload()
+            _notify("reloaded", id=self.agent_id, type=self.agent_type)
+        else:
+             # If no reload function, maybe we should warn? 
+             # For now, success (no-op)
+             pass
+
+    def restart(self):
+        if self.fn_restart:
+            _notify("restarting", id=self.agent_id, type=self.agent_type)
+            with redirect_stdout(sys.stderr), redirect_stderr(sys.stderr):
+                self.fn_restart()
+            _notify("restarted", id=self.agent_id, type=self.agent_type)
+        else:
+            # Fallback: stop() then start() is usually handled by the supervisor,
+            # but if restart is called inside the runner, we might need to simulate it.
+            # However, simpler agents rely on supervisor restart.
+            # Here we just execute the hook if present.
+            pass
+
 def get_meta(mod, key, default=None):
     # Lookup using META_KEYS
     aliases = META_KEYS.get(key, [key])

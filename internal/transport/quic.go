@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/internal/eventbus"
-	protopkg "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 	quic "github.com/quic-go/quic-go"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -150,40 +150,47 @@ func (q *QUIC) PublishRemote(e eventbus.Event[*anypb.Any]) error {
 		return io.ErrUnexpectedEOF
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	s, err := conn.OpenStreamSync(ctx)
-	if err != nil {
-		return err
-	}
-	defer s.Close()
-
+	// Capture values for async closure
 	wireTopic := e.Topic
 	if e.Scope != "" {
 		wireTopic = e.Scope + "/" + e.Topic
 	}
-	env := &protopkg.Envelope{
-		Id:      e.ID,
-		Topic:   wireTopic,
-		Source:  e.Source,
-		Type:    "event",
-		Payload: e.Payload,
-	}
 
-	b, err := proto.Marshal(env)
-	if err != nil {
-		return err
-	}
+	// Async publish to prevent preventing blocking on dead clients
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		s, err := conn.OpenStreamSync(ctx)
+		if err != nil {
+			return
+		}
+		defer s.Close()
 
-	var lenBuf [4]byte
-	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(b)))
+		env := &protopkg.Envelope{
+			Id:      e.ID,
+			Topic:   wireTopic,
+			Source:  e.Source,
+			Type:    "event",
+			Payload: e.Payload,
+		}
 
-	if _, err := s.Write(lenBuf[:]); err != nil {
-		return err
-	}
-	if _, err := s.Write(b); err != nil {
-		return err
-	}
+		data, err := proto.Marshal(env)
+		if err != nil {
+			log.Printf("marshal error: %v\n", err)
+			return
+		}
+
+		// Length prefix
+		lenBuf := make([]byte, 4)
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
+		if _, err := s.Write(lenBuf); err != nil {
+			return
+		}
+		if _, err := s.Write(data); err != nil {
+			return
+		}
+	}()
+
 	return nil
 }
 

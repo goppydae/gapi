@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/internal/eventbus"
-	protopkg "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/goppydae/gapi/internal/transport"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/types/known/anypb"

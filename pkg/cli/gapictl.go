@@ -13,7 +13,7 @@ import (
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/tui"
 	"github.com/goppydae/gapi/core/version"
-	protopkg "github.com/goppydae/gapi/internal/proto"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
 
 var rootCmd = &cobra.Command{

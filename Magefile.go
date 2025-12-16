@@ -153,9 +153,9 @@ func Proto() error {
 		}
 	}
 
-	// Copy generated files to internal/proto/
-	if err := os.MkdirAll("internal/proto", 0755); err != nil {
-		return fmt.Errorf("failed to create internal/proto directory: %w", err)
+	// Copy generated files to pkg/proto/
+	if err := os.MkdirAll("pkg/proto", 0755); err != nil {
+		return fmt.Errorf("failed to create pkg/proto directory: %w", err)
 	}
 
 	pbFiles, err := filepath.Glob("proto/*.pb.go")
@@ -164,7 +164,7 @@ func Proto() error {
 	}
 
 	for _, src := range pbFiles {
-		dst := filepath.Join("internal/proto", filepath.Base(src))
+		dst := filepath.Join("pkg/proto", filepath.Base(src))
 		if err := sh.Copy(dst, src); err != nil {
 			return fmt.Errorf("failed to copy %s to %s: %w", src, dst, err)
 		}

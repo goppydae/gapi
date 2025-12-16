@@ -124,38 +124,6 @@ def NewChannelManager():
 
 
 # ---- Functions ---
-def SendEvent(jsonStr, goRun=False):
-	"""SendEvent(str jsonStr) 
-	
-	SendEvent sends a generic event to the supervisor via QUIC.
-	"""
-	_adk.adk_SendEvent(jsonStr, goRun)
-def SetSchemaHash(hash, goRun=False):
-	"""SetSchemaHash(str hash) 
-	
-	SetSchemaHash sets the schema hash for the agent.
-	"""
-	_adk.adk_SetSchemaHash(hash, goRun)
-def StartQUIC(addr):
-	"""StartQUIC(str addr) str
-	
-	StartQUIC initializes the QUIC connection to the supervisor.
-	"""
-	return _adk.adk_StartQUIC(addr)
-def AwaitCommand():
-	"""AwaitCommand() str
-	
-	AwaitCommand blocks until a command is received from the supervisor.
-	Returns the command string (e.g. "start", "stop").
-	In a real implementation, this would read from a QUIC stream or IPC socket.
-	"""
-	return _adk.adk_AwaitCommand()
-def StartHeartbeat(id, typeStr, goRun=False):
-	"""StartHeartbeat(str id, str typeStr) 
-	
-	StartHeartbeat starts a background goroutine that sends heartbeat events.
-	"""
-	_adk.adk_StartHeartbeat(id, typeStr, goRun)
 def ComputeSchemaHash(path):
 	"""ComputeSchemaHash(str path) str
 	
@@ -175,5 +143,37 @@ def InjectCommand(cmd, goRun=False):
 	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
 	"""
 	_adk.adk_InjectCommand(cmd, goRun)
+def SetSchemaHash(hash, goRun=False):
+	"""SetSchemaHash(str hash) 
+	
+	SetSchemaHash sets the schema hash for the agent.
+	"""
+	_adk.adk_SetSchemaHash(hash, goRun)
+def AwaitCommand():
+	"""AwaitCommand() str
+	
+	AwaitCommand blocks until a command is received from the supervisor.
+	Returns the command string (e.g. "start", "stop").
+	In a real implementation, this would read from a QUIC stream or IPC socket.
+	"""
+	return _adk.adk_AwaitCommand()
+def SendEvent(jsonStr, goRun=False):
+	"""SendEvent(str jsonStr) 
+	
+	SendEvent sends a generic event to the supervisor via QUIC.
+	"""
+	_adk.adk_SendEvent(jsonStr, goRun)
+def StartHeartbeat(id, typeStr, goRun=False):
+	"""StartHeartbeat(str id, str typeStr) 
+	
+	StartHeartbeat starts a background goroutine that sends heartbeat events.
+	"""
+	_adk.adk_StartHeartbeat(id, typeStr, goRun)
+def StartQUIC(addr):
+	"""StartQUIC(str addr) str
+	
+	StartQUIC initializes the QUIC connection to the supervisor.
+	"""
+	return _adk.adk_StartQUIC(addr)
 
 
