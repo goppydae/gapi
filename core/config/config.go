@@ -54,7 +54,7 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
-	if env := os.Getenv("GAPI_CONFIG"); env != "" {
+	if env := os.Getenv("RUNTIME_CONFIG"); env != "" {
 		viper.SetConfigFile(env)
 	} else {
 		viper.SetConfigName("config")

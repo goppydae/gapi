@@ -321,7 +321,7 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	cmd.Env = os.Environ() // start with env
 
 	if a.nextRunID != "" {
-		cmd.Env = append(cmd.Env, "GAPI_RUN_ID="+a.nextRunID)
+		cmd.Env = append(cmd.Env, "RUNTIME_RUN_ID="+a.nextRunID)
 	}
 
 	if len(extraFiles) > 0 {
@@ -466,7 +466,7 @@ func (a *PythonAgent) Reload(ctx context.Context) error {
 		"--module", a.path, "--id", a.id, "--type", a.typ, "--reload",
 	)
 	if a.nextRunID != "" {
-		cmd.Env = append(os.Environ(), "GAPI_RUN_ID="+a.nextRunID)
+		cmd.Env = append(os.Environ(), "RUNTIME_RUN_ID="+a.nextRunID)
 	}
 	return cmd.Run()
 }

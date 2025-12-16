@@ -53,9 +53,9 @@ security:
 EOF
 
 echo "[TEST] Starting gapid with integrity verification..."
-export GAPI_CONFIG=$(pwd)/test_config.yaml
-export GAPI_AGENTS_DIR="$AGENTS_DIR"
-export GAPI_PY_RUNNER=$(pwd)/adk/python/agent/runner.py
+export RUNTIME_CONFIG=$(pwd)/test_config.yaml
+export RUNTIME_AGENTS_DIR="$AGENTS_DIR"
+export RUNTIME_PY_RUNNER=$(pwd)/adk/python/agent/runner.py
 
 ./bin/gapid > test_integrity.log 2>&1 &
 GAPID_PID=$!

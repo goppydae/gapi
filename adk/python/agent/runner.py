@@ -8,7 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 
 try:
-    if os.getenv("GAPI_FORCE_DUMMY_ADK"):
+    if os.getenv("RUNTIME_FORCE_DUMMY_ADK"):
         raise ImportError("Forced Dummy ADK")
     from gapi.native import adk
 except ImportError as e:
@@ -66,7 +66,7 @@ SCHEMA_VERSION = "1.0.0"
 READY_TIMEOUT_SEC = float(os.getenv("RUNNER_READY_TIMEOUT", "20"))
 GRACE_SEC = float(os.getenv("RUNNER_READY_GRACE", "0.25"))
 READY_MODE = os.getenv("RUNNER_READY_MODE", "strict").lower()  # strict by default now
-RUN_ID = os.getenv("GAPI_RUN_ID", "")
+RUN_ID = os.getenv("RUNTIME_RUN_ID", "")
 
 def _notify(event: str, **kv):
     kv.setdefault("ts", time.time())
@@ -212,7 +212,7 @@ class AgentWrapper:
             self.state = "running"
             # Initialize QUIC connection (default to localhost loopback)
             try:
-                addr = os.getenv("GAPI_MASTER_ADDR", "127.0.0.1:4242")
+                addr = os.getenv("RUNTIME_MASTER_ADDR", "127.0.0.1:4242")
                 adk.StartQUIC(addr)
             except Exception as e:
                 print(f"[RUNNER] Warning: Failed to start QUIC client: {e}")

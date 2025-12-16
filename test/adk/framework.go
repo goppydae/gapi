@@ -51,9 +51,9 @@ func (h *TestHarness) Start() error {
 	// Set environment
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
-		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
-		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
-		"GAPI_FORCE_DUMMY_ADK=1",
+		fmt.Sprintf("RUNTIME_AGENT_PATH=%s", h.agentsDir),
+		fmt.Sprintf("RUNTIME_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
+		"RUNTIME_FORCE_DUMMY_ADK=1",
 	)
 
 	// Capture output for debugging
@@ -65,7 +65,10 @@ func (h *TestHarness) Start() error {
 	}
 
 	// Wait for gapid to be ready
-	time.Sleep(2 * time.Second)
+	if err := h.waitForReady(30 * time.Second); err != nil {
+		h.Stop()
+		return fmt.Errorf("gapid failed to become ready: %w", err)
+	}
 
 	return nil
 }
@@ -171,4 +174,22 @@ func findProjectRoot() (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// waitForReady waits for gapid to be responsive using gapictl ping
+func (h *TestHarness) waitForReady(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		// Check process liveness
+		if h.gapidCmd.ProcessState != nil && h.gapidCmd.ProcessState.Exited() {
+			return fmt.Errorf("gapid process exited unexpectedly")
+		}
+
+		cmd := exec.Command(h.gapictl, "ping")
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return context.DeadlineExceeded
 }

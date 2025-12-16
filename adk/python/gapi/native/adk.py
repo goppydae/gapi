@@ -124,12 +124,6 @@ def NewChannelManager():
 
 
 # ---- Functions ---
-def InjectCommand(cmd, goRun=False):
-	"""InjectCommand(str cmd) 
-	
-	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
-	"""
-	_adk.adk_InjectCommand(cmd, goRun)
 def SendEvent(jsonStr, goRun=False):
 	"""SendEvent(str jsonStr) 
 	
@@ -142,12 +136,12 @@ def SetSchemaHash(hash, goRun=False):
 	SetSchemaHash sets the schema hash for the agent.
 	"""
 	_adk.adk_SetSchemaHash(hash, goRun)
-def StartHeartbeat(id, typeStr, goRun=False):
-	"""StartHeartbeat(str id, str typeStr) 
+def StartQUIC(addr):
+	"""StartQUIC(str addr) str
 	
-	StartHeartbeat starts a background goroutine that sends heartbeat events.
+	StartQUIC initializes the QUIC connection to the supervisor.
 	"""
-	_adk.adk_StartHeartbeat(id, typeStr, goRun)
+	return _adk.adk_StartQUIC(addr)
 def AwaitCommand():
 	"""AwaitCommand() str
 	
@@ -156,6 +150,12 @@ def AwaitCommand():
 	In a real implementation, this would read from a QUIC stream or IPC socket.
 	"""
 	return _adk.adk_AwaitCommand()
+def StartHeartbeat(id, typeStr, goRun=False):
+	"""StartHeartbeat(str id, str typeStr) 
+	
+	StartHeartbeat starts a background goroutine that sends heartbeat events.
+	"""
+	_adk.adk_StartHeartbeat(id, typeStr, goRun)
 def ComputeSchemaHash(path):
 	"""ComputeSchemaHash(str path) str
 	
@@ -169,11 +169,11 @@ def Initialize(name, version, typeStr, goRun=False):
 	Initialize sets up the agent identity.
 	"""
 	_adk.adk_Initialize(name, version, typeStr, goRun)
-def StartQUIC(addr):
-	"""StartQUIC(str addr) str
+def InjectCommand(cmd, goRun=False):
+	"""InjectCommand(str cmd) 
 	
-	StartQUIC initializes the QUIC connection to the supervisor.
+	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
 	"""
-	return _adk.adk_StartQUIC(addr)
+	_adk.adk_InjectCommand(cmd, goRun)
 
 

@@ -22,6 +22,9 @@
         gopy = pkgs.callPackage ./nix/gopy.nix {};
         
       in {
+        # Formatter
+        formatter = pkgs.nixpkgs-fmt;
+
         # Package output
         packages = {
           default = gapi;
@@ -102,6 +105,7 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             go
+            gopls
             gcc
             mage
             openssl
@@ -135,10 +139,6 @@
               echo "Installing gopy..."
               # Impure fallback until upstream fixes go.mod
               go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy
-            fi
-            if ! command -v goimports &> /dev/null; then
-              echo "Installing goimports..."
-              go build -mod=vendor -o $GOBIN/goimports golang.org/x/tools/cmd/goimports
             fi
             if [ -n "$ZSH_VERSION" ]; then
               PROMPT="$PROMPT (nix-shell)"

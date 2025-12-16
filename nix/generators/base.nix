@@ -22,7 +22,7 @@
   networking = {
     hostName = "gapi-test";
     useDHCP = lib.mkDefault true;
-    firewall.enable = true;
+    firewall.enable = lib.mkDefault true;
   };
   
   # Enable SSH for remote access

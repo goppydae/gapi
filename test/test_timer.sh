@@ -14,9 +14,9 @@ transport:
   keyFile: config/certs/server.key
 EOF
 
-export GAPI_CONFIG=$(pwd)/test_timer_config.yaml
-export GAPI_AGENTS_DIR=agents
-export GAPI_PY_RUNNER=$(pwd)/adk/python/agent/runner.py
+export RUNTIME_CONFIG=$(pwd)/test_timer_config.yaml
+export RUNTIME_AGENTS_DIR=agents
+export RUNTIME_PY_RUNNER=$(pwd)/adk/python/agent/runner.py
 
 echo "[TEST] Starting gapid..."
 ./bin/gapid > test_timer.log 2>&1 &
