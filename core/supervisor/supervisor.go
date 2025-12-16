@@ -7,12 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/goppydae/gapi/core/clock"
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/crypto"
 	"github.com/goppydae/gapi/core/metrics"
@@ -39,6 +41,7 @@ type Supervisor struct {
 	registry      *agentreg.AgentRegistry
 	host          string
 	metricsServer *metrics.Server
+	clock         clock.Clock
 }
 
 // New creates a new Supervisor instance.
@@ -107,6 +110,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		bus:      bus,
 		registry: registry,
 		host:     host,
+		clock:    clock.RealClock{},
 	}
 
 	// Initialize build info metrics and create server if enabled
@@ -146,7 +150,7 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		metricsTicker = time.NewTicker(15 * time.Second)
 		defer metricsTicker.Stop()
 
-		startTime := time.Now()
+		startTime := s.clock.Now()
 		go func() {
 			for {
 				select {
@@ -236,9 +240,13 @@ func (s *Supervisor) setupAgents() {
 	sortedIDs, err := s.manager.TopologicalSort()
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("topological sort failed, falling back to random order")
-		for id := range s.manager.All() {
-			sortedIDs = append(sortedIDs, id)
+		allAgents := s.manager.All()
+		ids := make([]string, 0, len(allAgents))
+		for id := range allAgents {
+			ids = append(ids, id)
 		}
+		sort.Strings(ids)
+		sortedIDs = append(sortedIDs, ids...)
 	}
 
 	// Track successfully started/armed agents for dependency resolution
@@ -508,9 +516,9 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 	}
 
 	// Wait for settlement
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := s.clock.Now().Add(20 * time.Second)
 	finalState := ag.Controller().State()
-	for isInFlight(finalState) && time.Now().Before(deadline) {
+	for isInFlight(finalState) && s.clock.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)
 		finalState = ag.Controller().State()
 	}
@@ -572,7 +580,15 @@ func getAgentCI(mgr *agentmgr.AgentManager, id string) interface {
 		return ag
 	}
 	idLower := strings.ToLower(id)
-	for k, ag := range mgr.All() {
+	allAgents := mgr.All()
+	ids := make([]string, 0, len(allAgents))
+	for k := range allAgents {
+		ids = append(ids, k)
+	}
+	sort.Strings(ids)
+
+	for _, k := range ids {
+		ag := allAgents[k]
 		if strings.ToLower(k) == idLower {
 			return ag
 		}

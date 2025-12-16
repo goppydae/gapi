@@ -11,7 +11,7 @@ import (
 // collectMetrics gathers resource usage metrics from all agents
 func (s *Supervisor) collectMetrics(startTime time.Time) {
 	// Update supervisor uptime
-	uptime := time.Since(startTime).Seconds()
+	uptime := s.clock.Since(startTime).Seconds()
 	metrics.SupervisorUptime.Set(uptime)
 
 	// Get all registered agents
@@ -24,7 +24,7 @@ func (s *Supervisor) collectMetrics(startTime time.Time) {
 	// Update total agent count
 	metrics.AgentsTotal.Set(float64(len(entries)))
 
-	s.logger.Debug().Int("agent_count", len(entries)).Dur("uptime", time.Since(startTime)).Msg("collecting metrics")
+	s.logger.Debug().Int("agent_count", len(entries)).Dur("uptime", s.clock.Since(startTime)).Msg("collecting metrics")
 
 	// Collect per-agent metrics
 	for _, entry := range entries {
