@@ -50,8 +50,9 @@ func (h *TestHarness) Start() error {
 
 	// Set environment
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
+	prodAgentsDir := filepath.Join(root, "agents")
 	h.gapidCmd.Env = append(os.Environ(),
-		fmt.Sprintf("RUNTIME_AGENT_PATH=%s", h.agentsDir),
+		fmt.Sprintf("RUNTIME_AGENT_PATH=%s:%s", h.agentsDir, prodAgentsDir),
 		fmt.Sprintf("RUNTIME_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
 		"RUNTIME_FORCE_DUMMY_ADK=1",
 		"RUNTIME_CGROUPS_DISABLE=1",

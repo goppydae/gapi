@@ -1,6 +1,6 @@
 ENABLED = True
 TYPE = "service"
-ID = "simple_service"
+ID = "test_simple_service"
 
 import time
 
