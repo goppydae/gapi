@@ -61,7 +61,7 @@ func Load() (*Config, error) {
 		viper.SetConfigType("yaml")
 		addDefaultPaths() // uses build tag-specific implementation
 	}
-	viper.SetEnvPrefix("GAPI")
+	viper.SetEnvPrefix("RUNTIME")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 

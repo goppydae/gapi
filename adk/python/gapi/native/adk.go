@@ -1225,40 +1225,6 @@ func adk_NewChannelManager() CGoHandle {
 
 // ---- Functions ---
 
-//export adk_StartHeartbeat
-func adk_StartHeartbeat(id *C.char, typeStr *C.char, goRun C.char) {
-	_saved_thread := C.PyEval_SaveThread()
-	defer C.PyEval_RestoreThread(_saved_thread)
-	if boolPyToGo(goRun) {
-		go adk.StartHeartbeat(C.GoString(id), C.GoString(typeStr))
-	} else {
-		adk.StartHeartbeat(C.GoString(id), C.GoString(typeStr))
-	}
-}
-
-//export adk_StartQUIC
-func adk_StartQUIC(addr *C.char) *C.char {
-	_saved_thread := C.PyEval_SaveThread()
-	var __err error
-	__err = adk.StartQUIC(C.GoString(addr))
-
-	C.PyEval_RestoreThread(_saved_thread)
-	if __err != nil {
-		estr := C.CString(__err.Error())
-		C.PyErr_SetString(C.PyExc_RuntimeError, estr)
-		return estr
-	}
-	return C.CString("")
-}
-
-//export adk_AwaitCommand
-func adk_AwaitCommand() *C.char {
-	_saved_thread := C.PyEval_SaveThread()
-	defer C.PyEval_RestoreThread(_saved_thread)
-	return C.CString(adk.AwaitCommand())
-
-}
-
 //export adk_InjectCommand
 func adk_InjectCommand(cmd *C.char, goRun C.char) {
 	_saved_thread := C.PyEval_SaveThread()
@@ -1267,6 +1233,17 @@ func adk_InjectCommand(cmd *C.char, goRun C.char) {
 		go adk.InjectCommand(C.GoString(cmd))
 	} else {
 		adk.InjectCommand(C.GoString(cmd))
+	}
+}
+
+//export adk_SendEvent
+func adk_SendEvent(jsonStr *C.char, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	if boolPyToGo(goRun) {
+		go adk.SendEvent(C.GoString(jsonStr))
+	} else {
+		adk.SendEvent(C.GoString(jsonStr))
 	}
 }
 
@@ -1279,6 +1256,25 @@ func adk_SetSchemaHash(hash *C.char, goRun C.char) {
 	} else {
 		adk.SetSchemaHash(C.GoString(hash))
 	}
+}
+
+//export adk_StartHeartbeat
+func adk_StartHeartbeat(id *C.char, typeStr *C.char, goRun C.char) {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	if boolPyToGo(goRun) {
+		go adk.StartHeartbeat(C.GoString(id), C.GoString(typeStr))
+	} else {
+		adk.StartHeartbeat(C.GoString(id), C.GoString(typeStr))
+	}
+}
+
+//export adk_AwaitCommand
+func adk_AwaitCommand() *C.char {
+	_saved_thread := C.PyEval_SaveThread()
+	defer C.PyEval_RestoreThread(_saved_thread)
+	return C.CString(adk.AwaitCommand())
+
 }
 
 //export adk_ComputeSchemaHash
@@ -1300,13 +1296,17 @@ func adk_Initialize(name *C.char, version *C.char, typeStr *C.char, goRun C.char
 	}
 }
 
-//export adk_SendEvent
-func adk_SendEvent(jsonStr *C.char, goRun C.char) {
+//export adk_StartQUIC
+func adk_StartQUIC(addr *C.char) *C.char {
 	_saved_thread := C.PyEval_SaveThread()
-	defer C.PyEval_RestoreThread(_saved_thread)
-	if boolPyToGo(goRun) {
-		go adk.SendEvent(C.GoString(jsonStr))
-	} else {
-		adk.SendEvent(C.GoString(jsonStr))
+	var __err error
+	__err = adk.StartQUIC(C.GoString(addr))
+
+	C.PyEval_RestoreThread(_saved_thread)
+	if __err != nil {
+		estr := C.CString(__err.Error())
+		C.PyErr_SetString(C.PyExc_RuntimeError, estr)
+		return estr
 	}
+	return C.CString("")
 }

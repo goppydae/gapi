@@ -1,6 +1,8 @@
-# GAPI - Agent Supervision Framework
+# GAPI - Agent Runtime Library
 
-**GAPI** is a lightweight, event-driven supervision framework for managing distributed daemon (agent) lifecycles. Built with Go and Python, it provides systemd-like lifecycle control, resource limits, socket activation, and cryptographic integrity.
+**GAPI** is the core **runtime library** and SDK for the GoPPydae ecosystem. It provides the low-level mechanism for spawning, supervising, and securing agents on a single machine. It is designed to be embedded into larger orchestrators (like [Goblin](../goblin)).
+
+> **Note**: This repository contains the GAPI **library**. For the production daemon, see [Goblin](https://github.com/goppydae/goblin).
 
 ## ✨ Key Features
 
@@ -15,20 +17,14 @@
 ## 🚀 Quick Start
 
 ```bash
-# Install
-# Install
+# Install Reference Tools
 nix develop -c mage build
 
 # Create agent
 gapictl agent new my_service
 
-# Build
-gapictl agent build agents/go/foundational/my_service
-
-# Verify
-gapictl agent verify agents/build/go/my_service
-
-# Run
+# Run with Reference Daemon (gapid)
+# (Useful for local dev/testing without a cluster)
 ./bin/gapid
 ```
 

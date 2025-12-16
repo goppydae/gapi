@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,14 +102,20 @@ func SendEvent(jsonStr string) {
 	event, _ := data["event"].(string)
 	_ = event // Topic logic uses fixed string for now
 	id, _ := data["id"].(string)
-	// state, _ := data["state"].(string)
+	stateRaw, _ := data["state"].(string)
+	runID, _ := data["run_id"].(string)
+
+	msg := jsonStr
+	if runID != "" {
+		msg += fmt.Sprintf(" run_id=%s", runID)
+	}
 
 	// Map to LifecycleStatus
 	// Create a minimal LifecycleStatus matching proto definition
 	stat := &protopkg.LifecycleStatus{
 		AgentId:    id,
-		State:      "unknown", // Default to unknown or extract from data
-		Message:    jsonStr,
+		State:      strings.ToUpper(stateRaw),
+		Message:    msg,
 		SchemaHash: schemaHash,
 	}
 

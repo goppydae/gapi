@@ -18,14 +18,18 @@ except ImportError as e:
         def Initialize(self, n, v, t): pass
         def SendEvent(self, msg): 
             try:
-                sys.stdout.write(msg + "\n")
-                sys.stdout.flush()
+                # Use __stdout__ to bypass any redirection (e.g. during agent start)
+                sys.__stdout__.write(msg + "\n")
+                sys.__stdout__.flush()
             except BrokenPipeError:
                 pass
         def StartHeartbeat(self, id, t): pass
         def SetSchemaHash(self, h): pass
         def ComputeSchemaHash(self, f): return "dummy_hash"
         def StartQUIC(self, addr): pass
+    
+    # Instantiate the dummy ADK
+    adk = DummyAdk()
 
 try:
     from gapi.schemas import AgentMetadata

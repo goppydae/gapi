@@ -22,7 +22,7 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 - **Scope**: STRICTLY single-machine.
 - **Responsibility**: "I know how to start a process, capture its logs, restart it if it crashes, and verify its signature."
 - **Ignorance**: GAPI knows **nothing** about clusters, other nodes, leader election, or consensus. It treats the world as if it is the only computer in existence.
-- **Role**: GAPI is the **library** or **framework** that Goblin (or any other tool) imports to perform local work.
+- **Role**: GAPI is the **library** or **framework** that Goblin imports to perform local work. It is **embedded** directly into the `goblind` process.
 
 #### 2. Goblin (The Orchestrator / Keyword: "Cluster")
 - **Scope**: Coordination **across machines**.

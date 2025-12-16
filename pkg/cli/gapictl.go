@@ -18,8 +18,8 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "gapictl",
-	Short: "GAPI Control CLI",
-	Long:  "CLI for controlling GAPI agents and supervisors.",
+	Short: "Runtime Control CLI",
+	Long:  "CLI for controlling Runtime agents and supervisors.",
 }
 
 // Execute runs the root command.

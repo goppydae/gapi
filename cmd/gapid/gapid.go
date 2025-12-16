@@ -24,6 +24,8 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+var runtimeAddr string
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version info",
@@ -35,6 +37,7 @@ var versionCmd = &cobra.Command{
 func init() {
 	logcore.Init(zerolog.InfoLevel)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.Flags().StringVar(&runtimeAddr, "runtime-addr", "", "Runtime bind address (default: 127.0.0.1:4242)")
 }
 
 func main() {
@@ -50,6 +53,11 @@ func run() error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Override from flag
+	if runtimeAddr != "" {
+		cfg.Transport.Address = runtimeAddr
 	}
 
 	// Initialize Supervisor

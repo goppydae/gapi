@@ -52,9 +52,17 @@ If code or docs disagree with this file, the disagreement must be resolved.
 **Definition:** Separation of concerns between capability provision (Mechanism) and decision logic (Policy).
 
 **Invariants:**
-- **GAPI** is pure Mechanism (how to start, stop, monitor).
-- **Goblin** is Policy (when to start, where to schedule).
+- **GAPI** is pure Mechanism (how to start, stop, monitor). It is a **Library** embedded in the Node.
+- **Goblin** is Policy (when to start, where to schedule). It is the **Daemon**.
 - Mechanism layers MUST NOT import Policy layers.
+
+## Node
+**Definition:** A single running instance of the **Goblin Daemon** (`goblind`).
+
+**Invariants:**
+- A Node is both a Cluster Member (Serf/Raft) and an Agent Host (GAPI).
+- A Node has a unique ID.
+- A Node is the atomic unit of failure in the cluster.
 
 ## Security Boundary
 **Definition:** The trust perimeter between the GAPI kernel and the Agents it manages.

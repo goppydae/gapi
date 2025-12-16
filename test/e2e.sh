@@ -27,8 +27,10 @@ cleanup() {
 trap cleanup EXIT
 
 # 0. Build
-log "Building project..."
-CGO_ENABLED=0 go run github.com/magefile/mage@latest buildall
+# 0. Build
+# (Handled by Magefile dependency)
+# log "Building project..."
+# CGO_ENABLED=0 go run github.com/magefile/mage@latest buildall
 
 # 0.5 Generate Certs (Go-native)
 log "Generating certs..."
@@ -95,7 +97,7 @@ log "Created config.yaml"
 export GAPI_CONFIG="$(pwd)/config.yaml"
 
 # 2. Setup Agents
-cp agents/heartbeat.py.service $TEST_AGENTS_DIR/heartbeat.py.service
+cp agents/python/services/heartbeat.py.service $TEST_AGENTS_DIR/heartbeat.py.service
 # Create a dependency
 cat <<EOF > $TEST_AGENTS_DIR/base.py.service
 ID = "base"
@@ -117,7 +119,8 @@ grep -q "DEPS =" $TEST_AGENTS_DIR/heartbeat.py.service || echo 'DEPS = ["base"]'
 
 # 2. Start Daemon
 log "Starting gapid..."
-export GAPI_AGENTS_DIR="$TEST_AGENTS_DIR"
+export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
+export GAPI_FORCE_DUMMY_ADK=1
 ./bin/gapid > gapid.log 2>&1 &
 GAPID_PID=$!
 log "gapid PID: $GAPID_PID"
