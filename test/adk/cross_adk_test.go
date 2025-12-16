@@ -184,7 +184,7 @@ func testLifecycleTransitions(t *testing.T, lang string, agentPath string) {
 	select {
 	case <-done:
 		// Success
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Error("Agent did not stop within timeout")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/goppydae/gapi/internal/eventbus"
 	protopkg "github.com/goppydae/gapi/internal/proto"
@@ -31,7 +32,11 @@ func NewQUICServer(addr string, cert tls.Certificate) (*QUIC, error) {
 		Certificates: []tls.Certificate{cert},
 		NextProtos:   []string{"gapi-quic"},
 	}
-	ln, err := quic.ListenAddr(addr, tlsConf, nil)
+	quicConfig := &quic.Config{
+		KeepAlivePeriod: 10 * time.Second,
+		MaxIdleTimeout:  60 * time.Second,
+	}
+	ln, err := quic.ListenAddr(addr, tlsConf, quicConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +53,11 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 	if cert != nil {
 		tlsConf.Certificates = []tls.Certificate{*cert}
 	}
-	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, nil)
+	quicConfig := &quic.Config{
+		KeepAlivePeriod: 10 * time.Second,
+		MaxIdleTimeout:  60 * time.Second,
+	}
+	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, quicConfig)
 	if err != nil {
 		return nil, err
 	}
