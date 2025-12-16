@@ -25,6 +25,9 @@ jobs:
       - name: Build
         run: nix develop -c mage build
       
+      - name: Test
+        run: nix develop -c go test -v ./...
+      
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:

@@ -9,13 +9,18 @@ def initialize():
     """Initialize the agent"""
     print("[simple_service] Initialized")
 
-def start():
+def start(stop_evt=None):
     """Start the agent"""
     print("[simple_service] Started")
-    # Service runs indefinitely
+    # Service runs until stop event is set
     import time
-    while True:
-        time.sleep(1)
+    if stop_evt:
+        while not stop_evt.is_set():
+            time.sleep(0.1)
+    else:
+        # Fallback for old runner or direct execution
+        while True:
+            time.sleep(1)
 
 def stop():
     """Stop the agent"""

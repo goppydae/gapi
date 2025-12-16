@@ -53,6 +53,7 @@ func (h *TestHarness) Start() error {
 	h.gapidCmd.Env = append(os.Environ(),
 		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
 		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
+		"GAPI_FORCE_DUMMY_ADK=1",
 	)
 
 	// Capture output for debugging
@@ -88,21 +89,33 @@ func (h *TestHarness) Stop() error {
 
 // GetAgentState returns the current state of an agent
 func (h *TestHarness) GetAgentState(id string) (string, error) {
-	cmd := exec.Command(h.gapictl, "status")
+	cmd := exec.Command(h.gapictl, "agent-status")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("gapictl status failed: %w", err)
+		return "", fmt.Errorf("gapictl status failed: %w\nOutput: %s", err, output)
 	}
 
 	// Parse output to find agent state
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines {
 		if strings.Contains(line, id) {
-			// Extract state from line
-			// Format: "agent_id    STATE    ..."
+			// Format: " - agent_id (type) [state] ..."
+			// Example: " - simple_service (service) [running]"
+			if idx := strings.Index(line, "["); idx != -1 {
+				end := strings.Index(line[idx:], "]")
+				if end != -1 {
+					state := line[idx+1 : idx+end]
+					return state, nil
+				}
+			}
+			// Fallback to old format just in case?
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
-				return fields[1], nil
+				// Check which field is the state.
+				// If old format "ID STATE", fields[1] is state.
+				// But new format " - ID ...", fields[1] is ID.
+				// If line starts with "-", assume new format and we missed the brackets?
+				// Just rely on brackets for now as gapictl.go strictly uses them.
 			}
 		}
 	}
@@ -129,10 +142,13 @@ func (h *TestHarness) WaitForState(id, expectedState string, timeout time.Durati
 		if err == nil && strings.EqualFold(state, expectedState) {
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
-	currentState, _ := h.GetAgentState(id)
+	currentState, err := h.GetAgentState(id)
+	if err != nil {
+		return fmt.Errorf("timeout waiting for %s to reach state %s (last error: %v)", id, expectedState, err)
+	}
 	return fmt.Errorf("timeout waiting for %s to reach state %s (current: %s)", id, expectedState, currentState)
 }
 

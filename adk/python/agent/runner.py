@@ -8,6 +8,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 
 try:
+    if os.getenv("GAPI_FORCE_DUMMY_ADK"):
+        raise ImportError("Forced Dummy ADK")
     from gapi.native import adk
 except ImportError as e:
     print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
@@ -15,10 +17,15 @@ except ImportError as e:
     class DummyAdk:
         def Initialize(self, n, v, t): pass
         def SendEvent(self, msg): 
-            sys.stdout.write(msg + "\n")
-            sys.stdout.flush()
+            try:
+                sys.stdout.write(msg + "\n")
+                sys.stdout.flush()
+            except BrokenPipeError:
+                pass
         def StartHeartbeat(self, id, t): pass
-    adk = DummyAdk()
+        def SetSchemaHash(self, h): pass
+        def ComputeSchemaHash(self, f): return "dummy_hash"
+        def StartQUIC(self, addr): pass
 
 try:
     from gapi.schemas import AgentMetadata
@@ -201,7 +208,8 @@ class AgentWrapper:
             self.state = "running"
             # Initialize QUIC connection (default to localhost loopback)
             try:
-                adk.StartQUIC("127.0.0.1:4242")
+                addr = os.getenv("GAPI_MASTER_ADDR", "127.0.0.1:4242")
+                adk.StartQUIC(addr)
             except Exception as e:
                 print(f"[RUNNER] Warning: Failed to start QUIC client: {e}")
 
@@ -355,6 +363,8 @@ def main():
 
     def on_sigterm(signum, frame):
         agent.stop()
+        # Give time for events to flush (especially over stdout/QUIC)
+        time.sleep(5.0)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, on_sigterm)
