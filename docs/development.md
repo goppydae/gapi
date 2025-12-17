@@ -67,10 +67,9 @@ By default, `gapid`:
 - Loads `config.yaml` from the current directory
 
 ### Use the CLI
-
 ```bash
 # Check status
-./bin/gapictl agent-status
+./bin/gapictl agent status
 
 # Lifecycle control
 ./bin/gapictl lifecycle start myagent

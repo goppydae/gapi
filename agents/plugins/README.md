@@ -135,7 +135,7 @@ go build -buildmode=plugin ...
 GAPI_ENABLE_PLUGINS=1 gapid
 
 # Verify plugin is loaded
-gapictl agent-status | grep event_router
+gapictl agent status | grep event_router
 ```
 
 ## Best Practices

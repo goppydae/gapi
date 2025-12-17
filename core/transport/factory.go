@@ -51,17 +51,17 @@ func generateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // QUIC server transport.
-func NewQUICServerTransport(addr, certFile, keyFile string) (eventbus.Transport[*anypb.Any], error) {
+func NewQUICServerTransport(addr, tlsCert, tlsKey string) (eventbus.Transport[*anypb.Any], error) {
 	var cert tls.Certificate
 	var err error
 
-	if certFile == "" || keyFile == "" {
+	if tlsCert == "" || tlsKey == "" {
 		cert, err = generateSelfSignedCert()
 		if err != nil {
 			return nil, fmt.Errorf("generate self-signed cert: %w", err)
 		}
 	} else {
-		cert, err = tls.LoadX509KeyPair(certFile, keyFile)
+		cert, err = tls.LoadX509KeyPair(tlsCert, tlsKey)
 		if err != nil {
 			return nil, fmt.Errorf("load cert: %w", err)
 		}
@@ -71,18 +71,21 @@ func NewQUICServerTransport(addr, certFile, keyFile string) (eventbus.Transport[
 }
 
 // QUIC client transport.
-func NewQUICClientTransport(addr, certFile, keyFile string) (eventbus.Transport[*anypb.Any], error) {
+func NewQUICClientTransport(cfg config.TransportConfig) (eventbus.Transport[*anypb.Any], error) {
 	var cert *tls.Certificate
 
-	if certFile != "" && keyFile != "" {
-		c, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if cfg.TLSCert != "" && cfg.TLSKey != "" {
+		c, err := tls.LoadX509KeyPair(cfg.TLSCert, cfg.TLSKey)
 		if err != nil {
 			return nil, fmt.Errorf("load cert: %w", err)
 		}
 		cert = &c
 	}
-	// 👇 removed generic index syntax
-	return NewQUICClient(addr, cert, TLSConfig{InsecureSkipVerify: true})
+	tlsCfg := TLSConfig{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		CAFile:             cfg.TLSCA,
+	}
+	return NewQUICClient(cfg.Address, cert, tlsCfg)
 }
 
 // Config-driven server.
@@ -91,7 +94,7 @@ func NewServerFromConfig(cfg config.TransportConfig) (eventbus.Transport[*anypb.
 	case "local":
 		return &Local[*anypb.Any]{}, nil
 	case "quic":
-		return NewQUICServerTransport(cfg.Address, cfg.CertFile, cfg.KeyFile)
+		return NewQUICServerTransport(cfg.Address, cfg.TLSCert, cfg.TLSKey)
 	default:
 		return nil, fmt.Errorf("unknown transport type: %s", cfg.Type)
 	}
@@ -103,7 +106,7 @@ func NewClientFromConfig(cfg config.TransportConfig) (eventbus.Transport[*anypb.
 	case "local":
 		return &Local[*anypb.Any]{}, nil
 	case "quic":
-		return NewQUICClientTransport(cfg.Address, cfg.CertFile, cfg.KeyFile)
+		return NewQUICClientTransport(cfg)
 	default:
 		return nil, fmt.Errorf("unknown transport type: %s", cfg.Type)
 	}

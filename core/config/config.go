@@ -10,10 +10,12 @@ import (
 )
 
 type TransportConfig struct {
-	Type     string `mapstructure:"type"`
-	Address  string `mapstructure:"address"`
-	CertFile string `mapstructure:"certFile"`
-	KeyFile  string `mapstructure:"keyFile"`
+	Type               string `mapstructure:"type"`
+	Address            string `mapstructure:"address"`
+	TLSCert            string `mapstructure:"tlsCert"`
+	TLSKey             string `mapstructure:"tlsKey"`
+	TLSCA              string `mapstructure:"tlsCa"`
+	InsecureSkipVerify bool   `mapstructure:"insecureSkipVerify"`
 }
 
 type SecurityConfig struct {
@@ -84,6 +86,7 @@ func Load() (*Config, error) {
 	// Zero-config defaults
 	viper.SetDefault("transport.type", "quic")
 	viper.SetDefault("transport.address", ":14242")
+	viper.SetDefault("transport.insecureSkipVerify", true)
 	viper.SetDefault("metrics.enabled", false)
 	viper.SetDefault("metrics.addr", "127.0.0.1:19090")
 

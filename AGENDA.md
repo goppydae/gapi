@@ -2,6 +2,15 @@
 
 <!-- This file tracks the immediate development plan for the GAPI project. -->
 
+## Active Hypotheses
+- [x] **GAPI-HYP-01**: If `NewQUICClient` is updated to accept a `tls.Config`, then the client can be configured to verify the server certificate, preventing man-in-the-middle attacks.
+
+## Blockers
+- None.
+
+## Deferred Risks
+- **SEC-01**: Current transport implementation uses `InsecureSkipVerify: true` by default.
+
 ## Phase 0: Core Library Refactor (Priority)
 **Goal**: Export stable core APIs for Goblin integration.
 
@@ -22,7 +31,7 @@
 ## 1. Security: Enforce TLS in Transport
 - **Location**: `internal/transport/quic.go`
 - **Context**: `NewQUICClient` has hardcoded `InsecureSkipVerify: true`.
-- [ ] **Action**: Update constructor to accept `TLSConfig` (CA, Insecure flag) similar to Goblin.
+- [x] **Action**: Update constructor to accept `TLSConfig` (CA, Insecure flag) similar to Goblin.
 - **Benefit**: Allows ADKs to verify the Supervisor's identity in production.
 
 ## 2. Feature: Loki Log Output
@@ -32,3 +41,18 @@
 
 ## 3. Documentation Audit
 - [ ] **Action**: verify correctness of docs.
+
+## Phase 2: CLI Harmonization and Port Refactoring
+
+### 1. Port Configuration Refactoring
+- [x] **Action**: Update default ports to non-standard values.
+- [x] **Transport**: `14242`
+- [x] **Metrics**: `19090`
+- **Status**: ✅ Complete (Dec 17, 2025)
+
+### 2. CLI Command Harmonization
+- [x] **Action**: Refactor `gapictl` into namespaces (`agent`, `lifecycle`, `crypto`).
+- [x] **Action**: Standardize naming (hyphens to subcommands).
+- [x] **Action**: Implement `agent status` default tree view.
+- [x] **Action**: Implement `agent reload` deep scan semantics.
+- **Status**: ✅ Complete (Dec 17, 2025)

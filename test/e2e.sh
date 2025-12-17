@@ -137,7 +137,7 @@ log "Starting agent..."
 ./bin/gapictl lifecycle start heartbeat
 
 log "Checking agent status..."
-STATUS_OUTPUT=$(./bin/gapictl agent-status)
+STATUS_OUTPUT=$(./bin/gapictl agent status)
 echo "$STATUS_OUTPUT"
 
 if echo "$STATUS_OUTPUT" | grep -q "heartbeat" && echo "$STATUS_OUTPUT" | grep -qE "running|starting"; then
@@ -147,7 +147,7 @@ else
 fi
 
 log "Checking dependency tree..."
-TREE_OUTPUT=$(./bin/gapictl agent-status --tree)
+TREE_OUTPUT=$(./bin/gapictl agent status --tree)
 echo "$TREE_OUTPUT"
 if echo "$TREE_OUTPUT" | grep -q "heartbeat" && echo "$TREE_OUTPUT" | grep -q "base"; then
     log "SUCCESS: tree view contains agents"

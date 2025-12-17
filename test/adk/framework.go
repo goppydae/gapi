@@ -94,7 +94,7 @@ func (h *TestHarness) Stop() error {
 
 // GetAgentState returns the current state of an agent
 func (h *TestHarness) GetAgentState(id string) (string, error) {
-	cmd := exec.Command(h.gapictl, "agent-status")
+	cmd := exec.Command(h.gapictl, "agent", "status")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("gapictl status failed: %w\nOutput: %s", err, output)

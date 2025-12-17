@@ -50,7 +50,8 @@ func StartQUIC(addr string) error {
 
 	// Connect to local GAPI server
 	// TODO: Support secure connections for remote agents
-	agent, err := transport.NewQUICClient(addr, nil, transport.TLSConfig{InsecureSkipVerify: true})
+	tlsCfg := transport.TLSConfig{InsecureSkipVerify: true}
+	agent, err := transport.NewQUICClient(addr, nil, tlsCfg)
 	if err != nil {
 		return fmt.Errorf("failed to start QUIC client: %w", err)
 	}
