@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/goppydae/gapi/pkg/magelib"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/zeebo/blake3"
@@ -133,71 +134,23 @@ func Clean() error {
 // Proto generates protobuf code
 func Proto() error {
 	mg.Deps(checkHermetic)
-	fmt.Println("Generating protobuf code...")
-
-	protoFiles, err := filepath.Glob("proto/*.proto")
-	if err != nil {
-		return err
-	}
-
-	for _, file := range protoFiles {
-		args := []string{
-			"--go_out=.",
-			"--go_opt=paths=source_relative",
-			"--go-grpc_out=.",
-			"--go-grpc_opt=paths=source_relative",
-			file,
-		}
-		if err := sh.Run("protoc", args...); err != nil {
-			return fmt.Errorf("protoc failed for %s: %w", file, err)
-		}
-	}
-
-	// Copy generated files to pkg/proto/
-	if err := os.MkdirAll("pkg/proto", 0755); err != nil {
-		return fmt.Errorf("failed to create pkg/proto directory: %w", err)
-	}
-
-	pbFiles, err := filepath.Glob("proto/*.pb.go")
-	if err != nil {
-		return err
-	}
-
-	for _, src := range pbFiles {
-		dst := filepath.Join("pkg/proto", filepath.Base(src))
-		if err := sh.Copy(dst, src); err != nil {
-			return fmt.Errorf("failed to copy %s to %s: %w", src, dst, err)
-		}
-	}
-
-	fmt.Println("✅ Protobuf generation complete")
-	return nil
+	return magelib.GenerateProto("proto/*.proto", "pkg/proto")
 }
 
 // Fmt formats all Go code
 func Fmt() error {
-	fmt.Println("Formatting code...")
-	return sh.RunV("go", "fmt", "./...")
+	return magelib.Fmt()
 }
 
 // Lint runs linters
 func Lint() error {
-	fmt.Println("Running linters...")
-
-	// Check if golangci-lint is available
-	if _, err := exec.LookPath("golangci-lint"); err == nil {
-		return sh.RunV("golangci-lint", "run")
-	}
-
-	// Fallback to go vet
-	fmt.Println("golangci-lint not found, using go vet...")
-	return sh.RunV("go", "vet", "./...")
+	mg.Deps(checkHermetic)
+	return magelib.Lint()
 }
 
 // Tidy runs go mod tidy
 func Tidy() error {
-	fmt.Println("Tidying go.mod...")
-	return sh.Run("go", "mod", "tidy")
+	return magelib.Tidy()
 }
 
 // Dev runs the development build and starts gapid
@@ -263,43 +216,7 @@ func (Docs) Man() error {
 
 // checkHermetic ensures tools are running from Nix store
 func checkHermetic() error {
-	tools := []string{"go", "gcc", "protoc"}
-
-	if _, err := exec.LookPath("pandoc"); err == nil {
-		tools = append(tools, "pandoc")
-	}
-
-	for _, tool := range tools {
-		path, err := exec.LookPath(tool)
-		if err != nil {
-			return fmt.Errorf("%s not found. Run 'nix develop'", tool)
-		}
-
-		// In Nix, tools are in /nix/store/.../bin/tool
-		// except when wrapper scripts or direnv are involved, checking /nix/store is a strong signal.
-		// However, in devShells, PATH often points to /nix/store/.../bin
-
-		// Strict check: fails if not in /nix/store
-		// Using strings.Contains for simplicity (could be /nix/store or a symlink to it)
-		// Real path resolution might be needed if using symlinks.
-
-		realPath, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			realPath = path // fallback
-		}
-
-		if len(realPath) < 10 || realPath[:10] != "/nix/store" {
-			fmt.Printf("⚠️  Warning: %s is not running from Nix store (%s). Hermetic build not guaranteed.\n", tool, realPath)
-			// We warn instead of erroring for now to allow local dev flexibility if needed,
-			// but could switch to error for CI.
-		}
-	}
-	return nil
-}
-
-// ensureGCC checks if gcc is available (deprecated by checkHermetic but kept for compatibility)
-func ensureGCC() error {
-	return checkHermetic()
+	return magelib.CheckHermetic()
 }
 
 // Python namespace for python-related tasks

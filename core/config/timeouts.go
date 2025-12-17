@@ -3,7 +3,7 @@ package config
 import "time"
 
 // QUIC Transport Timeouts
-const (
+var (
 	// QUICStreamTimeout is the max time for a single QUIC stream operation.
 	// Rationale: Covers network latency + agent marshaling/unmarshaling (< 10s typical).
 	QUICStreamTimeout = 10 * time.Second
@@ -14,7 +14,7 @@ const (
 )
 
 // Client Lifecycle Timeouts
-const (
+var (
 	// ClientPendingTimeout is the max wait for an agent to enter PENDING state.
 	// Rationale: Fast-fail if supervisor doesn't acknowledge command quickly.
 	ClientPendingTimeout = 2 * time.Second
@@ -25,7 +25,7 @@ const (
 )
 
 // Supervisor Timeouts
-const (
+var (
 	// SupervisorStartDeadline is the max time for an agent to report ready after start command.
 	// Rationale: Aligns with ClientTerminalTimeout to prevent supervisor-client mismatch.
 	SupervisorStartDeadline = 20 * time.Second
@@ -36,7 +36,7 @@ const (
 )
 
 // Test Timeouts (more generous for CI environments)
-const (
+var (
 	// TestAgentStartTimeout is the max time to wait for agent start in tests.
 	// Rationale: CI environments may be slow; 2-minute buffer covers edge cases.
 	TestAgentStartTimeout = 120 * time.Second

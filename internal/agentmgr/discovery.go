@@ -64,15 +64,16 @@ type Agent interface {
 }
 
 type AgentManager struct {
-	bus    *eventbus.EventBus[*anypb.Any] // ← T is *anypb.Any
-	lbus   *lifecycle.TypedBus
-	pyRun  string // path to adk runner
-	agents map[string]Agent
+	bus            *eventbus.EventBus[*anypb.Any] // ← T is *anypb.Any
+	lbus           *lifecycle.TypedBus
+	pyRun          string // path to adk runner
+	agents         map[string]Agent
+	productionMode bool
 }
 
-func NewAgentManager(bus *eventbus.EventBus[*anypb.Any], lbus *lifecycle.TypedBus, pyRunnerPath string) *AgentManager {
+func NewAgentManager(bus *eventbus.EventBus[*anypb.Any], lbus *lifecycle.TypedBus, pyRunnerPath string, productionMode bool) *AgentManager {
 	return &AgentManager{
-		bus: bus, lbus: lbus, pyRun: pyRunnerPath, agents: map[string]Agent{},
+		bus: bus, lbus: lbus, pyRun: pyRunnerPath, agents: map[string]Agent{}, productionMode: productionMode,
 	}
 }
 
@@ -261,6 +262,7 @@ func (am *AgentManager) processDiscovered(path string, d struct {
 			meta.Capabilities,
 			am.bus,
 			depView{am},
+			am.productionMode, // added
 		)
 	} else {
 		// Go/Binary Agent

@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"errors"
 	"io"
 	"log"
+	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/internal/eventbus"
@@ -69,12 +72,40 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 // ---- Server / Client loops ----
 
 func (q *QUIC) acceptLoop() {
+	log.Printf("[INFO] QUIC listener started on %s", q.listener.Addr())
+	var tempDelay time.Duration
+
 	for {
 		conn, err := q.listener.Accept(context.Background())
 		if err != nil {
-			log.Println("QUIC accept:", err)
+			// Check for intentional shutdown
+			if errors.Is(err, quic.ErrServerClosed) {
+				log.Println("[INFO] QUIC listener closed")
+				return
+			}
+
+			// Handle temporary errors with exponential backoff
+			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+				if tempDelay == 0 {
+					tempDelay = 5 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 1 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+				log.Printf("[WARN] QUIC accept temporary error: %v; retrying in %v", err, tempDelay)
+				time.Sleep(tempDelay)
+				continue
+			}
+
+			// Fatal error
+			log.Printf("[ERROR] QUIC accept fatal error: %v", err)
 			return
 		}
+
+		// Reset temporary delay on success
+		tempDelay = 0
 		go q.handleConn(conn)
 	}
 }

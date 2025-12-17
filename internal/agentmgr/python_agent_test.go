@@ -139,6 +139,7 @@ func TestPythonAgent_Constructor(t *testing.T) {
 		[]string{"CAP_NET_BIND_SERVICE"},
 		bus,
 		depResolver,
+		false,
 	)
 
 	if agent.ID() != "test_py_agent" {
@@ -188,6 +189,7 @@ func TestPythonAgent_Describe(t *testing.T) {
 		[]string{"CAP_SYS_ADMIN"},
 		bus,
 		depResolver,
+		false,
 	)
 
 	desc := agent.Describe()
@@ -231,6 +233,7 @@ func TestPythonAgent_Controller(t *testing.T) {
 		nil,
 		bus,
 		depResolver,
+		false,
 	)
 
 	ctrl := agent.Controller()
@@ -257,6 +260,7 @@ func TestPythonAgent_EnsureListener(t *testing.T) {
 		nil,
 		bus,
 		depResolver,
+		false,
 	)
 
 	// Test creating listener
@@ -347,16 +351,11 @@ func TestPythonAgent_PublishStatus(t *testing.T) {
 		nil,
 		bus,
 		depResolver,
+		false,
 	)
 
 	// Publish a status
 	agent.publishStatus("running", "Agent started successfully")
 
 	// Verify event was published
-
-	}
-
-	}
-
-	}
 }

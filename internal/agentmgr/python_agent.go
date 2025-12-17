@@ -55,6 +55,8 @@ type PythonAgent struct {
 	cpuLimit string
 	memLimit string
 
+	productionMode bool // added
+
 	nextRunID string
 	startTime time.Time
 	bus       *eventbus.EventBus[*anypb.Any]
@@ -71,21 +73,23 @@ func NewPythonAgent(
 	caps []string,
 	globalBus *eventbus.EventBus[*anypb.Any],
 	depView lifecycle.DependencyResolver,
+	productionMode bool, // added
 ) *PythonAgent {
 	host, _ := os.Hostname()
 	a := &PythonAgent{
 		id: id, typ: typ, path: modulePath, runner: runnerPath,
-		requires:     append([]string(nil), reqs...),
-		wants:        append([]string(nil), wants...),
-		wantedBy:     append([]string(nil), wantedBy...),
-		requiredBy:   append([]string(nil), requiredBy...),
-		capabilities: append([]string(nil), caps...),
-		listenSpec:   listenStream,
-		cpuLimit:     cpuLimit,
-		memLimit:     memLimit,
-		nextRunID:    "",
-		bus:          globalBus,
-		hostname:     host,
+		requires:       append([]string(nil), reqs...),
+		wants:          append([]string(nil), wants...),
+		wantedBy:       append([]string(nil), wantedBy...),
+		requiredBy:     append([]string(nil), requiredBy...),
+		capabilities:   append([]string(nil), caps...),
+		listenSpec:     listenStream,
+		cpuLimit:       cpuLimit,
+		memLimit:       memLimit,
+		nextRunID:      "",
+		bus:            globalBus,
+		hostname:       host,
+		productionMode: productionMode,
 	}
 	a.ctrl = lifecycle.NewController(id, host, a, a.bus, depView)
 
@@ -115,16 +119,18 @@ func (a *PythonAgent) Describe() map[string]string {
 	return map[string]string{
 		"id":            a.id,
 		"type":          a.typ,
-		"lang":          "python",
+		"language":      "python",
+		"path":          a.path,
 		"state":         a.ctrl.State(),
 		"requires":      strings.Join(a.requires, ","),
 		"wants":         strings.Join(a.wants, ","),
 		"wanted_by":     strings.Join(a.wantedBy, ","),
 		"required_by":   strings.Join(a.requiredBy, ","),
 		"capabilities":  strings.Join(a.capabilities, ","),
-		"listen_stream": a.listenSpec, // Added listen_stream to description
-		// backward compat?
-		"deps": strings.Join(a.requires, ","),
+		"listen_stream": a.listenSpec,
+		"cpu_limit":     a.cpuLimit,
+		"mem_limit":     a.memLimit,
+		"deps":          strings.Join(a.requires, ","),
 	}
 }
 
@@ -325,6 +331,10 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 
 	if a.nextRunID != "" {
 		cmd.Env = append(cmd.Env, "RUNTIME_RUN_ID="+a.nextRunID)
+	}
+
+	if a.productionMode {
+		cmd.Env = append(cmd.Env, "RUNTIME_REJECT_DUMMY_ADK=1")
 	}
 
 	if len(extraFiles) > 0 {
@@ -663,7 +673,7 @@ func getString(m map[string]any, key string) (string, bool) {
 	case string:
 		return t, true
 	default:
-		return fmt.Sprintf("%v", t), true
+		return "", false
 	}
 }
 

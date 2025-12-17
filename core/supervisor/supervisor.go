@@ -67,7 +67,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 
 	// Agent Manager
 	pyRunner := resolvePyRunner()
-	manager := agentmgr.NewAgentManager(bus, &typedBus, pyRunner)
+	manager := agentmgr.NewAgentManager(bus, &typedBus, pyRunner, cfg.Supervisor.ProductionMode)
 
 	// Store & Registry
 	raw, err := store.Open(store.Hybrid)

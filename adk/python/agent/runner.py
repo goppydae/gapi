@@ -12,6 +12,10 @@ try:
         raise ImportError("Forced Dummy ADK")
     from gapi.native import adk
 except ImportError as e:
+    if os.getenv("RUNTIME_REJECT_DUMMY_ADK"):
+        print(f"[FATAL] Failed to import gapi.native.adk and RUNTIME_REJECT_DUMMY_ADK is set: {e}", file=sys.stderr)
+        sys.exit(1)
+    
     print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
     # Use a dummy adk if bindings fail (for bootstrapping/testing without compilation)
     class DummyAdk:
