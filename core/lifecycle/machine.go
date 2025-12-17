@@ -4,9 +4,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/state"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
-	"github.com/goppydae/gapi/internal/state"
 )
 
 const (

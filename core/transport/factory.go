@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -82,7 +82,7 @@ func NewQUICClientTransport(addr, certFile, keyFile string) (eventbus.Transport[
 		cert = &c
 	}
 	// 👇 removed generic index syntax
-	return NewQUICClient(addr, cert)
+	return NewQUICClient(addr, cert, TLSConfig{InsecureSkipVerify: true})
 }
 
 // Config-driven server.

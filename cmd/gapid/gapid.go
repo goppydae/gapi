@@ -37,7 +37,7 @@ var versionCmd = &cobra.Command{
 func init() {
 	logcore.Init(zerolog.InfoLevel)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.Flags().StringVar(&runtimeAddr, "runtime-addr", "", "Runtime bind address (default: 127.0.0.1:4242)")
+	rootCmd.Flags().StringVar(&runtimeAddr, "runtime-addr", "", "Runtime bind address (default: 127.0.0.1:14242)")
 }
 
 func main() {

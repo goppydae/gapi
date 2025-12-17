@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/goppydae/gapi/internal/eventbus"
-	"github.com/goppydae/gapi/internal/lifecycle"
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/lifecycle"
 	"github.com/rs/zerolog/log"
 )
 

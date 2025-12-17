@@ -3,7 +3,7 @@ package transport
 import (
 	"context"
 
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 )
 
 // Local provides an in-proc “loopback” transport used for testing or single-process mode.

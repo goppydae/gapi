@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/goppydae/gapi/internal/eventbus"
-	"github.com/goppydae/gapi/internal/transport"
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/transport"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -48,11 +48,13 @@ func StartQUIC(addr string) error {
 		return nil
 	}
 
-	qc, err := transport.NewQUICClient(addr, nil)
+	// Connect to local GAPI server
+	// TODO: Support secure connections for remote agents
+	agent, err := transport.NewQUICClient(addr, nil, transport.TLSConfig{InsecureSkipVerify: true})
 	if err != nil {
 		return fmt.Errorf("failed to start QUIC client: %w", err)
 	}
-	quicClient = qc
+	quicClient = agent
 	log.Printf("[GAPI-ADK] Connected to supervisor at %s (QUIC)", addr)
 	return nil
 }

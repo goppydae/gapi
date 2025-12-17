@@ -18,9 +18,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/goppydae/gapi/internal/cgroups"
-	"github.com/goppydae/gapi/internal/eventbus"
-	"github.com/goppydae/gapi/internal/lifecycle"
+	"github.com/goppydae/gapi/core/cgroups"
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/lifecycle"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
 

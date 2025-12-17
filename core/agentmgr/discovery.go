@@ -16,9 +16,9 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/goppydae/gapi/core/config"
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/lifecycle"
 	"github.com/goppydae/gapi/core/schema"
-	"github.com/goppydae/gapi/internal/eventbus"
-	"github.com/goppydae/gapi/internal/lifecycle"
 )
 
 type Discovered struct {

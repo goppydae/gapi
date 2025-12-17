@@ -3,7 +3,7 @@ package agentmgr
 import (
 	"testing"
 
-	"github.com/goppydae/gapi/internal/lifecycle"
+	"github.com/goppydae/gapi/core/lifecycle"
 )
 
 // MockAgent to satisfy Agent interface

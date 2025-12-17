@@ -1,7 +1,7 @@
 package transport
 
 import (
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 
 	"google.golang.org/protobuf/types/known/anypb"
 )

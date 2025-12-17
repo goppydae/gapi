@@ -115,6 +115,7 @@
             pam
             pkg-config
             python3
+            python3Packages.protobuf
             python3Packages.pybindgen
             # Documentation
             pandoc

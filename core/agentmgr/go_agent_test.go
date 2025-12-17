@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/anypb"
 
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 )
 
 func TestGoAgent_Constructor(t *testing.T) {

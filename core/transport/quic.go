@@ -2,23 +2,38 @@ package transport
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	quic "github.com/quic-go/quic-go"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
+
+// TLSConfig holds TLS configuration for the client
+type TLSConfig struct {
+	// InsecureSkipVerify controls whether a client verifies the server's certificate chain and host name.
+	InsecureSkipVerify bool
+	// CAFile is the path to the CA certificate file.
+	CAFile string
+}
 
 type QUIC struct {
 	listener *quic.Listener
@@ -48,11 +63,12 @@ func NewQUICServer(addr string, cert tls.Certificate) (*QUIC, error) {
 	return q, nil
 }
 
-func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
-	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"gapi-quic"},
+func NewQUICClient(addr string, cert *tls.Certificate, tlsConfig TLSConfig) (*QUIC, error) {
+	tlsConf, err := CreateClientTLSConfig(tlsConfig)
+	if err != nil {
+		return nil, err
 	}
+
 	if cert != nil {
 		tlsConf.Certificates = []tls.Certificate{*cert}
 	}
@@ -67,6 +83,30 @@ func NewQUICClient(addr string, cert *tls.Certificate) (*QUIC, error) {
 	q := &QUIC{conn: conn}
 	go q.handleConn(conn)
 	return q, nil
+}
+
+// CreateClientTLSConfig builds a tls.Config from the provided settings
+func CreateClientTLSConfig(cfg TLSConfig) (*tls.Config, error) {
+	tlsConf := &tls.Config{
+		NextProtos: []string{"gapi-quic"},
+	}
+
+	if cfg.InsecureSkipVerify {
+		tlsConf.InsecureSkipVerify = true
+	} else if cfg.CAFile != "" {
+		// Load CA cert
+		caCert, err := os.ReadFile(cfg.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA file: %w", err)
+		}
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to append CA cert")
+		}
+		tlsConf.RootCAs = caPool
+	}
+
+	return tlsConf, nil
 }
 
 // ---- Server / Client loops ----
@@ -244,4 +284,27 @@ func (q *QUIC) Close() error {
 		q.conn = nil
 	}
 	return err
+}
+
+// GenerateInsecureSelfSignedCert generates a self-signed cert for testing/insecure modes.
+func GenerateInsecureSelfSignedCert() (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	template := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	return tls.X509KeyPair(certPEM, keyPEM)
 }

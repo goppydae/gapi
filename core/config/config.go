@@ -83,9 +83,9 @@ func Load() (*Config, error) {
 
 	// Zero-config defaults
 	viper.SetDefault("transport.type", "quic")
-	viper.SetDefault("transport.address", ":4242")
+	viper.SetDefault("transport.address", ":14242")
 	viper.SetDefault("metrics.enabled", false)
-	viper.SetDefault("metrics.addr", "127.0.0.1:9090")
+	viper.SetDefault("metrics.addr", "127.0.0.1:19090")
 
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")

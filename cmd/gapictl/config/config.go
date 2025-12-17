@@ -21,7 +21,7 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
 	// Zero-config defaults
-	viper.SetDefault("target", "127.0.0.1:4242")
+	viper.SetDefault("target", "127.0.0.1:14242")
 	viper.SetDefault("namespace", "default")
 
 	if err := viper.ReadInConfig(); err != nil {

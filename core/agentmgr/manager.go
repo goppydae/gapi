@@ -3,7 +3,7 @@ package agentmgr
 import (
 	"fmt"
 
-	"github.com/goppydae/gapi/internal/lifecycle"
+	"github.com/goppydae/gapi/core/lifecycle"
 )
 
 func (am *AgentManager) StartAll() error {

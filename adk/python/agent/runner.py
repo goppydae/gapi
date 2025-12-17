@@ -223,7 +223,7 @@ class AgentWrapper:
             self.state = "running"
             # Initialize QUIC connection (default to localhost loopback)
             try:
-                addr = os.getenv("RUNTIME_MASTER_ADDR", "127.0.0.1:4242")
+                addr = os.getenv("RUNTIME_MASTER_ADDR", "127.0.0.1:14242")
                 adk.StartQUIC(addr)
             except Exception as e:
                 print(f"[RUNNER] Warning: Failed to start QUIC client: {e}")

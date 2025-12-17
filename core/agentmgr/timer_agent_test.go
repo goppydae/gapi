@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goppydae/gapi/internal/eventbus"
+	"github.com/goppydae/gapi/core/eventbus"
 )
 
 func TestTimerAgent_Lifecycle(t *testing.T) {

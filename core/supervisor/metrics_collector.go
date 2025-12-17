@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/goppydae/gapi/core/cgroups"
 	"github.com/goppydae/gapi/core/metrics"
-	"github.com/goppydae/gapi/internal/cgroups"
 )
 
 // collectMetrics gathers resource usage metrics from all agents
