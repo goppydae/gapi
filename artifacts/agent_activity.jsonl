@@ -1,0 +1,1 @@
+{"ts": "2025-12-18T22:11:18.559885Z", "actor": "sysop", "intent": "verify_schema", "scope": "gapi", "action": "test", "result": "ok", "evidence": ["tools/cvr/log_action.py"], "mode": "normal"}
