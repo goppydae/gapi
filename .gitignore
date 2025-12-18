@@ -1,101 +1,94 @@
-# IDE files (Goland/JetBrains IDE)
+# --- OS / IDE Junk ---
+.DS_Store
+Thumbs.db
 .idea/
+.vscode/
+.bin/
 *.iml
 *.ipr
 *.iws
+*~
 
-# Go binaries and build output
+# --- Go Binaries and Build Output ---
 bin/
+/goblinctl
+/goblind
 *.exe
 *.dll
 *.so
 *.dylib
 *.test
-
-# Go environment files
-Godeps/
 _go-build/
 
-# Protobuf generated files
-internal/proto/*.pb.go
-internal/proto/*.pb.py
-internal/proto/*_pb2.py
-internal/proto/*_pb2_grpc.py
+# --- Protobuf Generated Files (Internal) ---
+# Note: Keep generated code in repo if specifically required for build consistency,
+# but usually internal/proto/*.pb.go should be ignored if generated on-the-fly.
+# We follow a "check-in generated code" policy for GAPI/Goblin currently,
+# so we only ignore intermediate buf artifacts.
+buf.lock
+buf.gen.yaml.lock
+.bufbuild/
 
-# Python environment and build fbin/
-*.pyc
+# --- Python Cache and build artifacts ---
 __pycache__/
-.bin/
-*.sig
-*.key
-*.pub
-gapi.db
-gapi.sock
-test/tmp/
-.vscode/
-.idea/
-COMMIT_MESSAGE.md
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
 venv/
 dist/
-*.egg-info/
 
-# Temporary files and directories
+# --- Nix Build Outputs ---
+result/
+
+# --- Temporary / Runtime State ---
 tmp/
+test/tmp/
 *.log
+*.pid
+*.sock
+gapi.db
+gapi.sock
 
-# Database files
+# --- Databases (common local state) ---
 *.db
 *.sqlite
 
-# Air live reload temporary files
-.air/
-
-# Generated documentation
+# --- Generated Documentation ---
 docs/_build/
 docs/build/
 docs/generated/
 site/
 man/
 
-# Mage build artifacts
+# --- Mage Build Artifacts ---
 mage_output/
 
-# Nix build outputs
-result/
+# --- Air Live Reload ---
+.air/
 
-# Config backups and local overrides
+# --- Local Environment / Backups ---
 config/*.local.*
 config/*.backup.*
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+COMMIT_MESSAGE.md
 
-# OS-specific files
-.DS_Store
-Thumbs.db
-
-# Editor backup files
-*~
-
-# VSCode editor files (if needed later)
-.vscode/
-
-# Test outputs and coverage reports
+# --- Coverage / Test Reports ---
 cover.out
 coverage.txt
 coverage.xml
 test-results.xml
 
-# Generated artifacts by buf/protobuf tools
-buf.lock
-buf.gen.yaml.lock
-.bufbuild/
+# --- Scenario Build Contexts (Silo) ---
+scenarios/goblin_cluster/build_context/
 
-# Ignore local environment configuration files
-*.env.local
-*.env.development.local
-*.env.test.local
-*.env.production.local
-
-# Ephemeral build data
-build/meta/*
-# Ephemeral artifacts
-artifacts/logs/
+# --- Ephemeral CVRL Artifacts ---
+# We preserve artifacts/history/ but ignore ephemeral run evidence
+artifacts/logs/*
+!artifacts/logs/agent_mode.json
 artifacts/test_results/
+debug_cvrl_verify*.log
+post_verify_report.md
