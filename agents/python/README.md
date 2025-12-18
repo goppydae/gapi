@@ -185,10 +185,10 @@ python adk/python/agent/runner.py --module agents/python/services/my_service.py 
 ## Best Practices
 
 1. **Keep it simple**: Agents should do one thing well
-2. **Explicit dependencies**: Always declare `REQUIRES` and `WANTS`
-3. **Graceful shutdown**: Implement `stop()` for clean exits
-4. **Idempotent**: `initialize()` should be safe to call multiple times
-5. **Error handling**: Catch exceptions, don't crash the supervisor
+1. **Explicit dependencies**: Always declare `REQUIRES` and `WANTS`
+1. **Graceful shutdown**: Implement `stop()` for clean exits
+1. **Idempotent**: `initialize()` should be safe to call multiple times
+1. **Error handling**: Catch exceptions, don't crash the supervisor
 
 ## See Also
 

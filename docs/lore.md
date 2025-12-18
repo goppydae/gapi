@@ -2,20 +2,20 @@
 
 *The story, etymology, and symbolic grounding of the GoPPydae ecosystem.*
 
----
+______________________________________________________________________
 
 ## The Name
 
 **GoPPydae** is derived from a mash of technical ingredients and biological metaphor:
 
-* **Go** — the language of the system’s foundation
-* **Protobuf** — the structured, language-neutral IPC layer
-* **Python** — the declarative agent logic domain
-* **-dae** — a nod to the Gobiidae family of fish, aligning with the system’s aquatic and daemonic themes
+- **Go** — the language of the system’s foundation
+- **Protobuf** — the structured, language-neutral IPC layer
+- **Python** — the declarative agent logic domain
+- **-dae** — a nod to the Gobiidae family of fish, aligning with the system’s aquatic and daemonic themes
 
 The resulting name evokes both a living taxonomy and a functional stack—GoPPydae is not a framework, but an *ecosystem*. A curated environment of disciplined daemons.
 
----
+______________________________________________________________________
 
 ## Foundational Architecture: The GoPPy Stack
 
@@ -25,17 +25,17 @@ While GoPPydae uses this stack to orchestrate supervised daemons and agents, the
 
 Each component of the stack contributes a distinct role:
 
-* **Go** — the structural and systems layer. Go is responsible for compiled execution, concurrency, structured logging, and process lifecycle management. It provides operational rigor and statically typed control flow.
+- **Go** — the structural and systems layer. Go is responsible for compiled execution, concurrency, structured logging, and process lifecycle management. It provides operational rigor and statically typed control flow.
 
-* **Protobuf** — the communication protocol. It enables strict, language-agnostic message passing between components. Its compact and deterministic schema makes it ideal for reliable IPC, API boundaries, and cross-language interaction.
+- **Protobuf** — the communication protocol. It enables strict, language-agnostic message passing between components. Its compact and deterministic schema makes it ideal for reliable IPC, API boundaries, and cross-language interaction.
 
-* **Python** — the expressive and dynamic logic layer. Python offers a fast path to declarative behavior, reactive logic, and signal processing. It allows agents or subsystems to be written in an interpreted form without sacrificing clarity or structure.
+- **Python** — the expressive and dynamic logic layer. Python offers a fast path to declarative behavior, reactive logic, and signal processing. It allows agents or subsystems to be written in an interpreted form without sacrificing clarity or structure.
 
 As a pattern, the **GoPPy stack** mirrors other architectural motifs like MVC or client-server—it’s not bound to one domain. While GoPPydae applies it to lifecycle supervision and event-driven orchestration, others could apply the same triad to build CLI tools, simulation engines, real-time control systems, or distributed pipelines.
 
 This isn’t just a toolkit—it’s a **composable stack** with clear lines of responsibility, extensibility, and language interoperability.
 
----
+______________________________________________________________________
 
 ## The GOPPY Stack
 
@@ -61,39 +61,39 @@ The GOPPY stack is foundational. GoPPydae is what emerges when that foundation b
 
 GoPPydae was never intended as a traditional software platform. Its goal is supervision—not services; orchestration—not abstraction. Every component is structured with lifecycle awareness, clear boundaries, and introspection baked in.
 
-* Agents are not passive scripts—they are autonomous entities with identity, phases, and state.
-* Clarity is prioritized over cleverness.
-* Logging is structured, deterministic, and inspectable—no mysteries, no guesswork.
-* Configuration follows convention, not ceremony.
-* Control is intentional, not ad hoc.
+- Agents are not passive scripts—they are autonomous entities with identity, phases, and state.
+- Clarity is prioritized over cleverness.
+- Logging is structured, deterministic, and inspectable—no mysteries, no guesswork.
+- Configuration follows convention, not ceremony.
+- Control is intentional, not ad hoc.
 
----
+______________________________________________________________________
 
 ## Naming Conventions
 
 The project draws from UNIX lineage, aquatic metaphors, and tactical system design.
 
-* **GAPI** — the core runtime and control system (Go-based API)
-* **Goblin** — the multi-node cluster orchestrator daemon; symbolic and literal overseer
-* **ADK** — Agent Development Kits (replacing the traditional “SDK” term); specialized by language (e.g., Python ADK, Go ADK)
-* `dae` **suffixes** — symbolic taxonomy of agents and utilities, such as `gapictl` (the control interface), or future agents like `netmon.py.daemon`
+- **GAPI** — the core runtime and control system (Go-based API)
+- **Goblin** — the multi-node cluster orchestrator daemon; symbolic and literal overseer
+- **ADK** — Agent Development Kits (replacing the traditional “SDK” term); specialized by language (e.g., Python ADK, Go ADK)
+- `dae` **suffixes** — symbolic taxonomy of agents and utilities, such as `gapictl` (the control interface), or future agents like `netmon.py.daemon`
 
 The choice to avoid “SDK” in favor of **ADK** signals a departure from user-level application logic toward low-level lifecycle management and event-driven coordination.
 
----
+______________________________________________________________________
 
 ## Project Structure
 
 GoPPydae is divided into key components:
 
-* **`gapid`** — the master daemon, responsible for supervising and coordinating sub-agents
-* **`gapictl`** — the control surface for operator interaction, modeled after systemctl
-* **ADKs** — per-language kits for writing well-behaved daemons with lifecycle compliance
-* **Structured Logging** — Zerolog-powered in Go, eventually mirrored across all ADKs
-* **Version Awareness** — Every binary embeds build-time metadata, including schema hash, commit hash, and ADK versions
-* **Event Bus** — Core messaging infrastructure, using Protobuf over QUIC, with room for event stream multiplexing
+- **`gapid`** — the master daemon, responsible for supervising and coordinating sub-agents
+- **`gapictl`** — the control surface for operator interaction, modeled after systemctl
+- **ADKs** — per-language kits for writing well-behaved daemons with lifecycle compliance
+- **Structured Logging** — Zerolog-powered in Go, eventually mirrored across all ADKs
+- **Version Awareness** — Every binary embeds build-time metadata, including schema hash, commit hash, and ADK versions
+- **Event Bus** — Core messaging infrastructure, using Protobuf over QUIC, with room for event stream multiplexing
 
----
+______________________________________________________________________
 
 ## Symbolism
 
@@ -101,16 +101,16 @@ While the Goblin mascot adds a sense of narrative character, it is not decoratio
 
 The use of fish (Goby, GoPPydae) and clusters evokes an aquatic, naturalistic model: distributed, adaptive, and survivable.
 
----
+______________________________________________________________________
 
 ## Closing Notes
 
 This lore file is not a spec. It is a **cultural artifact**. A log of how this system came to be, and why the parts are named the way they are. It may evolve, expand, or fork—just like the daemons it describes.
 
-If you're reading this, you're either operating GoPPydae...  
+If you're reading this, you're either operating GoPPydae...\
 Or it’s operating *you*.
 
----
+______________________________________________________________________
 
 ## Addendum: Evolution of Terminology
 

@@ -9,11 +9,13 @@ The supervisor (`gapid`) is configured via a `config.yaml` file.
 ### Configuration File Location
 
 By default, `gapid` looks for `config.yaml` in:
+
 1. Current working directory
-2. `$XDG_CONFIG_HOME/gapi/config.yaml`
-3. `$HOME/.config/gapi/config.yaml`
+1. `$XDG_CONFIG_HOME/gapi/config.yaml`
+1. `$HOME/.config/gapi/config.yaml`
 
 You can override this with the `--config` flag:
+
 ```bash
 gapid --config /path/to/config.yaml
 ```
@@ -50,6 +52,7 @@ transport:
 ```
 
 Generate self-signed certificates:
+
 ```bash
 openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes
 ```
@@ -73,17 +76,20 @@ transport:
 To enforce agent signature verification:
 
 1. **Generate a keypair**:
+
    ```bash
    gapictl keygen signing-key
    ```
 
-2. **Configure the public key**:
+1. **Configure the public key**:
+
    ```yaml
    security:
      verifyKey: signing-key.pub
    ```
 
-3. **Sign your agents**:
+1. **Sign your agents**:
+
    ```bash
    gapictl sign agents/myagent.py.service signing-key.key
    ```
@@ -230,7 +236,6 @@ Ensure the certificate is valid for the remote hostname.
 > [!NOTE]
 > For local development, GAPI supports anonymous QUIC connections (no client certificate required) when connecting to loopback addresses (`127.0.0.1`, `::1`).
 
-
 ## Configuration Validation
 
 Validate your configuration:
@@ -240,6 +245,7 @@ gapid --config config.yaml --validate
 ```
 
 This checks for:
+
 - Valid YAML syntax
 - Required fields present
 - Certificate files exist (for QUIC)

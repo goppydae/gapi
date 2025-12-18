@@ -14,16 +14,19 @@ Shared-object plugins provide **ultra-low-latency** in-process agent execution. 
 ## When to Use Plugins
 
 ✅ **Use plugins for**:
+
 - Raft consensus voting (microsecond latency)
 - In-process event routing
 - High-frequency coordination tasks
 
 ❌ **Use compiled Go agents for**:
+
 - System boot, foundational services
 - Anything requiring crash isolation
 - Cross-platform support
 
 ❌ **Use Python agents for**:
+
 - Everything else
 
 ## Quick Start
@@ -121,12 +124,12 @@ go build -buildmode=plugin ...
 
 ## Risks and Mitigation
 
-| Risk | Mitigation |
-|------|------------|
-| **Crash Isolation** | Use plugins only for non-critical tasks |
-| **ABI Fragility** | Enforce Go version matching in CI |
-| **Platform Lock-in** | Document Linux-only requirement |
-| **Debugging** | Use extensive logging, avoid plugins in production |
+| Risk                 | Mitigation                                         |
+| -------------------- | -------------------------------------------------- |
+| **Crash Isolation**  | Use plugins only for non-critical tasks            |
+| **ABI Fragility**    | Enforce Go version matching in CI                  |
+| **Platform Lock-in** | Document Linux-only requirement                    |
+| **Debugging**        | Use extensive logging, avoid plugins in production |
 
 ## Testing
 
@@ -141,10 +144,10 @@ gapictl agent status | grep event_router
 ## Best Practices
 
 1. **Minimize plugin usage**: Only for ultra-low-latency use cases
-2. **Version lock**: Pin Go version in CI/CD
-3. **Extensive testing**: Plugins are harder to debug
-4. **Fallback**: Have a compiled Go agent alternative
-5. **Documentation**: Clearly mark as experimental
+1. **Version lock**: Pin Go version in CI/CD
+1. **Extensive testing**: Plugins are harder to debug
+1. **Fallback**: Have a compiled Go agent alternative
+1. **Documentation**: Clearly mark as experimental
 
 ## Alternative: Compiled Go Agents
 
@@ -164,8 +167,8 @@ go build -buildmode=plugin agents/plugins/event_router/
 - [Go ADK Guide](../go/README.md)
 - [GAPI Design Document](../../docs/gapi-design-document.md)
 
----
+______________________________________________________________________
 
-**Status**: Experimental  
-**Supported Platforms**: Linux only  
+**Status**: Experimental\
+**Supported Platforms**: Linux only\
 **Recommended**: Use compiled Go agents instead

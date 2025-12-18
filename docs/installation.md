@@ -11,7 +11,7 @@ This guide covers multiple installation methods for GAPI, including NixOS deploy
 - [PID1 Testing on NixOS](#pid1-testing-on-nixos)
 - [Development Installation](#development-installation)
 
----
+______________________________________________________________________
 
 ## Quick Start
 
@@ -41,7 +41,7 @@ sudo install -m 755 bin/gapid /usr/local/bin/
 sudo install -m 755 bin/gapictl /usr/local/bin/
 ```
 
----
+______________________________________________________________________
 
 ## NixOS Installation
 
@@ -217,7 +217,7 @@ Add to your `flake.nix`:
 }
 ```
 
----
+______________________________________________________________________
 
 ## Systemd Service
 
@@ -274,7 +274,7 @@ sudo systemctl enable --now gapi.service
 sudo systemctl status gapi
 ```
 
----
+______________________________________________________________________
 
 ## Container Deployment
 
@@ -339,7 +339,7 @@ containers.gapi = {
 };
 ```
 
----
+______________________________________________________________________
 
 ## nixos-generators - Multi-Format Image Builder
 
@@ -369,18 +369,18 @@ nix build .#lxc
 
 ### Available Formats
 
-| Format | Command | Use Case |
-|--------|---------|----------|
-| **iso** | `nix build .#iso` | Bootable USB/CD installer |
-| **vm** | `nix build .#vm` | QEMU VM with GUI |
-| **vm-nogui** | `nix build .#vm-nogui` | Headless QEMU VM |
-| **qcow** | `nix build .#qcow` | QCOW2 for QEMU/KVM |
-| **raw** | `nix build .#raw` | Raw disk image |
-| **raw-efi** | `nix build .#raw-efi` | EFI-bootable raw image |
-| **virtualbox** | `nix build .#virtualbox` | VirtualBox OVA |
-| **vmware** | `nix build .#vmware` | VMware VMDK |
-| **lxc** | `nix build .#lxc` | LXC container |
-| **docker** | `nix build .#docker` | Docker image |
+| Format         | Command                  | Use Case                  |
+| -------------- | ------------------------ | ------------------------- |
+| **iso**        | `nix build .#iso`        | Bootable USB/CD installer |
+| **vm**         | `nix build .#vm`         | QEMU VM with GUI          |
+| **vm-nogui**   | `nix build .#vm-nogui`   | Headless QEMU VM          |
+| **qcow**       | `nix build .#qcow`       | QCOW2 for QEMU/KVM        |
+| **raw**        | `nix build .#raw`        | Raw disk image            |
+| **raw-efi**    | `nix build .#raw-efi`    | EFI-bootable raw image    |
+| **virtualbox** | `nix build .#virtualbox` | VirtualBox OVA            |
+| **vmware**     | `nix build .#vmware`     | VMware VMDK               |
+| **lxc**        | `nix build .#lxc`        | LXC container             |
+| **docker**     | `nix build .#docker`     | Docker image              |
 
 ### Testing Workflow
 
@@ -513,10 +513,9 @@ packages.custom = nixos-generators.nixosGenerate {
 };
 ```
 
----
+______________________________________________________________________
 
 ## PID1 Testing on NixOS
-
 
 Testing GAPI as PID1 is useful for understanding its behavior as a system supervisor, similar to systemd or runit.
 
@@ -660,7 +659,7 @@ nix-build test-gapi-pid1.nix
 ./result/bin/nixos-test-driver
 ```
 
----
+______________________________________________________________________
 
 ## Development Installation
 
@@ -694,7 +693,7 @@ go install github.com/cosmtrek/air@latest
 air
 ```
 
----
+______________________________________________________________________
 
 ## Configuration
 
@@ -726,7 +725,7 @@ openssl req -x509 -newkey rsa:4096 \
   -subj "/CN=localhost"
 ```
 
----
+______________________________________________________________________
 
 ## Verification
 
@@ -758,7 +757,7 @@ EOF
 gapictl status | grep test
 ```
 
----
+______________________________________________________________________
 
 ## Troubleshooting
 
@@ -792,7 +791,7 @@ gapictl validate /var/lib/gapi/agents/myagent.py.service
 - Check for missing dependencies in minimal environments
 - Verify GAPI handles signals correctly (SIGTERM, SIGCHLD)
 
----
+______________________________________________________________________
 
 ## Next Steps
 

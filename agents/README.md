@@ -26,6 +26,7 @@ All agents follow the **`name.lang.type`** naming pattern:
 **Format**: `<name>.<language>.<type>`
 
 **Examples**:
+
 - `heartbeat.py.service` - Python service agent
 - `my_timer.py.timer` - Python timer agent
 - `api_server.py.socket` - Python socket agent
@@ -33,24 +34,25 @@ All agents follow the **`name.lang.type`** naming pattern:
 - `cluster_join.go.service` - Go service agent
 
 **Components**:
+
 - `<name>`: Agent identifier (alphanumeric, underscores, hyphens)
 - `<language>`: `py` (Python) or `go` (Go)
 - `<type>`: `service`, `timer`, `socket`, `init`
 
 **Why this convention?**
+
 - **Self-documenting**: Filename reveals language and type
 - **Discovery**: Easy to scan for specific agent types
 - **Tooling**: Simple glob patterns (`*.py.service`, `*.go.timer`)
 - **Consistency**: Uniform across all agents
-
 
 ## Agent Discovery
 
 GAPI uses a systemd-style search path for agent discovery:
 
 1. **Development**: `./agents/`, `$GAPI_DEV_AGENTS`
-2. **User**: `~/.local/share/gapi/agents/`, `~/.gapi/agents/`
-3. **System**: `/usr/lib/gapi/agents/`, `/usr/local/lib/gapi/agents/`
+1. **User**: `~/.local/share/gapi/agents/`, `~/.gapi/agents/`
+1. **System**: `/usr/lib/gapi/agents/`, `/usr/local/lib/gapi/agents/`
 
 **First match wins**: Agents in higher priority paths override those in lower priority paths.
 

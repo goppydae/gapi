@@ -4,13 +4,13 @@
 **Date**: Dec 14, 2025
 **Author**: Enqack
 
----
+______________________________________________________________________
 
 ## 🧭 Project Overview
 
 **GAPI** is a lightweight, event-driven supervision framework designed for managing distributed daemon (agent) lifecycles in both local and clustered environments. It supports Go and Python natively and is built around principles of clarity, zero-config startup, and scalable coordination.
 
----
+______________________________________________________________________
 
 ## 🏛 Architecture Philosophy: GAPI vs. Goblin
 
@@ -19,12 +19,14 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 ### The Golden Rule: "Single Node vs. Multi-Node"
 
 #### 1. GAPI (The Runtime / Keyword: "Local")
+
 - **Scope**: STRICTLY single-machine.
 - **Responsibility**: "I know how to start a process, capture its logs, restart it if it crashes, and verify its signature."
 - **Ignorance**: GAPI knows **nothing** about clusters, other nodes, leader election, or consensus. It treats the world as if it is the only computer in existence.
 - **Role**: GAPI is the **library** or **framework** that Goblin imports to perform local work. It is **embedded** directly into the `goblind` process.
 
 #### 2. Goblin (The Orchestrator / Keyword: "Cluster")
+
 - **Scope**: Coordination **across machines**.
 - **Responsibility**: "I know that Agent X should be running on Node 3."
 - **Policy**: Raft consensus, Serf discovery, scheduling algorithms, and global failover logic.
@@ -32,20 +34,20 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 
 ### Feature Separation Matrix
 
-| Feature | Component | Reasoning |
-| :--- | :--- | :--- |
-| **Process Supervision** | **GAPI** | Controlling a PID is a local kernel operation. |
-| **Log Capture** | **GAPI** | Capturing stdout/stderr happens at the process boundary. |
-| **Encryption (AGE)** | **GAPI** | Decrypting secrets is a local runtime concern. |
-| **Consensus (Raft)** | **Goblin** | Coordinated state requires network awareness. |
-| **Discovery (Serf)** | **Goblin** | Finding peers is a cluster concern. |
-| **"Start Agent"** | **GAPI** | The *act* of starting it. |
-| **"Schedule Agent"** | **Goblin** | The *decision* of where to start it. |
-| **Agent Capabilities** | **GAPI** | Local code introspection. |
-| **Global Event Bus** | **Goblin** | Routing messages between nodes. |
-| **Local Event Bus** | **GAPI** | Routing messages between local agents (IPC). |
+| Feature                 | Component  | Reasoning                                                |
+| :---------------------- | :--------- | :------------------------------------------------------- |
+| **Process Supervision** | **GAPI**   | Controlling a PID is a local kernel operation.           |
+| **Log Capture**         | **GAPI**   | Capturing stdout/stderr happens at the process boundary. |
+| **Encryption (AGE)**    | **GAPI**   | Decrypting secrets is a local runtime concern.           |
+| **Consensus (Raft)**    | **Goblin** | Coordinated state requires network awareness.            |
+| **Discovery (Serf)**    | **Goblin** | Finding peers is a cluster concern.                      |
+| **"Start Agent"**       | **GAPI**   | The *act* of starting it.                                |
+| **"Schedule Agent"**    | **Goblin** | The *decision* of where to start it.                     |
+| **Agent Capabilities**  | **GAPI**   | Local code introspection.                                |
+| **Global Event Bus**    | **Goblin** | Routing messages between nodes.                          |
+| **Local Event Bus**     | **GAPI**   | Routing messages between local agents (IPC).             |
 
----
+______________________________________________________________________
 
 ## 🧱 Core Architecture
 
@@ -55,7 +57,7 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 - **Lifecycle Model**: Lifecycle-aware agents with structured phases and optional hooks
 - **Agent Development Kits (ADKs)**: Provide a zero-boilerplate experience
 
----
+______________________________________________________________________
 
 ## 🔒 Identity, Security, and Integrity
 
@@ -69,7 +71,7 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 - `--describe` includes version, hash, and signer fingerprints.
 - Manifests and schema hashes verified at runtime for integrity.
 
----
+______________________________________________________________________
 
 ## 📦 Logging and IPC
 
@@ -77,35 +79,40 @@ The core architectural principle of the ecosystem is **Mechanism vs. Policy**, d
 - IPC separated from logs for clarity
 - Stream multiplexing over **QUIC** (Active)
 
----
+______________________________________________________________________
 
 ## 🔁 Lifecycle Model
 
 ### Core Methods
+
 - `Initialize()`
 - `Start()`
 - `Stop()`
 - `Reload()`
 
 ### Optional Methods
+
 - `Restart()`
 
 ### Optional Hooks
+
 - `BeforeStart()`
 - `AfterStop()`
 - `OnSignal(sig)`
 
 Lifecycle methods enable flexible agent control while preserving a minimal interface contract.
 
----
+______________________________________________________________________
 
 ## 🧩 SDK Design
 
 ### Functional Layout
+
 - Agents are defined via **flat function files**—no classes or heavy struct requirements.
 - Each function maps directly to a lifecycle phase.
 
 ### Zero-Config Self-Description
+
 - **Python ADK**: Uses `gopy` generated bindings to interface directly with Go core logic.
   - **IPC via QUIC**: Control flow and status updates are transmitted over multiplexed QUIC streams (Protobuf-encoded) instead of stdout.
   - Native function calls (`Initialize`, `StartQUIC`, `SendEvent`, `StartHeartbeat`) bridge the runtime gap.
@@ -113,7 +120,7 @@ Lifecycle methods enable flexible agent control while preserving a minimal inter
 
 This design eliminates manifest files and supports fully self-describing agents.
 
----
+______________________________________________________________________
 
 ## 🧾 Describe Schema
 
@@ -133,7 +140,7 @@ describe:
 
 Future iterations will formalize schema validation and introspection contracts for consistent behavior across ADKs.
 
----
+______________________________________________________________________
 
 ## 🔗 Interface Contracts
 
@@ -144,7 +151,7 @@ Future iterations will formalize schema validation and introspection contracts f
   - Limitations: No direct `chan` support; strictly uses blocking methods and simple types for the API surface.
 - Versioning and schema compatibility will be enforced across SDKs.
 
----
+______________________________________________________________________
 
 ## 🪸 Ecosystem Relationship and Context
 
@@ -155,11 +162,12 @@ Future iterations will formalize schema validation and introspection contracts f
 - **GoPPydae** — The broader ecosystem encompassing GAPI, Goblin, and downstream systems (e.g., *TactStratX0.d*).
 
 ### Division of Responsibilities
+
 - **Go (GAPI Core):** Lifecycle, logging, secure IPC.
 - **Python (Logic Layer):** High-level behaviors and algorithms communicating via Protobuf.
 - **Protobuf:** Unified protocol for command and telemetry exchange.
 
----
+______________________________________________________________________
 
 ## 🌐 Network-Aware Supervision (Goblin)
 
@@ -170,7 +178,7 @@ Goblin extends GAPI into multi-node systems with:
 - **Event Bus** for cluster-wide messaging with topic filtering
 - **Namespacing & Tagging** for daemon grouping and ACL control
 
----
+______________________________________________________________________
 
 ## 🧠 Developer Experience Philosophy
 
@@ -180,22 +188,25 @@ Goblin extends GAPI into multi-node systems with:
 - **SDK handles wiring and introspection**
 - **CLI tools (`gapictl`) manage full lifecycle and cluster control**
 
----
+______________________________________________________________________
 
 ## 📘 Appendices
 
 ### Appendix A — Naming and Taxonomy
+
 - Agents follow `<name>.<language>.<unit-type>` format (e.g., `heartbeat.py.service`).
 - Unit types include `.service`, `.timer`, `.pipe`, `.event`, `.init`.
 - `dae` suffix designates GoPPydae descendants.
 
 ### Appendix B — Roadmap and Future Work
+
 - Schema validation and describe consistency
 - Native `gopy` channel support (requires upstreams improvements or significant architecture shift)
 - Cross-ADK testing framework
 - Goblin: HA clusters and automatic agent failover
 
 ### Appendix C — Build Metadata
+
 - Version stamping via `go build -ldflags`.
 - Schema hash integration from `.schema_hash`.
 - Magefile tasks for build, hash, and describe automation.

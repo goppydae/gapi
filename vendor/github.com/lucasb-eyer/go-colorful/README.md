@@ -1,12 +1,11 @@
-go-colorful
-===========
+# go-colorful
 
 [![go reportcard](https://goreportcard.com/badge/github.com/lucasb-eyer/go-colorful)](https://goreportcard.com/report/github.com/lucasb-eyer/go-colorful)
 
 A library for playing with colors in Go. Supports Go 1.13 onwards.
 
-Why?
-====
+# Why?
+
 I love games. I make games. I love detail and I get lost in detail.
 One such detail popped up during the development of [Memory Which Does Not Suck](https://github.com/lucasb-eyer/mwdns/),
 when we wanted the server to assign the players random colors. Sometimes
@@ -16,8 +15,8 @@ on HackerNews' frontpage and showed me how to Do It Right™. Last but not
 least, there was no library for handling color spaces available in go. Colorful
 does just that and implements Go's `color.Color` interface.
 
-What?
-=====
+# What?
+
 Go-Colorful stores colors in RGB and provides methods from converting these to various color-spaces. Currently supported colorspaces are:
 
 - **RGB:** All three of Red, Green and Blue in [0..1].
@@ -44,24 +43,23 @@ range slightly. For example, C\* of #0000ff is 1.338.
 
 Unit-tests are provided.
 
-Nice, but what's it useful for?
--------------------------------
+## Nice, but what's it useful for?
 
 - Converting color spaces. Some people like to do that.
 - Blending (interpolating) between colors in a "natural" look by using the right colorspace.
 - Generating random colors under some constraints (e.g. colors of the same shade, or shades of one color.)
 - Generating gorgeous random palettes with distinct colors of a same temperature.
 
-What not (yet)?
-===============
+# What not (yet)?
+
 There are a few features which are currently missing and might be useful.
 I just haven't implemented them yet because I didn't have the need for it.
 Pull requests welcome.
 
 - Sorting colors (potentially using above mentioned distances)
 
-So which colorspace should I use?
-=================================
+# So which colorspace should I use?
+
 It depends on what you want to do. I think the folks from *I want hue* are
 on-spot when they say that RGB fits to how *screens produce* color, CIE L\*a\*b\*
 fits how *humans perceive* color and HCL fits how *humans think* colors.
@@ -70,10 +68,10 @@ Whenever you'd use HSV, rather go for CIE-L\*C\*h°. for fixed lightness L\* and
 chroma C\* values, the hue angle h° rotates through colors of the same
 perceived brightness and intensity.
 
-How?
-====
+# How?
 
 ### Installing
+
 Installing the library is as easy as
 
 ```bash
@@ -123,6 +121,7 @@ the name of the functions relating to the xyY space are just off. If you have
 any good suggestion, please open an issue. (I don't consider XyY good.)
 
 ### The `color.Color` interface
+
 Because a `colorful.Color` implements Go's `color.Color` interface (found in the
 `image/color` package), it can be used anywhere that expects a `color.Color`.
 
@@ -139,6 +138,7 @@ alpha colors, this means the RGB values are lost (set to 0) and it's impossible
 to recover them. In such a case `MakeColor` will return `false` as its second value.
 
 ### Comparing colors
+
 In the RGB color space, the Euclidian distance between colors *doesn't* correspond
 to visual/perceptual distance. This means that two pairs of colors which have the
 same distance in RGB space can look much further apart. This is fixed by the
@@ -194,6 +194,7 @@ Note that `AlmostEqualRgb` is provided mainly for (unit-)testing purposes. Use
 it only if you really know what you're doing. It will eat your cat.
 
 ### Blending colors
+
 Blending is highly connected to distance, since it basically "walks through" the
 colorspace thus, if the colorspace maps distances well, the walk is "smooth".
 
@@ -273,6 +274,7 @@ func main() {
 ```
 
 #### Generating color gradients
+
 A very common reason to blend colors is creating gradients. There is an example
 program in [doc/gradientgen.go](doc/gradientgen/gradientgen.go); it doesn't use any API
 which hasn't been used in the previous example code, so I won't bother pasting
@@ -281,6 +283,7 @@ the code in here. Just look at that gorgeous gradient it generated in HCL space:
 !["Spectral" colorbrewer gradient in HCL space.](doc/gradientgen/gradientgen.png)
 
 ### Getting random colors
+
 It is sometimes necessary to generate random colors. You could simply do this
 on your own by generating colors with random values. By restricting the random
 values to a range smaller than [0..1] and using a space such as CIE-H\*C\*l° or
@@ -315,6 +318,7 @@ Don't forget to initialize the random seed! You can see the code used for
 generating this picture in `doc/colorgens/colorgens.go`.
 
 ### Getting random palettes
+
 As soon as you need to generate more than one random color, you probably want
 them to be distinguishible. Playing against an opponent which has almost the
 same blue as I do is not fun. This is where random palettes can help.
@@ -372,10 +376,12 @@ from top to bottom: `Warm`, `FastWarm`, `Happy`, `FastHappy`, `Soft`,
 Again, the code used for generating the above image is available as [doc/palettegens/palettegens.go](https://github.com/lucasb-eyer/go-colorful/blob/master/doc/palettegens/palettegens.go).
 
 ### Sorting colors
+
 TODO: Sort using dist fn.
 
 ### Using linear RGB for computations
-There are two methods for transforming RGB<->Linear RGB: a fast and almost precise one,
+
+There are two methods for transforming RGB\<->Linear RGB: a fast and almost precise one,
 and a slow and precise one.
 
 ```go
@@ -406,14 +412,15 @@ _, err := db.QueryRow("SELECT '#ff0000';").Scan(&hc)
 // hc == HexColor{R: 1, G: 0, B: 0}; err == nil
 ```
 
-FAQ
-===
+# FAQ
 
 ### Q: I get all f!@#ed up values! Your library sucks!
+
 A: You probably provided values in the wrong range. For example, RGB values are
 expected to reside between 0 and 1, *not* between 0 and 255. Normalize your colors.
 
 ### Q: Lab/Luv/HCl seem broken! Your library sucks!
+
 They look like this:
 
 <img height="150" src="https://user-images.githubusercontent.com/3779568/28646900-6548040c-7264-11e7-8f12-81097a97c260.png">
@@ -435,6 +442,7 @@ both with code and pretty pictures. Also note that this was somewhat covered abo
 ["Blending colors" section](https://github.com/lucasb-eyer/go-colorful#blending-colors).
 
 ### Q: In a tight loop, conversion to Lab/Luv/HCl/... are slooooow!
+
 A: Yes, they are.
 This library aims for correctness, readability, and modularity; it wasn't written with speed in mind.
 A large part of the slowness comes from these conversions going through `LinearRgb` which uses powers.
@@ -451,7 +459,7 @@ l, a, b := XyzToLab(LinearRgbToXyz(col.LinearRgb()))
 If you need faster versions of `Distance*` and `Blend*` that make use of this fast approximation,
 feel free to implement them and open a pull-request, I'll happily accept.
 
-The derivation of these functions can be followed in [this Jupyter notebook](doc/LinearRGB Approximations.ipynb).
+The derivation of these functions can be followed in \[this Jupyter notebook\](doc/LinearRGB Approximations.ipynb).
 Here's the main figure showing the approximation quality:
 
 ![approximation quality](doc/approx-quality.png)
@@ -463,19 +471,18 @@ Thanks to [@ZirconiumX](https://github.com/ZirconiumX) for starting this investi
 see [issue #18](https://github.com/lucasb-eyer/go-colorful/issues/18) for details.
 
 ### Q: Why would `MakeColor` ever fail!?
+
 A: `MakeColor` fails when the alpha channel is zero. In that case, the
 conversion is undefined. See [issue 21](https://github.com/lucasb-eyer/go-colorful/issues/21)
 as well as the short caveat note in the ["The `color.Color` interface"](README.md#the-colorcolor-interface)
 section above.
 
-Who?
-====
+# Who?
 
 This library was developed by Lucas Beyer with contributions from
 Bastien Dejean (@baskerville), Phil Kulak (@pkulak) and Christian Muehlhaeuser (@muesli).
 
 It is now maintained by makeworld (@makeworld-the-better-one).
-
 
 ## License
 

@@ -35,6 +35,7 @@ gapictl agent build agents/go/foundational/my_first_service
 ```
 
 The build process:
+
 - Computes source hash (BLAKE3)
 - Embeds hash in binary via `-ldflags`
 - Generates binary hash (`.b3` file)
@@ -47,6 +48,7 @@ gapictl agent verify agents/build/go/my_first_service
 ```
 
 Output:
+
 ```
 ✅ Binary hash: VERIFIED
 ⚠️  No .sig file found (not signed)
@@ -91,6 +93,7 @@ gapictl agent verify agents/build/go/my_service --pubkey=key.pub
 ### Build Fails
 
 Make sure you're in the correct directory:
+
 ```bash
 cd agents/go/foundational/my_service
 go build .  # Test build directly
@@ -99,6 +102,7 @@ go build .  # Test build directly
 ### Verification Fails
 
 Check that the binary hasn't been modified:
+
 ```bash
 # Rebuild
 gapictl agent build agents/go/my_service
@@ -110,6 +114,7 @@ gapictl agent verify agents/build/go/my_service
 ## What's Next?
 
 Now that you have a working agent, explore:
+
 - **Timer agents** for scheduled tasks
 - **Socket agents** for network services
 - **Resource limits** with cgroups

@@ -9,6 +9,7 @@ GAPI provides cryptographic signing and verification to ensure agent code integr
 ### Ed25519 Signing
 
 GAPI uses Ed25519 public-key cryptography for signing agents. This provides:
+
 - **Fast signing and verification**: Ed25519 is one of the fastest signature schemes
 - **Small signatures**: Only 64 bytes per signature
 - **Strong security**: 128-bit security level
@@ -16,6 +17,7 @@ GAPI uses Ed25519 public-key cryptography for signing agents. This provides:
 ### BLAKE3 Hashing
 
 Content verification uses BLAKE3, a cryptographic hash function that is:
+
 - **Extremely fast**: Faster than MD5 while being cryptographically secure
 - **Parallelizable**: Takes advantage of multi-core processors
 - **Secure**: Resistant to length extension attacks
@@ -25,18 +27,21 @@ Content verification uses BLAKE3, a cryptographic hash function that is:
 Agents can be cryptographically signed to ensure authenticity:
 
 1. **Generate a keypair**:
+
    ```bash
    gapictl keygen mykey
    # Creates mykey.key (private) and mykey.pub (public)
    ```
 
-2. **Sign an agent**:
+1. **Sign an agent**:
+
    ```bash
    gapictl sign agents/myagent.py.service mykey.key
    # Creates agents/myagent.py.service.sig
    ```
 
-3. **Enable verification** in `config.yaml`:
+1. **Enable verification** in `config.yaml`:
+
    ```yaml
    security:
      verifyKey: mykey.pub
@@ -57,6 +62,7 @@ GAPI supports systemd-compatible timer syntax:
 - **`OnStartupSec=DURATION`**: Run DURATION after supervisor startup
 
 Examples:
+
 ```python
 # SCHEDULE = OnUnitActiveSec=5s   # Every 5 seconds
 # SCHEDULE = OnBootSec=1m         # 1 minute after boot
@@ -133,19 +139,21 @@ When an agent exceeds its memory limit, it will be OOM-killed by the kernel.
 GAPI works in rootless environments with proper cgroup delegation:
 
 1. **Enable cgroup delegation** for your user:
+
    ```bash
    sudo mkdir -p /etc/systemd/system/user@.service.d/
    echo -e "[Service]\nDelegate=yes" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
    sudo systemctl daemon-reload
    ```
 
-2. **Verify delegation**:
+1. **Verify delegation**:
+
    ```bash
    cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
    # Should show: cpuset cpu io memory pids
    ```
 
-3. **Run gapid** as your user (no root required)
+1. **Run gapid** as your user (no root required)
 
 ## Socket Activation
 
@@ -154,10 +162,11 @@ Socket activation allows agents to start on-demand when a connection is received
 ### Lazy Loading
 
 Agents with `TYPE = socket` do not start immediately. Instead:
+
 1. The supervisor listens on the configured address/port
-2. When a connection arrives, the supervisor starts the agent
-3. The file descriptor is passed to the agent
-4. The agent handles the connection
+1. When a connection arrives, the supervisor starts the agent
+1. The file descriptor is passed to the agent
+1. The agent handles the connection
 
 This reduces resource usage for infrequently-used services.
 
@@ -176,6 +185,7 @@ Both TCP and UDP sockets are supported:
 ### Zero Downtime Handoff
 
 The supervisor holds the listening socket, so:
+
 - The agent can crash and restart without losing the port
 - No "address already in use" errors
 - Seamless upgrades and restarts
@@ -202,6 +212,7 @@ The Python Agent Development Kit (ADK) provides native Go ↔ Python communicati
 ### Native Bindings
 
 GAPI uses `gopy` to generate Python bindings for Go packages. This provides:
+
 - **Direct function calls**: No JSON serialization or subprocess overhead
 - **Type safety**: Go types are exposed as Python types
 - **Bidirectional communication**: Python can call Go, Go can call Python
@@ -245,6 +256,7 @@ Agents can define lifecycle functions:
 - **`reload()`**: Called when the agent receives a reload signal (optional)
 
 Example:
+
 ```python
 def start():
     print("Starting...")

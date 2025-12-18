@@ -1,191 +1,58 @@
 {
-  description = "GAPI - Agent supervision framework with event-driven daemon management";
+  description = "GoPPydae Silo - Scenario management for GAPI and Goblin";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    nixos-generators = {
-      url = "github:nix-community/nixos-generators";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, nixos-generators }:
+  outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          config.allowUnfree = true;
-        };
-        
-        gapi = pkgs.callPackage ./nix/package.nix {};
-        gopy = pkgs.callPackage ./nix/gopy.nix {};
-        
-      in {
-        # Formatter
-        formatter = pkgs.nixpkgs-fmt;
-
-        # Package output
-        packages = {
-          default = gapi;
-          gapi = gapi;
-          
-          # nixos-generators images for testing
-          iso = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "iso";
-          };
-          
-          vm = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "vm";
-          };
-          
-          vm-nogui = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "vm-nogui";
-          };
-          
-          qcow = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ 
-              ./nix/generators/base.nix
-              { virtualisation.diskSize = 10 * 1024; }  # 10GB
-            ];
-            format = "qcow";
-          };
-          
-          raw = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "raw";
-          };
-          
-          raw-efi = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "raw-efi";
-          };
-          
-          virtualbox = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "virtualbox";
-          };
-          
-          vmware = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "vmware";
-          };
-          
-          lxc = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "lxc";
-          };
-          
-          lxc-metadata = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "lxc-metadata";
-          };
-          
-          docker = nixos-generators.nixosGenerate {
-            inherit system;
-            modules = [ ./nix/generators/base.nix ];
-            format = "docker";
-          };
-        };
-        
-        # Development shell
+        pkgs = nixpkgs.legacyPackages.${system};
+      in
+      {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
+            # Go toolchain
             go
-            gopls
-            gcc
+            
+            # Container orchestration
+            podman
+            podman-compose
+            
+            # Utilities
+            rsync
             mage
-            openssl
-            protobuf
-            protoc-gen-go
-            protoc-gen-go-grpc
-            pam
-            pkg-config
-            python3
-            python3Packages.protobuf
-            python3Packages.pybindgen
-            # Verification tools
+            
+            # Python verification tools
             (python3.withPackages (ps: with ps; [
               pytest
               mdformat
               mdformat-gfm
               mdformat-frontmatter
               mdformat-footnote
+              jsonschema
             ]))
+            
+            # Markdown linting
             nodePackages.markdownlint-cli2
-            # Documentation
-            pandoc
-            python3Packages.mkdocs
-            python3Packages.mkdocs-material
-            # Tools
-            gotools # for goimports
           ];
 
           shellHook = ''
-            # Explicitly add build inputs to PATH
-            export PATH=${pkgs.gcc}/bin:${pkgs.go}/bin:${pkgs.python3}/bin:$PATH
-
-            export GOBIN=$PWD/.bin
-            export PATH=$GOBIN:$PATH
-
-            # Uncomment if needed for QUIC
-            # sudo sysctl -w net.core.rmem_max=7500000
-            # sudo sysctl -w net.core.wmem_max=7500000
-
-            if ! command -v gopy &> /dev/null; then
-              echo "Installing gopy..."
-              # Impure fallback until upstream fixes go.mod
-              go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy
-            fi
-            if [ -n "$ZSH_VERSION" ]; then
-              PROMPT="$PROMPT (nix-shell)"
-            else
-              export PS1="$PS1 (nix-shell)"
-            fi
-            echo "🐙 GAPI Dev Shell Active"
-            echo "Use 'mage build' to build binaries."
+            echo "🎭 GoPPydae Silo - Scenario Management"
             echo ""
-            echo "Available nixos-generators formats:"
-            echo "  nix build .#iso          - Bootable ISO"
-            echo "  nix build .#vm           - QEMU VM"
-            echo "  nix build .#qcow         - QCOW2 image"
-            echo "  nix build .#docker       - Docker image"
-            echo "  nix build .#lxc          - LXC container"
+            echo "Available mage tasks:"
+            echo "  mage cluster:build    - Build cluster image (no cache)"
+            echo "  mage cluster:fresh    - Complete fresh build and start"
+            echo "  mage cluster:restart  - Restart with fresh containers"
+            echo "  mage cluster:tui      - Launch unified TUI"
+            echo "  mage cluster:test     - Run automated tests"
+            echo "  mage cluster:clean    - Remove all resources"
+            echo ""
+            echo "Run 'mage -l' to see all available tasks"
           '';
         };
-        
-        # Apps for easy running
-        apps = {
-          default = {
-            type = "app";
-            program = "${gapi}/bin/gapid";
-          };
-          gapid = {
-            type = "app";
-            program = "${gapi}/bin/gapid";
-          };
-          gapictl = {
-            type = "app";
-            program = "${gapi}/bin/gapictl";
-          };
-        };
       }
-    ) // {
-      # NixOS module (system-independent)
-      nixosModules.default = import ./nix/module.nix;
-      nixosModules.gapi = import ./nix/module.nix;
-    };
+    );
 }

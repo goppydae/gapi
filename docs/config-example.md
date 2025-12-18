@@ -43,7 +43,7 @@ logging:
       host: "server1"
 ```
 
----
+______________________________________________________________________
 
 ## Minimal Configuration (Defaults)
 
@@ -52,7 +52,7 @@ logging:
 # Logs to stdout in JSON format at Info level
 ```
 
----
+______________________________________________________________________
 
 ## Development Configuration
 
@@ -62,7 +62,7 @@ logging:
   format: "console"  # Human-readable output
 ```
 
----
+______________________________________________________________________
 
 ## Production Configuration
 
@@ -84,7 +84,7 @@ metrics:
   addr: "127.0.0.1:9090"
 ```
 
----
+______________________________________________________________________
 
 ## Kubernetes Configuration
 
@@ -97,7 +97,7 @@ logging:
   # K8s log drivers collect from stdout
 ```
 
----
+______________________________________________________________________
 
 ## Grafana Stack Configuration
 
@@ -118,7 +118,7 @@ metrics:
   addr: "127.0.0.1:9090"
 ```
 
----
+______________________________________________________________________
 
 ## Environment Variable Overrides
 
@@ -137,7 +137,7 @@ export GAPI_LOGGING_FILE_PATH=/custom/path/gapi.log
 export GAPI_METRICS_ENABLED=true
 ```
 
----
+______________________________________________________________________
 
 ## Log Levels
 
@@ -147,31 +147,35 @@ export GAPI_METRICS_ENABLED=true
 - **warn**: Recoverable errors, performance issues
 - **error**: Failures, unrecoverable errors
 
----
+______________________________________________________________________
 
 ## Log Formats
 
 ### JSON (Default)
+
 ```json
 {"level":"info","stream":"runtime","time":"2024-01-15 10:30:45","message":"supervisor running","host":"server1"}
 ```
 
 ### Console (Development)
+
 ```
 10:30:45 INF supervisor running host=server1 stream=runtime
 ```
 
----
+______________________________________________________________________
 
 ## File Rotation
 
 When file logging is enabled:
+
 - **maxSize**: Rotate when file reaches this size (MB)
 - **maxBackups**: Keep this many old log files
 - **maxAge**: Delete files older than this (days)
 - **compress**: Compress rotated files with gzip
 
 Example rotation:
+
 ```
 /var/log/gapi/
 ├── gapi.log           # Current log
@@ -180,23 +184,24 @@ Example rotation:
 └── gapi-2024-01-12.log.gz
 ```
 
----
+______________________________________________________________________
 
 ## Multi-Output Behavior
 
 GAPI supports multiple simultaneous outputs:
 
 1. **stdout** (always enabled)
-2. **file** (optional, with rotation)
-3. **loki** (optional, for Grafana)
+1. **file** (optional, with rotation)
+1. **loki** (optional, for Grafana)
 
 All enabled outputs receive the same log messages.
 
----
+______________________________________________________________________
 
 ## Best Practices
 
 ### Development
+
 ```yaml
 logging:
   level: "debug"
@@ -204,6 +209,7 @@ logging:
 ```
 
 ### Production (Bare Metal)
+
 ```yaml
 logging:
   level: "info"
@@ -217,6 +223,7 @@ logging:
 ```
 
 ### Production (Docker/K8s)
+
 ```yaml
 logging:
   level: "info"
@@ -225,6 +232,7 @@ logging:
 ```
 
 ### Production (Grafana Stack)
+
 ```yaml
 logging:
   level: "info"

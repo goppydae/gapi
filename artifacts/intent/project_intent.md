@@ -19,6 +19,7 @@ non_goals:
 GAPI is the core kernel for the GoPPydae ecosystem. It provides local lifecycle supervision, deterministic state transitions, and local security boundaries for agentic systems.
 
 ## Roadmap
+
 - [x] Initial design
 - [ ] v0.1 release
 - [ ] v1.0 milestone

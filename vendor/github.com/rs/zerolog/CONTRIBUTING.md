@@ -26,11 +26,11 @@ If you're unsure whether a change aligns with the project's philosophy, feel fre
 ## Contributing Guidelines
 
 1. **Fork the repository**
-2. **Create a branch** for your fix or improvement
-3. **Write tests** to cover your changes
-4. Ensure `go test ./...` passes
-5. Run `go fmt` and `go vet` to ensure code consistency
-6. **Submit a pull request** with a clear explanation of the motivation and impact
+1. **Create a branch** for your fix or improvement
+1. **Write tests** to cover your changes
+1. Ensure `go test ./...` passes
+1. Run `go fmt` and `go vet` to ensure code consistency
+1. **Submit a pull request** with a clear explanation of the motivation and impact
 
 ## Code Style
 
@@ -38,6 +38,6 @@ If you're unsure whether a change aligns with the project's philosophy, feel fre
 - Avoid introducing new dependencies.
 - Preserve backwards compatibility unless explicitly discussed.
 
----
+______________________________________________________________________
 
 We appreciate your effort in helping us keep Zerolog fast, minimal, and reliable!

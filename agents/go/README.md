@@ -5,13 +5,15 @@ Go agents are used for **foundational** and **high-performance** use cases. Use 
 ## When to Use Go Agents
 
 ✅ **Use Go for**:
+
 - System boot agents (PID 1 init)
 - Cluster coordination (Serf/Raft join)
 - High-throughput services (log aggregation, metrics collection)
-- Low-latency requirements (<10ms startup)
+- Low-latency requirements (\<10ms startup)
 - Self-contained binaries (no runtime dependencies)
 
 ❌ **Use Python for**:
+
 - Business logic and application services
 - Rapid iteration and development
 - Integration with Python ecosystem (NumPy, pandas, etc.)
@@ -197,11 +199,11 @@ Specify dependencies in the `--describe` output:
 ## Best Practices
 
 1. **Always implement --describe**: Required for discovery
-2. **Graceful shutdown**: Handle SIGINT/SIGTERM
-3. **Minimal dependencies**: Keep binaries small and self-contained
-4. **Error handling**: Return non-zero exit codes on failure
-5. **Logging**: Use structured logging (JSON) for easy parsing
-6. **Idempotent**: Safe to restart at any time
+1. **Graceful shutdown**: Handle SIGINT/SIGTERM
+1. **Minimal dependencies**: Keep binaries small and self-contained
+1. **Error handling**: Return non-zero exit codes on failure
+1. **Logging**: Use structured logging (JSON) for easy parsing
+1. **Idempotent**: Safe to restart at any time
 
 ## Example: Cluster Join Agent
 

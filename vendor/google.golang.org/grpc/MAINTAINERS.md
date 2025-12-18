@@ -17,6 +17,7 @@ for general contribution guidelines.
 - [gtcooke94](https://github.com/gtcooke94), Google LLC
 
 ## Emeritus Maintainers (in alphabetical order)
+
 - [adelez](https://github.com/adelez)
 - [aranjans](https://github.com/aranjans)
 - [canguler](https://github.com/canguler)

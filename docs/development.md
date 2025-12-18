@@ -13,6 +13,7 @@ nix develop
 ```
 
 This provides all dependencies including:
+
 - Go 1.25+
 - Python 3.11+
 - GCC (for CGO)
@@ -22,6 +23,7 @@ This provides all dependencies including:
 ### Alternative: Manual Setup
 
 If not using Nix, install:
+
 - **Go 1.25+**: [golang.org/dl](https://golang.org/dl/)
 - **Python 3.11+**: [python.org](https://www.python.org/)
 - **GCC**: For CGO compilation
@@ -62,11 +64,13 @@ nix develop -c mage dev
 ```
 
 By default, `gapid`:
+
 - Scans `./agents/` for agent files
 - Listens on `127.0.0.1:4242` (QUIC)
 - Loads `config.yaml` from the current directory
 
 ### Use the CLI
+
 ```bash
 # Check status
 ./bin/gapictl agent status
@@ -89,6 +93,7 @@ nix develop -c mage test
 ```
 
 This runs:
+
 - Unit tests
 - Integration tests
 - Python ADK tests
@@ -127,6 +132,7 @@ nix develop -c mage fmt
 ```
 
 This runs:
+
 - `gofmt` on Go code
 - `black` on Python code
 
@@ -137,6 +143,7 @@ nix develop -c mage lint
 ```
 
 This runs:
+
 - `golangci-lint` for Go
 - `pylint` for Python
 
@@ -226,11 +233,11 @@ gapi/
 ### Key Components
 
 1. **Agent Registry** (`agentreg`): Discovers and tracks agents
-2. **Agent Manager** (`agentmgr`): Starts, stops, and monitors agents
-3. **Lifecycle** (`lifecycle`): State machine for agent states
-4. **Scheduler** (`scheduler`): Timer-based execution
-5. **Socket Activation** (`socket`): On-demand agent startup
-6. **Cgroups** (`cgroups`): Resource limits enforcement
+1. **Agent Manager** (`agentmgr`): Starts, stops, and monitors agents
+1. **Lifecycle** (`lifecycle`): State machine for agent states
+1. **Scheduler** (`scheduler`): Timer-based execution
+1. **Socket Activation** (`socket`): On-demand agent startup
+1. **Cgroups** (`cgroups`): Resource limits enforcement
 
 ## Debugging
 
@@ -274,13 +281,13 @@ dlv debug ./cmd/gapid
 ### Workflow
 
 1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/my-feature`
-3. **Make changes**
-4. **Run tests**: `nix develop -c mage test`
-5. **Format code**: `nix develop -c mage fmt`
-6. **Commit**: `git commit -m "Add my feature"`
-7. **Push**: `git push origin feature/my-feature`
-8. **Open a pull request**
+1. **Create a feature branch**: `git checkout -b feature/my-feature`
+1. **Make changes**
+1. **Run tests**: `nix develop -c mage test`
+1. **Format code**: `nix develop -c mage fmt`
+1. **Commit**: `git commit -m "Add my feature"`
+1. **Push**: `git push origin feature/my-feature`
+1. **Open a pull request**
 
 ### Commit Messages
 
@@ -310,23 +317,25 @@ Follow conventional commits:
 ## Release Process
 
 1. **Update version** in `core/version/version.go`
-2. **Update CHANGELOG.md**
-3. **Tag release**: `git tag v0.x.0`
-4. **Push tag**: `git push origin v0.x.0`
-5. **Build release binaries**: `nix develop -c mage release`
-6. **Create GitHub release** with binaries
+1. **Update CHANGELOG.md**
+1. **Tag release**: `git tag v0.x.0`
+1. **Push tag**: `git push origin v0.x.0`
+1. **Build release binaries**: `nix develop -c mage release`
+1. **Create GitHub release** with binaries
 
 ## Troubleshooting
 
 ### Build Failures
 
 **CGO errors**:
+
 ```bash
 # Ensure GCC is installed
 gcc --version
 ```
 
 **Nix errors**:
+
 ```bash
 # Update flake
 nix flake update
@@ -338,27 +347,32 @@ nix develop --rebuild
 ### Test Failures
 
 **E2E tests fail**:
+
 - Ensure no other `gapid` instance is running
 - Check port 4242 is available
 - Verify cgroup delegation (for resource limit tests)
 
 **Python tests fail**:
+
 - Ensure Python 3.11+ is installed
 - Install Python dependencies: `pip install -r adk/python/requirements.txt`
 
 ### Runtime Issues
 
 **Agents not starting**:
+
 - Check `ENABLED = True` in agent metadata
 - Verify agent syntax: `python agents/myagent.py.service`
 - Check supervisor logs for errors
 
 **Cgroup errors**:
+
 - Verify cgroup v2 is enabled: `mount | grep cgroup2`
 - Check delegation: `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`
 - See [Features - Resource Limits](features.md#rootless-support)
 
 **Transport errors**:
+
 - Verify certificates exist (for QUIC remote connections) or enable anonymous localhost support
 - Check firewall rules
 - Ensure address is not already in use

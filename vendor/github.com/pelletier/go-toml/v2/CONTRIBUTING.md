@@ -21,16 +21,14 @@ improvement, or new features that weren't envisioned before. Sometimes, a
 seemingly innocent question leads to the fix of a bug. Don't hesitate and ask
 away!
 
-[discussions]: https://github.com/pelletier/go-toml/discussions
-
 ## Improve the documentation
 
 The best way to share your knowledge and experience with go-toml is to improve
 the documentation. Fix a typo, clarify an interface, add an example, anything
 goes!
 
-The documentation is present in the [README][readme] and thorough the source
-code. On release, it gets updated on [pkg.go.dev][pkg.go.dev]. To make a change
+The documentation is present in the [README] and thorough the source
+code. On release, it gets updated on [pkg.go.dev]. To make a change
 to the documentation, create a pull request with your proposed changes. For
 simple changes like that, the easiest way to go is probably the "Fork this
 project and edit the file" button on Github, displayed at the top right of the
@@ -73,10 +71,10 @@ benefits from.
 The fairly standard code contribution process looks like that:
 
 1. [Fork the project][fork].
-2. Make your changes, commit on any branch you like.
-3. [Open up a pull request][pull-request]
-4. Review, potential ask for changes.
-5. Merge.
+1. Make your changes, commit on any branch you like.
+1. [Open up a pull request][pull-request]
+1. Review, potential ask for changes.
+1. Merge.
 
 Feel free to ask for help! You can create draft pull requests to gather
 some early feedback!
@@ -120,14 +118,14 @@ go test ./... -bench=. -count=10
 ```
 
 Benchmark results should be compared against each other with
-[benchstat][benchstat]. Typical flow looks like this:
+[benchstat]. Typical flow looks like this:
 
 1. On the `v2` branch, run `go test ./... -bench=. -count 10` and save output to
    a file (for example `old.txt`).
-2. Make some code changes.
-3. Run `go test ....` again, and save the output to an other file (for example
+1. Make some code changes.
+1. Run `go test ....` again, and save the output to an other file (for example
    `new.txt`).
-4. Run `benchstat old.txt new.txt` to check that time/op does not go up in any
+1. Run `benchstat old.txt new.txt` to check that time/op does not go up in any
    test.
 
 On Unix you can use `./ci.sh benchmark -d v2` to verify how your code impacts
@@ -136,14 +134,12 @@ performance.
 It is highly encouraged to add the benchstat results to your pull request
 description. Pull requests that lower performance will receive more scrutiny.
 
-[benchstat]: https://pkg.go.dev/golang.org/x/perf/cmd/benchstat
-
 ### Style
 
 Try to look around and follow the same format and structure as the rest of the
 code. We enforce using `go fmt` on the whole code base.
 
----
+______________________________________________________________________
 
 ## Maintainers-only
 
@@ -159,35 +155,36 @@ Checklist:
 - Title will be understandable in the changelog.
 
 1. Merge using "squash and merge".
-2. Make sure to edit the commit message to keep all the useful information
+1. Make sure to edit the commit message to keep all the useful information
    nice and clean.
-3. Make sure the commit title is clear and contains the PR number (#123).
+1. Make sure the commit title is clear and contains the PR number (#123).
 
 ### New release
 
 1. Decide on the next version number. Use semver. Review commits since last
    version to assess.
-2. Tag release. For example:
+1. Tag release. For example:
+
 ```
 git checkout v2
 git pull
 git tag v2.2.0
 git push --tags
 ```
+
 3. CI automatically builds a draft Github release. Review it and edit as
    necessary. Look for "Other changes". That would indicate a pull request not
    labeled properly. Tweak labels and pull request titles until changelog looks
    good for users.
-4. Check "create discussion" box, in the "Releases" category.
-5. If new version is an alpha or beta only, check pre-release box.
+1. Check "create discussion" box, in the "Releases" category.
+1. If new version is an alpha or beta only, check pre-release box.
 
-
-[issues-tracker]: https://github.com/pelletier/go-toml/issues
+[benchstat]: https://pkg.go.dev/golang.org/x/perf/cmd/benchstat
 [bug-report]: https://github.com/pelletier/go-toml/issues/new?template=bug_report.md
-[pkg.go.dev]: https://pkg.go.dev/github.com/pelletier/go-toml
-[readme]: ./README.md
+[discussions]: https://github.com/pelletier/go-toml/discussions
 [fork]: https://help.github.com/articles/fork-a-repo
-[pull-request]: https://help.github.com/en/articles/creating-a-pull-request
-[new-release]: https://github.com/pelletier/go-toml/releases/new
-[gh]: https://github.com/cli/cli
+[issues-tracker]: https://github.com/pelletier/go-toml/issues
+[pkg.go.dev]: https://pkg.go.dev/github.com/pelletier/go-toml
 [pr-labels]: https://github.com/pelletier/go-toml/blob/v2/.github/release.yml
+[pull-request]: https://help.github.com/en/articles/creating-a-pull-request
+[readme]: ./README.md
