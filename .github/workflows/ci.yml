@@ -1,4 +1,4 @@
-name: CI
+name: Continuous Integration
 
 on:
   push:
@@ -8,24 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build
+  full-build-and-test:
+    name: Full Build and Test
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Workspace
         uses: actions/checkout@v4
       
-      - name: Install Nix
+      - name: Synchronize Environment (Nix)
         uses: cachix/install-nix-action@v24
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       
 
       
-      - name: Build
+      - name: Compile System Binaries
         run: nix develop -c mage build
       
-      - name: Test
+      - name: Execute System Tests
         run: nix develop -c go test -v ./...
       
       - name: Upload binaries
@@ -45,22 +45,22 @@ jobs:
           repository: goppydae/goblin
           event-type: gapi-build-success
 
-  test-cross-adk:
-    name: Cross-ADK Tests
+  execute-cross-adk-tests:
+    name: Execute Cross-ADK Tests
     runs-on: ubuntu-latest
-    needs: build
+    needs: full-build-and-test
     steps:
-      - name: Checkout code
+      - name: Checkout Workspace
         uses: actions/checkout@v4
       
-      - name: Install Nix
+      - name: Synchronize Environment (Nix)
         uses: cachix/install-nix-action@v24
         with:
           nix_path: nixpkgs=channel:nixos-unstable
       
 
       
-      - name: Run Cross-ADK Tests
+      - name: Execute Cross-ADK Tests
         run: |
           nix develop -c go test -v ./test/adk/ -run TestCrossADKParity 2>&1 | tee /tmp/cross-adk-test.log
       
