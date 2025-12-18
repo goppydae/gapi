@@ -9,8 +9,8 @@ import (
 
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/eventbus"
-	"github.com/goppydae/gapi/internal/statewatch"
 	"github.com/goppydae/gapi/core/transport"
+	"github.com/goppydae/gapi/internal/statewatch"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
 
