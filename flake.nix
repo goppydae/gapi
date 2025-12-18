@@ -117,6 +117,15 @@
             python3
             python3Packages.protobuf
             python3Packages.pybindgen
+            # Verification tools
+            (python3.withPackages (ps: with ps; [
+              pytest
+              mdformat
+              mdformat-gfm
+              mdformat-frontmatter
+              mdformat-footnote
+            ]))
+            nodePackages.markdownlint-cli2
             # Documentation
             pandoc
             python3Packages.mkdocs

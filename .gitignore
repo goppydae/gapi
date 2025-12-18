@@ -96,3 +96,6 @@ buf.gen.yaml.lock
 
 # Ephemeral build data
 build/meta/*
+# Ephemeral artifacts
+artifacts/logs/
+artifacts/test_results/
