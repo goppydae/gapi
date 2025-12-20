@@ -303,14 +303,14 @@ extern void adk_ChannelManager_Send(long long int _handle, char* msg, char goRun
 extern char* adk_ChannelManager_Receive(long long int _handle, long long int timeoutSeconds);
 extern void adk_ChannelManager_Close(long long int _handle, char goRun);
 extern long long int adk_NewChannelManager(void);
-extern char* adk_ComputeSchemaHash(char* path);
-extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
-extern void adk_InjectCommand(char* cmd, char goRun);
-extern void adk_SetSchemaHash(char* hash, char goRun);
-extern char* adk_AwaitCommand(void);
-extern void adk_SendEvent(char* jsonStr, char goRun);
 extern void adk_StartHeartbeat(char* id, char* typeStr, char goRun);
 extern char* adk_StartQUIC(char* addr);
+extern char* adk_AwaitCommand(void);
+extern char* adk_ComputeSchemaHash(char* path);
+extern void adk_InjectCommand(char* cmd, char goRun);
+extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
+extern void adk_SendEvent(char* jsonStr, char goRun);
+extern void adk_SetSchemaHash(char* hash, char goRun);
 
 #ifdef __cplusplus
 }
