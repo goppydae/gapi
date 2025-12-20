@@ -34,6 +34,6 @@ pkgs.mkShell {
     else
       export PS1="$PS1 (nix-shell)"
     fi
-    echo "Welcome to the GoPPydae dev shell. Goblin stands ready."
+    echo "Welcome to the GoPPydae dev shell. GAPI stands ready."
   '';
 }

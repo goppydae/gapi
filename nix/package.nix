@@ -35,7 +35,7 @@ buildGoModule rec {
   '';
   
   meta = with lib; {
-    description = "Agent supervision framework with event-driven daemon management";
+    description = "GoPPydae Agent Programming Interface (GAPI) - Agent supervision framework with event-driven daemon management";
     homepage = "https://github.com/goppydae/gapi";
     license = licenses.mit;
     maintainers = with maintainers; [ ];

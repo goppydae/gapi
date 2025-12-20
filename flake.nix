@@ -1,5 +1,5 @@
 {
-  description = "GoPPydae Silo - Scenario management for GAPI and Goblin";
+  description = "GAPI (GoPPydae Agent Programming Interface) - Agent supervision framework with event-driven daemon management";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -40,15 +40,14 @@
           ];
 
           shellHook = ''
-            echo "🎭 GoPPydae Silo - Scenario Management"
+            echo "🏗️  GAPI (GoPPydae Agent Programming Interface) - Agent Supervision Framework"
             echo ""
             echo "Available mage tasks:"
-            echo "  mage cluster:build    - Build cluster image (no cache)"
-            echo "  mage cluster:fresh    - Complete fresh build and start"
-            echo "  mage cluster:restart  - Restart with fresh containers"
-            echo "  mage cluster:tui      - Launch unified TUI"
-            echo "  mage cluster:test     - Run automated tests"
-            echo "  mage cluster:clean    - Remove all resources"
+            echo "  mage build       - Build gapid and gapictl binaries"
+            echo "  mage test        - Run all tests"
+            echo "  mage testUnit    - Run unit tests only"
+            echo "  mage testADK     - Run ADK integration tests"
+            echo "  mage testE2E     - Run end-to-end tests"
             echo ""
             echo "Run 'mage -l' to see all available tasks"
           '';

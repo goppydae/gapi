@@ -1,4 +1,4 @@
-# GAPI - Agent Runtime Library
+# GAPI (GoPPydae Agent Programming Interface) - Agent Runtime Library
 
 **GAPI** is the core **runtime library** and SDK for the GoPPydae ecosystem. It provides the low-level mechanism for spawning, supervising, and securing agents on a single machine. It is designed to be embedded into larger orchestrators (like [Goblin](../goblin)).
 

@@ -1,6 +1,6 @@
 ---
 primary_domain: software
-deliverable: Agent supervision framework logic for GoPPydae kernel.
+deliverable: GoPPydae Agent Programming Interface (GAPI) logic for GoPPydae kernel.
 first_milestone_done: Core lifecycle supervision and event-driven state transitions functional.
 project_name: GAPI
 milestone: v1.0
@@ -14,7 +14,7 @@ non_goals:
   - Multi-node orchestration (handled by Goblin)
 ---
 
-# GAPI: Agent Supervision Framework
+# GoPPydae Agent Programming Interface (GAPI): Agent Supervision Framework
 
 GAPI is the core kernel for the GoPPydae ecosystem. It provides local lifecycle supervision, deterministic state transitions, and local security boundaries for agentic systems.
 

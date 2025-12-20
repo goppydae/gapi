@@ -1,5 +1,5 @@
 site_name: GAPI
-site_description: General Agent Program Interface
+site_description: GoPPydae Agent Programming Interface
 theme:
   name: material
   palette:

@@ -1,6 +1,6 @@
 # GAPI Documentation
 
-Welcome to the **General Agent Program Interface** (GAPI) documentation.
+Welcome to the **GoPPydae Agent Programming Interface** (GAPI) documentation.
 
 ## Core Concepts
 
