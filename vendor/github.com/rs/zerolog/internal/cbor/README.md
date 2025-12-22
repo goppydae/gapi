@@ -1,16 +1,15 @@
 ## Reference:
-
-CBOR Encoding is described in [RFC7049](https://tools.ietf.org/html/rfc7049)
+   CBOR Encoding is described in [RFC7049](https://tools.ietf.org/html/rfc7049)
 
 ## Comparison of JSON vs CBOR
 
 Two main areas of reduction are:
 
-1. CPU usage to write a log msg
-1. Size (in bytes) of log messages.
+1. CPU usage to write a log msg 
+2. Size (in bytes) of log messages.
+
 
 CPU Usage savings are below:
-
 ```
 name                                    JSON time/op    CBOR time/op   delta
 Info-32                                   15.3ns ± 1%    11.7ns ± 3%  -23.78%  (p=0.000 n=9+10)      
@@ -45,13 +44,13 @@ Assuming this log message (with an Integer, timestamp and string, in addition to
 `{"level":"error","Fault":41650,"time":"2018-04-01T15:18:19-07:00","message":"Some Message"}`
 
 Two measurements were done for the log file sizes - one without any compression, second
-using [compress/zlib](https://golang.org/pkg/compress/zlib/).
+using [compress/zlib](https://golang.org/pkg/compress/zlib/). 
 
 Results for 10,000 log messages:
 
-| Log Format | Plain File Size (in KB) | Compressed File Size (in KB) |
-| :--------- | :---------------------: | :--------------------------: |
-| JSON       |           920           |              28              |
-| CBOR       |           550           |              28              |
+| Log Format |  Plain File Size (in KB) | Compressed File Size (in KB) |
+| :--- | :---: | :---: |
+| JSON | 920 | 28 |
+| CBOR | 550 | 28 |
 
 The example used to calculate the above data is available in [Examples](examples).

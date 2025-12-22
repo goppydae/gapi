@@ -7,15 +7,11 @@ Cron V3 has been released!
 
 To download the specific tagged release, run:
 
-```
-go get github.com/robfig/cron/v3@v3.0.0
-```
+	go get github.com/robfig/cron/v3@v3.0.0
 
 Import it in your program as:
 
-```
-import "github.com/robfig/cron/v3"
-```
+	import "github.com/robfig/cron/v3"
 
 It requires Go 1.11 or later due to usage of Go Modules.
 
@@ -40,7 +36,6 @@ New features:
   `github.com/robfig/cron/v3`, instead of `gopkg.in/...`
 
 - Fixed bugs:
-
   - 0f01e6b parser: fix combining of Dow and Dom (#70)
   - dbf3220 adjust times when rolling the clock forward to handle non-existent midnight (#157)
   - eeecf15 spec_test.go: ensure an error is returned on 0 increment (#144)
@@ -56,7 +51,6 @@ New features:
 
 - The new Chain & JobWrapper types allow you to install "interceptors" to add
   cross-cutting behavior like the following:
-
   - Recover any panics from jobs
   - Delay a job's execution if the previous run hasn't completed yet
   - Skip a job's execution if the previous run hasn't completed yet
@@ -72,15 +66,13 @@ It is backwards incompatible with both v1 and v2. These updates are required:
   UPDATING: To retain the old behavior, construct your Cron with a custom
   parser:
 
-  ```
-  // Seconds field, required
-  cron.New(cron.WithSeconds())
+      // Seconds field, required
+      cron.New(cron.WithSeconds())
 
-  // Seconds field, optional
-  cron.New(
-      cron.WithParser(
-          cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
-  ```
+      // Seconds field, optional
+      cron.New(
+          cron.WithParser(
+              cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor))
 
 - The Cron type now accepts functional options on construction rather than the
   previous ad-hoc behavior modification mechanisms (setting a field, calling a setter).
@@ -101,11 +93,9 @@ It is backwards incompatible with both v1 and v2. These updates are required:
 
   UPDATING: To opt into panic recovery and configure the panic logger:
 
-  ```
-  cron.New(cron.WithChain(
-      cron.Recover(logger),  // or use cron.DefaultLogger
-  ))
-  ```
+      cron.New(cron.WithChain(
+          cron.Recover(logger),  // or use cron.DefaultLogger
+      ))
 
 - In adding support for https://github.com/go-logr/logr, `cron.WithVerboseLogger` was
   removed, since it is duplicative with the leveled logging.
@@ -113,10 +103,9 @@ It is backwards incompatible with both v1 and v2. These updates are required:
   UPDATING: Callers should use `WithLogger` and specify a logger that does not
   discard `Info` logs. For convenience, one is provided that wraps `*log.Logger`:
 
-  ```
-  cron.New(
-      cron.WithLogger(cron.VerbosePrintfLogger(logger)))
-  ```
+      cron.New(
+          cron.WithLogger(cron.VerbosePrintfLogger(logger)))
+
 
 ### Background - Cron spec format
 
@@ -128,9 +117,9 @@ There are two cron spec formats in common usage:
 - The cron format used by [the Quartz Scheduler], commonly used for scheduled
   jobs in Java software
 
+[the Cron wikipedia page]: https://en.wikipedia.org/wiki/Cron
+[the Quartz Scheduler]: http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html
+
 The original version of this package included an optional "seconds" field, which
 made it incompatible with both of these formats. Now, the "standard" format is
 the default format accepted, and the Quartz format is opt-in.
-
-[the cron wikipedia page]: https://en.wikipedia.org/wiki/Cron
-[the quartz scheduler]: http://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/tutorial-lesson-06.html
