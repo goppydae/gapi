@@ -4,6 +4,7 @@ The `go-python` project (and `gopy`) eagerly accepts contributions from the comm
 
 ## Introduction
 
+
 The `go-python` project provides libraries and tools in Go for the Go community to better integrate with Python projects and libraries, and we would like you to join us in improving `go-python`'s quality and scope.
 This document is for contributors or those interested in contributing.
 Questions about `go-python` and the use of its libraries can be directed to the [go-python](mailto:go-python@googlegroups.com) mailing list.
@@ -107,12 +108,12 @@ If you are a contributor, please be welcoming to new contributors.
 
 There are several terms code reviewers may use that you should become familiar with.
 
-- `LGTM` — looks good to me
-- `SGTM` — sounds good to me
-- `PTAL` — please take another look
-- `CL` — change list; a single commit in the repository
-- `s/foo/bar/` — please replace `foo` with `bar`; this is [sed syntax](http://en.wikipedia.org/wiki/Sed#Usage)
-- `s/foo/bar/g` — please replace `foo` with `bar` throughout your entire change
+  * ` LGTM ` — looks good to me
+  * ` SGTM ` — sounds good to me
+  * ` PTAL ` — please take another look
+  * ` CL ` — change list; a single commit in the repository
+  * ` s/foo/bar/ ` — please replace ` foo ` with ` bar `; this is [sed syntax](http://en.wikipedia.org/wiki/Sed#Usage)
+  * ` s/foo/bar/g ` — please replace ` foo ` with ` bar ` throughout your entire change
 
 We follow the convention of requiring at least 1 reviewer to say LGTM before a merge.
 When code is tricky or controversial, submitters and reviewers can request additional review from others and more LGTMs before merge.
@@ -135,7 +136,7 @@ If you are looking for some way to help the `go-python` project, there are good 
 
 We use [Go style](https://github.com/golang/go/wiki/CodeReviewComments).
 
-______________________________________________________________________
+---
 
 This _"Contributing"_ guide has been extracted from the [Gonum](https://gonum.org) project.
 Its guide is [here](https://github.com/gonum/license/blob/master/CONTRIBUTING.md).
