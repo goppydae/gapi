@@ -42,10 +42,9 @@ then configured with methods:
 # Goals
 
 The main goals of the package are:
-
-1. Make it harder to leak goroutines
-1. Handle panics gracefully
-1. Make concurrent code easier to read
+1) Make it harder to leak goroutines
+2) Handle panics gracefully
+3) Make concurrent code easier to read
 
 ## Goal #1: Make it harder to leak goroutines
 
@@ -90,11 +89,10 @@ on panic. This is usually undesirable.
 
 However, if you do add a panic handler to a goroutine, what do you do with the
 panic once you catch it? Some options:
-
-1. Ignore it
-1. Log it
-1. Turn it into an error and return that to the goroutine spawner
-1. Propagate the panic to the goroutine spawner
+1) Ignore it
+2) Log it
+3) Turn it into an error and return that to the goroutine spawner
+4) Propagate the panic to the goroutine spawner
 
 Ignoring panics is a bad idea since panics usually mean there is actually
 something wrong and someone should fix it.
@@ -158,7 +156,6 @@ func main() {
     }
 }
 ```
-
 </td>
 <td>
 
@@ -170,7 +167,6 @@ func main() {
     wg.Wait()
 }
 ```
-
 </td>
 </tr>
 </table>
@@ -218,7 +214,6 @@ func main() {
     wg.Wait()
 }
 ```
-
 </td>
 <td>
 
@@ -231,7 +226,6 @@ func main() {
     wg.Wait()
 }
 ```
-
 </td>
 </tr>
 </table>
@@ -261,7 +255,6 @@ func process(stream chan int) {
     wg.Wait()
 }
 ```
-
 </td>
 <td>
 
@@ -277,7 +270,6 @@ func process(stream chan int) {
     p.Wait()
 }
 ```
-
 </td>
 </tr>
 </table>
@@ -314,7 +306,6 @@ func process(values []int) {
     wg.Wait()
 }
 ```
-
 </td>
 <td>
 
@@ -323,7 +314,6 @@ func process(values []int) {
     iter.ForEach(values, handle)
 }
 ```
-
 </td>
 </tr>
 </table>
@@ -366,7 +356,6 @@ func concMap(
     return res
 }
 ```
-
 </td>
 <td>
 
@@ -378,12 +367,12 @@ func concMap(
     return iter.Map(input, f)
 }
 ```
-
 </td>
 </tr>
 </table>
 
 Process an ordered stream concurrently:
+
 
 <table>
 <tr>
@@ -442,7 +431,6 @@ func mapStream(
     readerWg.Wait()
 }
 ```
-
 </td>
 <td>
 
@@ -463,7 +451,6 @@ func mapStream(
     s.Wait()
 }
 ```
-
 </td>
 </tr>
 </table>
@@ -473,5 +460,5 @@ func mapStream(
 This package is currently pre-1.0. There are likely to be minor breaking
 changes before a 1.0 release as we stabilize the APIs and tweak defaults.
 Please open an issue if you have questions, concerns, or requests that you'd
-like addressed before the 1.0 release. Currently, a 1.0 is targeted for
+like addressed before the 1.0 release. Currently, a 1.0 is targeted for 
 March 2023.

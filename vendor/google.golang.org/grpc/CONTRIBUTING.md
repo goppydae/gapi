@@ -82,7 +82,7 @@ smoothly and quickly.
      not updated, an optional checker will fail. This will be fixed by our team
      in a separate PR and will not prevent the merge of your PR.
 
-  1. We run a checker that will fail if there is any change in dependencies of
+  2. We run a checker that will fail if there is any change in dependencies of
      an exported package via the `dependencies` check. If new dependencies are
      added that are not appropriate, we may not accept your PR (see below).
 
@@ -125,15 +125,15 @@ smoothly and quickly.
 
   The summary must:
 
-  - be something that gRPC users will understand.
+  * be something that gRPC users will understand.
 
-  - clearly explain the feature being added, the issue being fixed, or the
+  * clearly explain the feature being added, the issue being fixed, or the
     behavior being changed, etc. If fixing a bug, be clear about how the bug
     can be triggered by an end-user.
 
-  - begin with a capital letter and use complete sentences.
+  * begin with a capital letter and use complete sentences.
 
-  - be as short as possible to describe the change being made.
+  * be as short as possible to describe the change being made.
 
   If a PR is *not* end-user visible -- e.g. a cleanup, testing change, or
   GitHub-related, use `RELEASE NOTES: n/a`.
@@ -151,7 +151,8 @@ smoothly and quickly.
   review, as it can interfere with GitHub's tracking of comments.
 
 - Unless your PR is trivial, you should **expect reviewer comments** that you
-  will need to address before merging. We'll label the PR as `Status: Requires Reporter Clarification` if we expect you to respond to these comments in a
+  will need to address before merging. We'll label the PR as `Status: Requires
+  Reporter Clarification` if we expect you to respond to these comments in a
   timely manner. If the PR remains inactive for 6 days, it will be marked as
   `stale`, and we will automatically close it after 7 days if we don't hear back
   from you. Please feel free to ping issues or bugs if you do not get a response
