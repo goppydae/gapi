@@ -1,6 +1,8 @@
 module github.com/goppydae/gapi
 
-go 1.25.0
+go 1.26.0
+
+toolchain go1.26.5
 
 require (
 	filippo.io/age v1.2.1
@@ -11,6 +13,7 @@ require (
 	github.com/go-python/gopy v0.4.10
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
+	github.com/goppydae/magelib v0.0.0-00010101000000-000000000000
 	github.com/magefile/mage v1.15.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quic-go/quic-go v0.57.1
@@ -73,3 +76,5 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
 )
+
+replace github.com/goppydae/magelib => ../magelib

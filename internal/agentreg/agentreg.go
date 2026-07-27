@@ -36,6 +36,16 @@ type AgentRegistry struct {
 
 const agentsBucket = "agents"
 
+// Edge kinds used consistently across Register, syncGraph, and GetDependencies.
+// Centralizing these prevents the graph layer from silently diverging: syncGraph
+// previously rewrote every edge as "dependency" while Register and
+// GetDependencies used "requires"/"wants", so dependency queries returned empty
+// after any sync.
+const (
+	edgeKindRequires = "requires"
+	edgeKindWants    = "wants"
+)
+
 func NewAgentRegistry(s store.HybridStore, verifyKey *ed25519.PublicKey) (*AgentRegistry, error) {
 	r := &AgentRegistry{
 		store:     s,
@@ -48,6 +58,12 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 	if agent == nil || strings.TrimSpace(agent.ID) == "" || strings.TrimSpace(agent.Type) == "" {
 		return fmt.Errorf("invalid agent: %+v", agent)
 	}
+
+	// Register performs a sequence of store writes (primary record, node, edges)
+	// that must land as a unit. Serialize concurrent registrations (e.g. from the
+	// agent.reload discovery path) so they cannot interleave.
+	r.nodeMu.Lock()
+	defer r.nodeMu.Unlock()
 
 	// Integrity Check
 	if r.verifyKey != nil {
@@ -84,12 +100,12 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 
 	// Outgoing Dependencies
 	for _, dep := range agent.Requires {
-		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: "requires"}); err != nil {
+		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: edgeKindRequires}); err != nil {
 			return fmt.Errorf("edge requires error: %w", err)
 		}
 	}
 	for _, dep := range agent.Wants {
-		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: "wants"}); err != nil {
+		if err := r.store.AddEdge(graphdb.Edge{From: agent.ID, To: dep, Kind: edgeKindWants}); err != nil {
 			return fmt.Errorf("edge wants error: %w", err)
 		}
 	}
@@ -99,12 +115,12 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 	for _, target := range agent.WantedBy {
 		// Ensure target node exists? GraphDB might require it, or auto-create.
 		// Assuming auto-create or loose consistency for now, or just adding edge.
-		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: "wants"}); err != nil {
+		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: edgeKindWants}); err != nil {
 			return fmt.Errorf("edge wanted_by error: %w", err)
 		}
 	}
 	for _, target := range agent.RequiredBy {
-		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: "requires"}); err != nil {
+		if err := r.store.AddEdge(graphdb.Edge{From: target, To: agent.ID, Kind: edgeKindRequires}); err != nil {
 			return fmt.Errorf("edge required_by error: %w", err)
 		}
 	}
@@ -141,11 +157,11 @@ func (r *AgentRegistry) List() ([]*AgentDescription, error) {
 func (r *AgentRegistry) GetDependencies(id string) ([]string, error) {
 	// Query GraphDB for authoritative dependencies
 	// This captures both static 'requires'/'wants' AND dynamic 'wanted_by'/'required_by' edges
-	reqs, err := r.store.Neighbors(id, "requires")
+	reqs, err := r.store.Neighbors(id, edgeKindRequires)
 	if err != nil {
 		return nil, fmt.Errorf("neighbors/requires: %w", err)
 	}
-	wants, err := r.store.Neighbors(id, "wants")
+	wants, err := r.store.Neighbors(id, edgeKindWants)
 	if err != nil {
 		return nil, fmt.Errorf("neighbors/wants: %w", err)
 	}
@@ -174,25 +190,27 @@ func (r *AgentRegistry) TopologicalSort() ([]string, error) {
 		return nil, err
 	}
 
-	// Build adjacency using ONLY hard deps (Requires); Wants to remain soft.
-	reqs := make(map[string][]string, len(agents))
+	// Build the dependency DAG using ONLY hard deps (Requires); Wants stay soft.
+	// Edge direction is dep -> dependent, so in-degree(id) is the count of id's
+	// unmet hard prerequisites. A reverse-adjacency (dependents) map lets Kahn's
+	// run in O(V+E) instead of rescanning every agent's deps on each dequeue.
 	exists := make(map[string]struct{}, len(agents))
 	for _, a := range agents {
 		exists[a.ID] = struct{}{}
-		reqs[a.ID] = append([]string(nil), a.Requires...)
 	}
 
-	// Kahn's algorithm (in-memory, no store side effects)
-	inDeg := map[string]int{}
-	for id := range exists {
-		inDeg[id] = 0
-	}
-	for id, deps := range reqs {
-		_ = id
-		for _, d := range deps {
-			if _, ok := exists[d]; ok {
-				inDeg[id]++
+	dependents := make(map[string][]string, len(agents)) // dep -> [dependents]
+	inDeg := make(map[string]int, len(agents))
+	for _, a := range agents {
+		if _, ok := inDeg[a.ID]; !ok {
+			inDeg[a.ID] = 0
+		}
+		for _, dep := range a.Requires {
+			if _, ok := exists[dep]; !ok {
+				continue // external/unknown hard dep: ignore for local ordering
 			}
+			dependents[dep] = append(dependents[dep], a.ID)
+			inDeg[a.ID]++
 		}
 	}
 
@@ -203,22 +221,16 @@ func (r *AgentRegistry) TopologicalSort() ([]string, error) {
 		}
 	}
 
-	var order []string
+	order := make([]string, 0, len(agents))
 	for len(queue) > 0 {
-		// pop last (stack-ish is fine)
-		n := len(queue) - 1
-		id := queue[n]
-		queue = queue[:n]
+		id := queue[0]
+		queue = queue[1:]
 		order = append(order, id)
 
-		for depOwner, deps := range reqs {
-			for _, d := range deps {
-				if d == id {
-					inDeg[depOwner]--
-					if inDeg[depOwner] == 0 {
-						queue = append(queue, depOwner)
-					}
-				}
+		for _, dependent := range dependents[id] {
+			inDeg[dependent]--
+			if inDeg[dependent] == 0 {
+				queue = append(queue, dependent)
 			}
 		}
 	}

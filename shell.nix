@@ -1,39 +1,69 @@
 # Legacy shell.nix for non-flake users
 # For flake users, use: nix develop
-{ pkgs ? import <nixpkgs> { config.allowUnfree = true; } }:
+# This file mirrors the flake.nix dev shell; the two must not disagree.
+# The flake is the source of truth (see goppydae-docs design/build-environment.md).
+{ pkgs ? import <nixpkgs> { } }:
 
 pkgs.mkShell {
   buildInputs = with pkgs; [
+    # Go toolchain
     go
+    gotools # for goimports
+
+    # CGO and build essentials
     gcc
-    mage
+    pkg-config
+    pam
     openssl
+
+    # Protocol Buffers
     protobuf
     protoc-gen-go
     protoc-gen-go-grpc
-    pam
-    pkg-config
-    python3
-    python3Packages.pybindgen
+    buf
+
+    # Lint and security gate
+    golangci-lint
+    gosec
+    govulncheck
+
+    # Documentation toolchain
+    mkdocs
+    pandoc
+
+    # Container orchestration
+    podman
+    podman-compose
+
+    # Utilities
+    rsync
+    mage
+
+    # Python verification tools
+    (python3.withPackages (ps: with ps; [
+      pytest
+      mdformat
+      mdformat-gfm
+      mdformat-frontmatter
+      mdformat-footnote
+      jsonschema
+      pybindgen
+    ]))
+
+    # Markdown linting
+    markdownlint-cli2
   ];
 
   shellHook = ''
-    # Explicitly add build inputs to PATH
-    export PATH=${pkgs.gcc}/bin:${pkgs.go}/bin:${pkgs.python3}/bin:$PATH
-
     export GOBIN=$PWD/.bin
     export PATH=$GOBIN:$PATH
 
-    if ! command -v gopy &> /dev/null; then
-      echo "Installing gopy..."
-      go install github.com/go-python/gopy@latest
+    if [ ! -x "$GOBIN/gopy" ]; then
+      echo "Building pinned gopy from tools/gopy..."
+      (cd tools/gopy && GOWORK=off go build -o "$GOBIN/gopy" github.com/go-python/gopy)
     fi
 
-    if [ -n "$ZSH_VERSION" ]; then
-      PROMPT="$PROMPT (nix-shell)"
-    else
-      export PS1="$PS1 (nix-shell)"
-    fi
-    echo "Welcome to the GoPPydae dev shell. GAPI stands ready."
+    echo "GAPI - Agent Supervision Framework (legacy shell.nix)"
+    echo "Run 'mage -l' to see all available tasks"
   '';
 }

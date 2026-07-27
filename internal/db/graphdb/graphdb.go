@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"go.etcd.io/bbolt"
@@ -36,9 +35,13 @@ type Path struct {
 	TTL       int64    `json:"ttl"`
 }
 
+// Graph is backed by an in-memory bbolt database. Concurrency safety comes
+// entirely from bbolt's transaction model: db.Update takes an exclusive write
+// lock and db.View a read lock, and every exported operation goes through one of
+// them. There is deliberately no additional outer mutex — a previous unused
+// sync.Mutex field implied a locking strategy that was never actually applied.
 type Graph struct {
 	db       *bbolt.DB
-	mutex    sync.Mutex
 	handlers map[string]func(map[string]string)
 }
 

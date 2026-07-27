@@ -1,40 +1,36 @@
-# commander
+commander
+============
 
 [![Build Status](https://drone.io/github.com/gonuts/commander/status.png)](https://drone.io/github.com/gonuts/commander/latest)
 
-`commander` is a spin off of [golang](http://golang.org) `go tool` infrastructure to provide commands and sub-commands.
+``commander`` is a spin off of [golang](http://golang.org) ``go tool`` infrastructure to provide commands and sub-commands.
 
-A `commander.Command` has a `Subcommands` field holding `[]*commander.Command` subcommands, referenced by name from the command line.
+A ``commander.Command`` has a ``Subcommands`` field holding ``[]*commander.Command`` subcommands, referenced by name from the command line.
 
-So a `Command` can have sub commands.
+So a ``Command`` can have sub commands.
 
 So you can have, /e.g./
-
 ```sh
 $ mycmd action1 [options...]
 $ mycmd subcmd1 action1 [options...]
 ```
 
 Example provided by:
-
 - [hwaf](https://github.com/mana-fwk/hwaf) (Warning: uses an older version)
 - [examples/my-cmd](examples/my-cmd)
 
 ## Documentation
-
 Is available on [godoc](http://godoc.org/github.com/gonuts/commander)
 
 ## Installation
-
 Is performed with the usual:
-
 ```sh
 $ go get github.com/gonuts/commander
 ```
 
 ## Example
 
-See the simple `my-cmd` example command for how this all hangs
+See the simple ``my-cmd`` example command for how this all hangs
 together [there](http://github.com/gonuts/commander/blob/master/examples/my-cmd/main.go):
 
 ```sh
@@ -102,8 +98,10 @@ Use "subcmd1 help [topic]" for more information about that topic.
 
 ```
 
+
 ## TODO
 
 - automatically generate the bash/zsh/csh autocompletion lists
 - automatically generate Readme examples text
 - test cases
+

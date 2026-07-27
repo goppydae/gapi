@@ -13,4 +13,7 @@ message LifecycleStatus {
   google.protobuf.Timestamp time = 4;
   string hostname = 5;
   string schema_hash = 6;
+  // run_id identifies a specific run/incarnation of the agent process so restart
+  // detection can match structurally instead of parsing it out of `message`.
+  string run_id = 7;
 }

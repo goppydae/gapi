@@ -2,21 +2,37 @@ package auditlog
 
 import (
 	"io"
-	"os"
 
 	"github.com/rs/zerolog"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-var logger zerolog.Logger
+var (
+	logger  zerolog.Logger
+	current io.Closer // currently open audit sink, closed on re-Init
+)
 
 func Init(auditPath string) error {
-	output := io.Discard
+	// Close any previously opened audit sink first so repeated Init calls (e.g.
+	// across tests or config reloads) don't leak file descriptors.
+	if current != nil {
+		_ = current.Close()
+		current = nil
+	}
+
+	var output io.Writer = io.Discard
 	if auditPath != "" {
-		f, err := os.OpenFile(auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			return err
+		// lumberjack rotates the audit file so long-running daemons don't grow it
+		// without bound.
+		lj := &lumberjack.Logger{
+			Filename:   auditPath,
+			MaxSize:    100, // megabytes
+			MaxBackups: 5,
+			MaxAge:     30, // days
+			Compress:   true,
 		}
-		output = f
+		output = lj
+		current = lj
 	}
 
 	logger = zerolog.New(output).With().

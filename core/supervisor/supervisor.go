@@ -72,7 +72,10 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	// Store & Registry
 	raw, err := store.Open(store.Hybrid)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to open database")
+		// The registry is not optional: without it, agent integrity verification
+		// is silently skipped and later lookups panic on a nil registry. Fail
+		// construction instead of returning a half-built supervisor.
+		return nil, fmt.Errorf("open store: %w", err)
 	}
 
 	// Security: Verification Key
@@ -100,7 +103,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	}
 	registry, err := agentreg.NewAgentRegistry(db, pubKey)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create agent registry")
+		return nil, fmt.Errorf("create agent registry: %w", err)
 	}
 
 	s := &Supervisor{
@@ -362,6 +365,7 @@ func (s *Supervisor) registerHandlers() {
 		}
 
 		response := eventbus.NewEvent("system", "", "pong", "gapid", anyPayload, true)
+		response.ID = e.ID // correlate reply to the originating request
 		_ = s.bus.Publish(response)
 	})
 	if err != nil {
@@ -425,6 +429,7 @@ func (s *Supervisor) registerHandlers() {
 		}
 
 		response := eventbus.NewEvent("system", "", "agents.reply", "gapid", anyPayload, true)
+		response.ID = e.ID // correlate reply to the originating request
 		_ = s.bus.Publish(response)
 	})
 	if err != nil {
@@ -521,17 +526,16 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 		return
 	}
 
-	// Wait for settlement
-	deadline := s.clock.Now().Add(config.SupervisorStartDeadline)
+	// Controller.Apply is synchronous: it only returns once the agent has
+	// reached a terminal state (it internally awaits running/stopped via the
+	// event bus). So the observed state is already settled here — no busy poll
+	// loop is needed. If a future async runner leaves it in flight, surface that
+	// rather than silently sleeping.
 	finalState := ag.Controller().State()
-	for isInFlight(finalState) && s.clock.Now().Before(deadline) {
-		time.Sleep(100 * time.Millisecond)
-		finalState = ag.Controller().State()
-	}
 
 	msg := "ok"
 	if isInFlight(finalState) {
-		msg = "finalize timeout; current state=" + finalState
+		msg = "still settling; current state=" + finalState
 	}
 
 	s.replyStatus(targetID, finalState, msg)

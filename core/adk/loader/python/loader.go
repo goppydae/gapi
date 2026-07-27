@@ -35,10 +35,17 @@ func Load(path string) (*Agent, error) {
 	}, nil
 }
 
-func (a *Agent) Initialize() error         { return nil }
-func (a *Agent) Start() error              { return nil }
-func (a *Agent) Stop() error               { return nil }
-func (a *Agent) Restart() error            { return nil }
-func (a *Agent) Reload() error             { return nil }
+// errDescribeOnly is returned by the lifecycle methods below. This loader only
+// introspects a Python agent (via --describe); the actual subprocess lifecycle
+// is driven by core/agentmgr's PythonAgent/runner. Previously these methods
+// silently returned nil, so callers routing lifecycle through the loader saw
+// success with no effect. Returning an explicit error surfaces the foot-gun.
+var errDescribeOnly = fmt.Errorf("python loader is describe-only; drive lifecycle via core/agentmgr")
+
+func (a *Agent) Initialize() error         { return errDescribeOnly }
+func (a *Agent) Start() error              { return errDescribeOnly }
+func (a *Agent) Stop() error               { return errDescribeOnly }
+func (a *Agent) Restart() error            { return errDescribeOnly }
+func (a *Agent) Reload() error             { return errDescribeOnly }
 func (a *Agent) Describe() *meta.AgentInfo { return a.Meta }
 func (a *Agent) Info() *meta.AgentInfo     { return a.Meta }

@@ -24,7 +24,10 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-var runtimeAddr string
+var (
+	runtimeAddr string
+	logLevel    string
+)
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
@@ -38,6 +41,7 @@ func init() {
 	logcore.Init(zerolog.InfoLevel)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.Flags().StringVar(&runtimeAddr, "runtime-addr", "", "Runtime bind address (default: 127.0.0.1:14242)")
+	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: trace, debug, info, warn, error (overrides config)")
 }
 
 func main() {
@@ -47,13 +51,23 @@ func main() {
 }
 
 func run() error {
-	logger := logcore.With().Str("module", "gapid").Logger()
-
 	// Load config
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+
+	// Apply --log-level override (flag beats config), then (re)initialize
+	// logging from configuration. This sets the level and wires the file/Loki
+	// outputs after flag parsing rather than hardcoding Info at init() time.
+	if logLevel != "" {
+		cfg.Logging.Level = logLevel
+	}
+	if err := logcore.InitWithConfig(&cfg.Logging); err != nil {
+		return fmt.Errorf("init logging: %w", err)
+	}
+
+	logger := logcore.With().Str("module", "gapid").Logger()
 
 	// Override from flag
 	if runtimeAddr != "" {

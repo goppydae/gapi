@@ -28,7 +28,17 @@
             protobuf
             protoc-gen-go
             protoc-gen-go-grpc
-            
+            buf
+
+            # Lint and security gate
+            golangci-lint
+            gosec
+            govulncheck
+
+            # Documentation toolchain
+            mkdocs
+            pandoc
+
             # Container orchestration
             podman
             podman-compose
@@ -49,16 +59,16 @@
             ]))
             
             # Markdown linting
-            nodePackages.markdownlint-cli2
+            markdownlint-cli2
           ];
 
           shellHook = ''
             export GOBIN=$PWD/.bin
             export PATH=$GOBIN:$PATH
 
-            if ! command -v gopy &> /dev/null; then
-              echo "Installing gopy..."
-              go install github.com/go-python/gopy@latest
+            if [ ! -x "$GOBIN/gopy" ]; then
+              echo "Building pinned gopy from tools/gopy..."
+              (cd tools/gopy && GOWORK=off go build -o "$GOBIN/gopy" github.com/go-python/gopy)
             fi
 
             echo "🏗️  GAPI (GoPPydae Agent Programming Interface) - Agent Supervision Framework"

@@ -1,5 +1,4 @@
 # cpuid
-
 Package cpuid provides information about the CPU running the current program.
 
 CPU features are detected on startup, and kept for fast access through the life of the application.
@@ -12,9 +11,12 @@ Package home: https://github.com/klauspost/cpuid
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/klauspost/cpuid)](https://pkg.go.dev/github.com/klauspost/cpuid/v2)
 [![Build Status][3]][4]
 
+[3]: https://travis-ci.org/klauspost/cpuid.svg?branch=master
+[4]: https://travis-ci.org/klauspost/cpuid
+
 ## installing
 
-`go get -u github.com/klauspost/cpuid/v2` using modules.
+`go get -u github.com/klauspost/cpuid/v2` using modules. 
 
 Drop `v2` for others.
 
@@ -53,7 +55,6 @@ func main() {
 ```
 
 Sample output:
-
 ```
 >go run main.go
 Name: AMD Ryzen 9 3950X 16-Core Processor
@@ -74,7 +75,7 @@ We have Streaming SIMD 2 Extensions
 # usage
 
 The `cpuid.CPU` provides access to CPU features. Use `cpuid.CPU.Supports()` to check for CPU features.
-A faster `cpuid.CPU.Has()` is provided which will usually be inlined by the gc compiler.
+A faster `cpuid.CPU.Has()` is provided which will usually be inlined by the gc compiler.  
 
 Note that for some cpu/os combinations some features will not be detected.
 `amd64` has rather good support and should work reliably on all platforms.
@@ -83,18 +84,18 @@ Note that hypervisors may not pass through all CPU features.
 
 ## arm64 feature detection
 
-Not all operating systems provide ARM features directly
+Not all operating systems provide ARM features directly 
 and there is no safe way to do so for the rest.
 
-Currently `arm64/linux` and `arm64/freebsd` should be quite reliable.
+Currently `arm64/linux` and `arm64/freebsd` should be quite reliable. 
 `arm64/darwin` adds features expected from the M1 processor, but a lot remains undetected.
 
 A `DetectARM()` can be used if you are able to control your deployment,
 it will detect CPU features, but may crash if the OS doesn't intercept the calls.
 A `-cpu.arm` flag for detecting unsafe ARM features can be added. See below.
-
-Note that currently only features are detected on ARM,
-no additional information is currently available.
+ 
+Note that currently only features are detected on ARM, 
+no additional information is currently available. 
 
 ## flags
 
@@ -134,6 +135,3 @@ func main() {
 # license
 
 This code is published under an MIT license. See LICENSE file for more information.
-
-[3]: https://travis-ci.org/klauspost/cpuid.svg?branch=master
-[4]: https://travis-ci.org/klauspost/cpuid

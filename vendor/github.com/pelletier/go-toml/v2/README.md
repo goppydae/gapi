@@ -41,6 +41,8 @@ operations should not be shockingly slow. See [benchmarks](#benchmarks).
 the TOML document was not present in the target structure. This is a great way
 to check for typos. [See example in the documentation][strict].
 
+[strict]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#example-Decoder.DisallowUnknownFields
+
 ### Contextualized errors
 
 When most decoding errors occur, go-toml returns [`DecodeError`][decode-err],
@@ -54,6 +56,8 @@ example:
 3| port = 50
 ```
 
+[decode-err]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#DecodeError
+
 ### Local date and time support
 
 TOML supports native [local date/times][ldt]. It allows to represent a given
@@ -62,6 +66,11 @@ this use-case, go-toml provides [`LocalDate`][tld], [`LocalTime`][tlt], and
 [`LocalDateTime`][tldt]. Those types can be transformed to and from `time.Time`,
 making them convenient yet unambiguous structures for their respective TOML
 representation.
+
+[ldt]: https://toml.io/en/v1.0.0#local-date-time
+[tld]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalDate
+[tlt]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalTime
+[tldt]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalDateTime
 
 ### Commented config
 
@@ -80,6 +89,8 @@ port = 4242
 # cipher = 'AEAD-AES128-GCM-SHA256'
 # version = 'TLS 1.3'
 ```
+
+[comments-example]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#example-Marshal-Commented
 
 ## Getting started
 
@@ -120,6 +131,8 @@ fmt.Println("tags:", cfg.Tags)
 // tags: [go toml]
 ```
 
+[unmarshal]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Unmarshal
+
 ### Marshaling
 
 [`Marshal`][marshal] is the opposite of Unmarshal: it represents a Go structure
@@ -143,6 +156,8 @@ fmt.Println(string(b))
 // Name = 'go-toml'
 // Tags = ['go', 'toml']
 ```
+
+[marshal]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Marshal
 
 ## Unstable API
 
@@ -210,30 +225,32 @@ Installation instructions:
 
 In case of trouble: [Go Modules FAQ][mod-faq].
 
+[mod-faq]: https://github.com/golang/go/wiki/Modules#why-does-installing-a-tool-via-go-get-fail-with-error-cannot-find-main-module
+
 ## Tools
 
 Go-toml provides three handy command line tools:
 
-- `tomljson`: Reads a TOML file and outputs its JSON representation.
+ * `tomljson`: Reads a TOML file and outputs its JSON representation.
 
-  ```
-  $ go install github.com/pelletier/go-toml/v2/cmd/tomljson@latest
-  $ tomljson --help
-  ```
+	```
+	$ go install github.com/pelletier/go-toml/v2/cmd/tomljson@latest
+	$ tomljson --help
+	```
 
-- `jsontoml`: Reads a JSON file and outputs a TOML representation.
+ * `jsontoml`: Reads a JSON file and outputs a TOML representation.
 
-  ```
-  $ go install github.com/pelletier/go-toml/v2/cmd/jsontoml@latest
-  $ jsontoml --help
-  ```
+	```
+	$ go install github.com/pelletier/go-toml/v2/cmd/jsontoml@latest
+	$ jsontoml --help
+	```
 
-- `tomll`: Lints and reformats a TOML file.
+ * `tomll`: Lints and reformats a TOML file.
 
-  ```
-  $ go install github.com/pelletier/go-toml/v2/cmd/tomll@latest
-  $ tomll --help
-  ```
+	```
+	$ go install github.com/pelletier/go-toml/v2/cmd/tomll@latest
+	$ tomll --help
+	```
 
 ### Docker image
 
@@ -245,6 +262,8 @@ docker run -i ghcr.io/pelletier/go-toml:v2 tomljson < example.toml
 ```
 
 Multiple versions are available on [ghcr.io][docker].
+
+[docker]: https://github.com/pelletier/go-toml/pkgs/container/go-toml
 
 ## Migrating from v1
 
@@ -264,6 +283,8 @@ V2 instead does a case-insensitive matching, like `encoding/json`.
 This could impact you if you are relying on casing to differentiate two fields,
 and one of them is a not using the `toml` struct tag. The recommended solution
 is to be specific about tag names for those fields using the `toml` struct tag.
+
+[v1-keys]: https://github.com/pelletier/go-toml/blob/a2e52561804c6cd9392ebf0048ca64fe4af67a43/marshal.go#L775-L781
 
 #### Ignore preexisting value in interface
 
@@ -355,10 +376,12 @@ It does not seem like other format parsers in Go support that feature (the
 project referenced in the original ticket #202 has not been updated since 2017).
 Given that go-toml v2 should not touch values not in the document, the same
 effect can be achieved by pre-filling the struct with defaults (libraries like
-[go-defaults] can help). Also, string representation is not well
+[go-defaults][go-defaults] can help). Also, string representation is not well
 defined for all types: it creates issues like #278.
 
 The recommended replacement is pre-filling the struct before unmarshaling.
+
+[go-defaults]: https://github.com/mcuadros/go-defaults
 
 #### `toml.Tree` replacement
 
@@ -371,6 +394,7 @@ closest equivalent at the moment would be to unmarshal into an `interface{}` and
 use type assertions and/or reflection to manipulate the arbitrary
 structure. However this would fall short of providing all of the TOML features
 such as adding comments and be specific about whitespace.
+
 
 #### `toml.Position` are not retrievable anymore
 
@@ -460,6 +484,8 @@ fmt.Println("v2 Encoder:\n" + string(buf.Bytes()))
 //   key = 'value'
 ```
 
+[sit]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Encoder.SetIndentTables
+
 #### Keys and strings are single quoted
 
 V1 always uses double quotes (`"`) around strings and keys that cannot be
@@ -478,6 +504,8 @@ is wrapped in a string. As a result, this interface cannot be implemented by the
 root object.
 
 There is no way to make v2 encoder behave like v1.
+
+[tm]: https://golang.org/pkg/encoding/#TextMarshaler
 
 #### `Encoder.CompactComments` has been removed
 
@@ -510,6 +538,7 @@ The new name is `Encoder.SetArraysMultiline`. The behavior should be the same.
 
 The new name is `Encoder.SetIndentSymbol`. The behavior should be the same.
 
+
 #### Embedded structs behave like stdlib
 
 V1 defaults to merging embedded struct fields into the embedding struct. This
@@ -519,15 +548,20 @@ added to make the encoder behave correctly. Given backward compatibility is not
 a problem anymore, v2 does the right thing by default: it follows the behavior
 of `encoding/json`. `Encoder.PromoteAnonymous` has been removed.
 
+[nodoc]: https://github.com/pelletier/go-toml/discussions/506#discussioncomment-1526038
+
 ### `query`
 
 go-toml v1 provided the [`go-toml/query`][query] package. It allowed to run
 JSONPath-style queries on TOML files. This feature is not available in v2. For a
-replacement, check out [dasel].
+replacement, check out [dasel][dasel].
 
 This package has been removed because it was essentially not supported anymore
 (last commit May 2020), increased the complexity of the code base, and more
 complete solutions exist out there.
+
+[query]: https://github.com/pelletier/go-toml/tree/f99d6bbca119636aeafcf351ee52b3d202782627/query
+[dasel]: https://github.com/TomWright/dasel
 
 ## Versioning
 
@@ -540,22 +574,3 @@ Policy](https://golang.org/doc/devel/release.html#policy)).
 ## License
 
 The MIT License (MIT). Read [LICENSE](LICENSE).
-
-[comments-example]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#example-Marshal-Commented
-[dasel]: https://github.com/TomWright/dasel
-[decode-err]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#DecodeError
-[docker]: https://github.com/pelletier/go-toml/pkgs/container/go-toml
-[go-defaults]: https://github.com/mcuadros/go-defaults
-[ldt]: https://toml.io/en/v1.0.0#local-date-time
-[marshal]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Marshal
-[mod-faq]: https://github.com/golang/go/wiki/Modules#why-does-installing-a-tool-via-go-get-fail-with-error-cannot-find-main-module
-[nodoc]: https://github.com/pelletier/go-toml/discussions/506#discussioncomment-1526038
-[query]: https://github.com/pelletier/go-toml/tree/f99d6bbca119636aeafcf351ee52b3d202782627/query
-[sit]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Encoder.SetIndentTables
-[strict]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#example-Decoder.DisallowUnknownFields
-[tld]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalDate
-[tldt]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalDateTime
-[tlt]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#LocalTime
-[tm]: https://golang.org/pkg/encoding/#TextMarshaler
-[unmarshal]: https://pkg.go.dev/github.com/pelletier/go-toml/v2#Unmarshal
-[v1-keys]: https://github.com/pelletier/go-toml/blob/a2e52561804c6cd9392ebf0048ca64fe4af67a43/marshal.go#L775-L781

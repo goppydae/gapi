@@ -11,21 +11,27 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/goppydae/gapi/pkg/magelib"
+	"github.com/goppydae/magelib/pkg/magelib"
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/zeebo/blake3"
 )
 
+// versionLdflags stamps the resolved version into core/version, the shared
+// injection point read by both binaries (VERSION file is the source of truth).
+func versionLdflags() string {
+	return "-X github.com/goppydae/gapi/core/version.GAPIVersion=" + magelib.Version()
+}
+
 func Build() error {
 	mg.Deps(checkHermetic)
-	fmt.Println("Building gapid and gapictl...")
+	fmt.Printf("Building gapid and gapictl (version %s)...\n", magelib.Version())
 
-	if err := sh.Run("go", "build", "-o", "bin/gapid", "./cmd/gapid"); err != nil {
+	if err := sh.Run("go", "build", "-ldflags", versionLdflags(), "-o", "bin/gapid", "./cmd/gapid"); err != nil {
 		return err
 	}
 
-	if err := sh.Run("go", "build", "-o", "bin/gapictl", "./cmd/gapictl"); err != nil {
+	if err := sh.Run("go", "build", "-ldflags", versionLdflags(), "-o", "bin/gapictl", "./cmd/gapictl"); err != nil {
 		return err
 	}
 
@@ -62,11 +68,11 @@ func Install() error {
 	mg.Deps(checkHermetic)
 	fmt.Println("Installing gapid and gapictl...")
 
-	if err := sh.Run("go", "install", "./cmd/gapid"); err != nil {
+	if err := sh.Run("go", "install", "-ldflags", versionLdflags(), "./cmd/gapid"); err != nil {
 		return err
 	}
 
-	if err := sh.Run("go", "install", "./cmd/gapictl"); err != nil {
+	if err := sh.Run("go", "install", "-ldflags", versionLdflags(), "./cmd/gapictl"); err != nil {
 		return err
 	}
 
@@ -74,11 +80,49 @@ func Install() error {
 	return nil
 }
 
-// Test runs all tests
+// Test runs all tests with the race detector (the suite CI runs)
 func Test() error {
 	mg.Deps(checkHermetic)
-	fmt.Println("Running tests...")
-	return sh.RunV("go", "test", "-v", "./...")
+	fmt.Println("Running tests (-race)...")
+	return sh.RunV("go", "test", "-race", "./...")
+}
+
+// TestShort runs the fast inner-loop subset
+func TestShort() error {
+	mg.Deps(checkHermetic)
+	fmt.Println("Running short tests...")
+	return sh.RunV("go", "test", "-short", "./...")
+}
+
+// Fuzz runs every Fuzz* target for a bounded fuzztime
+func Fuzz() error {
+	mg.Deps(checkHermetic)
+	return magelib.FuzzAll("10s")
+}
+
+// Vuln runs govulncheck (named offline exception: skipped loudly when offline)
+func Vuln() error {
+	mg.Deps(checkHermetic)
+	return magelib.Vuln()
+}
+
+// Doctor validates the local environment against the ecosystem pins
+func Doctor() error {
+	return magelib.Doctor(magelib.DoctorConfig{
+		ReplaceTargets: []string{"../magelib"},
+		ProtoPlugins:   []string{"buf", "protoc-gen-go", "protoc-gen-go-grpc"},
+		GopyVersion:    "v0.4.10",
+		RequiredEnv:    []string{"GOBIN"},
+		SharedTools:    []string{"buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports", "mkdocs", "pandoc"},
+	})
+}
+
+// EnvCheck compares the sibling dev shells' tool inventories; skew is red
+func EnvCheck() error {
+	return magelib.CheckShellUnification(
+		map[string]string{"gapi": ".", "goblin": "../goblin", "magelib": "path:../magelib"},
+		[]string{"go", "gcc", "protoc", "buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports"},
+	)
 }
 
 // TestUnit runs only unit tests
@@ -116,11 +160,23 @@ func TestTimer() error {
 	return sh.RunV("./test/test_timer.sh")
 }
 
+// Release cross-compiles pure-Go release artifacts (CGO_ENABLED=0) for
+// linux/{amd64,arm64} and darwin/{amd64,arm64} into dist/, with a SHA256SUMS
+// manifest. Signing (minisign) and the signed tag are operator-gated and
+// printed as a stub.
+func Release() error {
+	mg.Deps(checkHermetic)
+	return magelib.Release("gapi", "dist", versionLdflags(), map[string]string{
+		"gapid":   "./cmd/gapid",
+		"gapictl": "./cmd/gapictl",
+	})
+}
+
 // Clean removes build artifacts
 func Clean() error {
 	fmt.Println("Cleaning build artifacts...")
 
-	dirs := []string{"bin", "build"}
+	dirs := []string{"bin", "build", "dist"}
 	for _, dir := range dirs {
 		if err := sh.Rm(dir); err != nil {
 			fmt.Printf("Warning: failed to remove %s: %v\n", dir, err)
@@ -131,10 +187,19 @@ func Clean() error {
 	return nil
 }
 
-// Proto generates protobuf code
+// Proto generates protobuf code through the buf gate (generate, lint,
+// breaking against HEAD), then mirrors the generated *.pb.go into pkg/proto
+// (the imported location).
 func Proto() error {
 	mg.Deps(checkHermetic)
-	return magelib.GenerateProto("proto/*.proto", "pkg/proto")
+	if err := magelib.BufGenerate(".git#ref=HEAD"); err != nil {
+		return err
+	}
+	if err := magelib.MirrorGenerated("proto/*.pb.go", "pkg/proto"); err != nil {
+		return err
+	}
+	fmt.Println("Protobuf generation complete (buf generate + lint + breaking)")
+	return nil
 }
 
 // Fmt formats all Go code
