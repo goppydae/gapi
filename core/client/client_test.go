@@ -18,7 +18,11 @@ import (
 func newTestDaemon(t *testing.T) *eventbus.EventBus[*anypb.Any] {
 	t.Helper()
 	bus := eventbus.NewInprocBus[*anypb.Any]()
-	t.Cleanup(func() { bus.Close() })
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
 
 	if err := bus.Subscribe("system", "", "ping", func(e eventbus.Event[*anypb.Any]) {
 		payload, err := anypb.New(&protopkg.PingStatus{Status: "pong"})

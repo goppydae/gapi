@@ -2,6 +2,7 @@ package adk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -77,7 +78,9 @@ func (h *TestHarness) Start() error {
 
 	// Wait for gapid to be ready
 	if err := h.waitForReady(30 * time.Second); err != nil {
-		h.Stop()
+		if serr := h.Stop(); serr != nil {
+			return fmt.Errorf("gapid failed to become ready: %w (stop: %w)", err, serr)
+		}
 		return fmt.Errorf("gapid failed to become ready: %w", err)
 	}
 
@@ -97,7 +100,15 @@ func (h *TestHarness) Stop() error {
 				return fmt.Errorf("failed to kill gapid: %w", err)
 			}
 		}
-		h.gapidCmd.Wait()
+		if err := h.gapidCmd.Wait(); err != nil {
+			// The group was just SIGKILLed, so a signal-death exit is the
+			// expected outcome; anything else is a real Stop failure.
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) {
+				h.gapidCmd = nil
+				return fmt.Errorf("wait for gapid: %w", err)
+			}
+		}
 		h.gapidCmd = nil
 	}
 
@@ -125,15 +136,8 @@ func (h *TestHarness) GetAgentState(id string) (string, error) {
 					return state, nil
 				}
 			}
-			// Fallback to old format just in case?
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				// Check which field is the state.
-				// If old format "ID STATE", fields[1] is state.
-				// But new format " - ID ...", fields[1] is ID.
-				// If line starts with "-", assume new format and we missed the brackets?
-				// Just rely on brackets for now as gapictl.go strictly uses them.
-			}
+			// No bracketed state on the line: rely on brackets only, as
+			// gapictl strictly emits them.
 		}
 	}
 
@@ -169,7 +173,7 @@ func (h *TestHarness) WaitForState(id, expectedState string, timeout time.Durati
 	}
 
 	if err != nil {
-		return fmt.Errorf("timeout waiting for %s to reach state %s (last error: %v)", id, expectedState, err)
+		return fmt.Errorf("timeout waiting for %s to reach state %s (last error: %w)", id, expectedState, err)
 	}
 	return fmt.Errorf("timeout waiting for %s to reach state %s (current: %s)", id, expectedState, currentState)
 }

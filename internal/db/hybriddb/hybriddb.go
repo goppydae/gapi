@@ -1,6 +1,8 @@
 package hybriddb
 
 import (
+	"fmt"
+
 	"github.com/goppydae/gapi/internal/db/graphdb"
 	"github.com/goppydae/gapi/internal/db/kvdb"
 )
@@ -18,7 +20,9 @@ func New() (*DB, error) {
 
 	graph, err := graphdb.New()
 	if err != nil {
-		kv.Close()
+		if cerr := kv.Close(); cerr != nil {
+			return nil, fmt.Errorf("%w (also failed to close kv store: %w)", err, cerr)
+		}
 		return nil, err
 	}
 

@@ -160,7 +160,11 @@ func TestGoAgent_EnsureListener(t *testing.T) {
 		t.Errorf("EnsureListener() error = %v", err)
 	}
 	if f != nil {
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				t.Errorf("close listener file: %v", err)
+			}
+		}()
 	}
 
 	// Verify socket exists
@@ -174,7 +178,11 @@ func TestGoAgent_EnsureListener(t *testing.T) {
 		t.Errorf("EnsureListener() second call error = %v", err)
 	}
 	if f2 != nil {
-		defer f2.Close()
+		defer func() {
+			if err := f2.Close(); err != nil {
+				t.Errorf("close listener file: %v", err)
+			}
+		}()
 	}
 }
 
@@ -378,5 +386,7 @@ sleep 10
 	time.Sleep(200 * time.Millisecond)
 
 	// Cleanup
-	agent.Stop(context.Background())
+	if err := agent.Stop(context.Background()); err != nil {
+		t.Errorf("cleanup Stop: %v", err)
+	}
 }

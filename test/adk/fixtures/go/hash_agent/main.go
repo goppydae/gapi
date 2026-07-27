@@ -26,7 +26,10 @@ func main() {
 				"capabilities": []string{"compute_schema_hash"},
 			},
 		}
-		json.NewEncoder(os.Stdout).Encode(metadata)
+		if err := json.NewEncoder(os.Stdout).Encode(metadata); err != nil {
+			fmt.Fprintln(os.Stderr, "encode describe metadata:", err)
+			os.Exit(1)
+		}
 		return
 	}
 

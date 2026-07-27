@@ -39,7 +39,7 @@ func (t *TimerAgent) Scope() string {
 }
 
 func (t *TimerAgent) Describe() *meta.AgentInfo {
-	return t.Agent.Info()
+	return t.Info()
 }
 
 // Optionally override lifecycle methods

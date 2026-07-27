@@ -31,7 +31,9 @@ func New(buckets ...string) (*DB, error) {
 	})
 
 	if err != nil {
-		db.Close()
+		if cerr := db.Close(); cerr != nil {
+			return nil, fmt.Errorf("%w (also failed to close db: %w)", err, cerr)
+		}
 		return nil, err
 	}
 

@@ -33,7 +33,10 @@ func main() {
 				},
 			},
 		}
-		json.NewEncoder(os.Stdout).Encode(metadata)
+		if err := json.NewEncoder(os.Stdout).Encode(metadata); err != nil {
+			fmt.Fprintln(os.Stderr, "encode describe metadata:", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -72,10 +75,6 @@ func start() {
 
 func stop() {
 	fmt.Println("[capabilities_agent] Stopped")
-}
-
-func reload() {
-	fmt.Println("[capabilities_agent] Reloaded")
 }
 
 // Custom capability

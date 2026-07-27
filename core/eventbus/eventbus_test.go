@@ -15,7 +15,11 @@ import (
 
 func TestUnsubscribePrefix(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	var callCount atomic.Int32
 	handler := func(e Event[*anypb.Any]) {
@@ -60,7 +64,11 @@ func TestUnsubscribePrefix(t *testing.T) {
 
 func TestSubscribePrefixWithContext_Cleanup(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	var callCount atomic.Int32
 	handler := func(e Event[*anypb.Any]) {
@@ -109,7 +117,11 @@ func TestSubscribePrefixWithContext_Cleanup(t *testing.T) {
 
 func TestSubscribePrefixWithContext_MultipleSubscribers(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	var count1, count2 atomic.Int32
 	handler1 := func(e Event[*anypb.Any]) { count1.Add(1) }

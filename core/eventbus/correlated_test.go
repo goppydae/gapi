@@ -63,7 +63,11 @@ func TestSubscribeCorrelated_FiltersByID(t *testing.T) {
 // live subscription, silently losing its reply.
 func TestSubscribeCorrelated_SameCallsiteCallersKeepOwnSubscriptions(t *testing.T) {
 	bus := NewInprocBus[string]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	subscribe := func(corrID string, got chan struct{}) {
 		t.Helper()

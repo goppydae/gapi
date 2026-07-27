@@ -21,11 +21,7 @@ import (
 // It avoids channels in public signatures.
 
 var (
-	mu           sync.Mutex
-	statusReport struct {
-		State string
-		Msg   string
-	}
+	mu sync.Mutex
 	// Simple command mailbox
 	cmdMailbox struct {
 		cond *sync.Cond

@@ -11,7 +11,6 @@ type MockAgent struct {
 	id    string
 	deps  []string
 	wants []string
-	caps  []string
 }
 
 func (m *MockAgent) ID() string   { return m.id }

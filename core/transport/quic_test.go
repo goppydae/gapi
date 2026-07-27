@@ -21,7 +21,11 @@ func TestQUICHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("close server: %v", err)
+		}
+	}()
 
 	received := make(chan eventbus.Event[*anypb.Any], 1)
 	server.OnRemoteEvent(func(e eventbus.Event[*anypb.Any]) {
@@ -32,7 +36,11 @@ func TestQUICHandshake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start client: %v", err)
 	}
-	defer client.Close()
+	defer func() {
+		if err := client.Close(); err != nil {
+			t.Errorf("close client: %v", err)
+		}
+	}()
 
 	// Wait for connection to stabilize
 	time.Sleep(100 * time.Millisecond)

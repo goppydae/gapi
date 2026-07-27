@@ -16,7 +16,11 @@ func TestPythonAgent_StartStop(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Failed to start gapid: %v", err)
 	}
-	defer h.Stop()
+	defer func() {
+		if err := h.Stop(); err != nil {
+			t.Errorf("stop harness: %v", err)
+		}
+	}()
 
 	agentID := "test_simple_service" // the fixture agent; the search path is fenced to fixtures
 
@@ -45,7 +49,11 @@ func TestPythonAgent_Reload(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Failed to start gapid: %v", err)
 	}
-	defer h.Stop()
+	defer func() {
+		if err := h.Stop(); err != nil {
+			t.Errorf("stop harness: %v", err)
+		}
+	}()
 
 	agentID := "test_simple_service" // the fixture agent; the search path is fenced to fixtures
 
@@ -79,7 +87,11 @@ func TestTimerAgent_Execution(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Failed to start gapid: %v", err)
 	}
-	defer h.Stop()
+	defer func() {
+		if err := h.Stop(); err != nil {
+			t.Errorf("stop harness: %v", err)
+		}
+	}()
 
 	agentID := "simple_timer"
 

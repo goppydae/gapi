@@ -71,7 +71,7 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 		sigPath := agent.Path + ".sig"
 		sigHex, err := os.ReadFile(sigPath)
 		if err != nil {
-			return fmt.Errorf("integrity check failed: missing signature for %s (expected %s): %v", agent.ID, sigPath, err)
+			return fmt.Errorf("integrity check failed: missing signature for %s (expected %s): %w", agent.ID, sigPath, err)
 		}
 
 		sig, err := hex.DecodeString(string(sigHex))

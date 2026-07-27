@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -85,7 +86,9 @@ def start(stop_evt=None):
 		cmd.Stderr = f
 
 		if err := cmd.Start(); err != nil {
-			f.Close()
+			if cerr := f.Close(); cerr != nil {
+				return nil, "", fmt.Errorf("%w (also failed to close log file: %w)", err, cerr)
+			}
 			return nil, "", err
 		}
 		return cmd, logFile, nil
@@ -112,7 +115,10 @@ def start(stop_evt=None):
 
 	// Stop gapid
 	cancel()
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		// gapid was cancelled/killed above; log the exit for visibility.
+		t.Logf("gapid exit: %v", err)
+	}
 
 	// Scenario 2: Signed Agent
 	// Sign the agent
@@ -140,7 +146,10 @@ def start(stop_evt=None):
 
 	// Stop gapid
 	cancel2()
-	cmd2.Wait()
+	if err := cmd2.Wait(); err != nil {
+		// gapid was cancelled/killed above; log the exit for visibility.
+		t.Logf("gapid exit: %v", err)
+	}
 
 	// Scenario 3: Tampered Agent
 	// Modify agent content but keep old signature
@@ -166,5 +175,8 @@ def start(stop_evt=None):
 	}
 
 	cancel3()
-	cmd3.Wait()
+	if err := cmd3.Wait(); err != nil {
+		// gapid was cancelled/killed above; log the exit for visibility.
+		t.Logf("gapid exit: %v", err)
+	}
 }

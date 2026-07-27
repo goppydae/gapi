@@ -3,6 +3,7 @@ package adk_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,9 +115,10 @@ func testDescribeMetadata(t *testing.T, lang string, agentPath string) {
 		}
 	}
 
-	// Verify language is correct
-	if lang := desc["language"].(string); lang != lang {
-		t.Errorf("Expected language=%s, got %s", lang, desc["language"])
+	// Verify language is correct. (A previous shadowed `lang :=` compared
+	// the value to itself, so this assertion could never fail - SA4000.)
+	if got := desc["language"].(string); got != lang {
+		t.Errorf("Expected language=%s, got %s", lang, got)
 	}
 }
 
@@ -165,7 +167,11 @@ func testLifecycleTransitions(t *testing.T, lang string, agentPath string) {
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("Failed to start agent: %v", err)
 	}
-	defer cmd.Process.Kill()
+	defer func() {
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			t.Logf("kill agent: %v", err)
+		}
+	}()
 
 	// Wait for agent to reach running state
 	time.Sleep(2 * time.Second)
@@ -357,7 +363,11 @@ func TestADKIntegration(t *testing.T) {
 		if err := goCmd.Start(); err != nil {
 			t.Fatalf("Failed to start Go agent: %v", err)
 		}
-		defer goCmd.Process.Kill()
+		defer func() {
+			if err := goCmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Logf("kill go agent: %v", err)
+			}
+		}()
 
 		// Start a Python agent
 		runner := findPythonRunner(t)
@@ -366,7 +376,11 @@ func TestADKIntegration(t *testing.T) {
 		if err := pyCmd.Start(); err != nil {
 			t.Fatalf("Failed to start Python agent: %v", err)
 		}
-		defer pyCmd.Process.Kill()
+		defer func() {
+			if err := pyCmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Logf("kill python agent: %v", err)
+			}
+		}()
 
 		// Let them run and communicate
 		time.Sleep(5 * time.Second)

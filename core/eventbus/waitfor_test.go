@@ -13,7 +13,11 @@ import (
 
 func TestWaitForTopic_EventArrives(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	done := make(chan error, 1)
 	go func() {
@@ -44,7 +48,11 @@ func TestWaitForTopic_EventArrives(t *testing.T) {
 
 func TestWaitForTopic_TimesOut(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	// MockClock.After fires immediately: the deterministic timeout path.
 	err := bus.WaitForTopic(context.Background(), "system", "", TopicAgentNetworkRunning, 120*time.Second, &clock.MockClock{})
@@ -55,7 +63,11 @@ func TestWaitForTopic_TimesOut(t *testing.T) {
 
 func TestWaitForTopic_ContextCancel(t *testing.T) {
 	bus := NewInprocBus[*anypb.Any]()
-	defer bus.Close()
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

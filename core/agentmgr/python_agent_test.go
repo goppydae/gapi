@@ -270,7 +270,11 @@ func TestPythonAgent_EnsureListener(t *testing.T) {
 		t.Errorf("EnsureListener() error = %v", err)
 	}
 	if f != nil {
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				t.Errorf("close listener file: %v", err)
+			}
+		}()
 	}
 
 	// Verify socket exists
@@ -284,7 +288,11 @@ func TestPythonAgent_EnsureListener(t *testing.T) {
 		t.Errorf("EnsureListener() second call error = %v", err)
 	}
 	if f2 != nil {
-		defer f2.Close()
+		defer func() {
+			if err := f2.Close(); err != nil {
+				t.Errorf("close listener file: %v", err)
+			}
+		}()
 	}
 }
 

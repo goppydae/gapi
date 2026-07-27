@@ -224,10 +224,8 @@ func (s *Supervisor) setupAgents() {
 	}
 
 	// Register with DB
-	var foundIDs []string
 	for _, desc := range discovered {
 		id := desc["id"]
-		foundIDs = append(foundIDs, id)
 		ad := &agentreg.AgentDescription{
 			ID:           id,
 			Path:         desc["path"],
@@ -519,7 +517,7 @@ func (s *Supervisor) handleLifecycleAction(e eventbus.Event[*anypb.Any]) {
 
 		state := finalState
 		msg := "ok"
-		if !(isOkStart || isOkStop) {
+		if !isOkStart && !isOkStop {
 			state = lifecycle.StateError
 			msg = applyErr.Error()
 			// Record failure
@@ -636,22 +634,6 @@ func resolvePyRunner() string {
 		}
 	}
 	return filepath.Join("adk", "python", "agent", "runner.py")
-}
-
-func resolveAgentsDir(cfg *config.Config) string {
-	if v := os.Getenv("RUNTIME_AGENTS_DIR"); v != "" {
-		return v
-	}
-	type agentsDirGetter interface{ AgentsDir() string }
-	if g, ok := any(cfg).(agentsDirGetter); ok {
-		if dir := g.AgentsDir(); dir != "" {
-			return dir
-		}
-	}
-	if _, err := os.Stat("agents"); err == nil {
-		return "agents"
-	}
-	return filepath.Join("gapi", "agents")
 }
 
 func splitCSV(s string) []string {

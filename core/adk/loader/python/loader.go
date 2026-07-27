@@ -21,7 +21,7 @@ func Load(path string) (*Agent, error) {
 	cmd.Stderr = &out
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("agent describe failed: %v\n%s", err, out.String())
+		return nil, fmt.Errorf("agent describe failed: %w\n%s", err, out.String())
 	}
 
 	var info meta.AgentInfo

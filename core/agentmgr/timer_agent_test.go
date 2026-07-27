@@ -193,7 +193,11 @@ func TestTimerAgent_ScheduleExecution(t *testing.T) {
 	if err := agent.Start(ctx); err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
-	defer agent.Stop(context.Background())
+	defer func() {
+		if err := agent.Stop(context.Background()); err != nil {
+			t.Errorf("cleanup Stop: %v", err)
+		}
+	}()
 
 	// Wait for at least one execution cycle
 	// Note: The execute() function will fail since we don't have a real agent,

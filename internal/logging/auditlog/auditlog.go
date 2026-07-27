@@ -20,7 +20,7 @@ func Init(auditPath string) error {
 		current = nil
 	}
 
-	var output io.Writer = io.Discard
+	output := io.Discard
 	if auditPath != "" {
 		// lumberjack rotates the audit file so long-running daemons don't grow it
 		// without bound.

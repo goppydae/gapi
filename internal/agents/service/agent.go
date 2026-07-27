@@ -39,7 +39,7 @@ func (s *ServiceAgent) Scope() string {
 }
 
 func (s *ServiceAgent) Describe() *meta.AgentInfo {
-	return s.Agent.Info()
+	return s.Info()
 }
 
 // Optionally override lifecycle methods
