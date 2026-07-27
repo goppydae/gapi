@@ -403,7 +403,9 @@ func (s *Supervisor) registerHandlers() {
 			cgName := fmt.Sprintf("gapid-%s", entry.ID)
 			if stats, err := cgroups.GetStats(cgName); err == nil {
 				cpuUsage = stats.CPUUsage
-				memUsage = uint64(stats.MemoryUsage)
+				if stats.MemoryUsage > 0 {
+					memUsage = uint64(stats.MemoryUsage)
+				}
 			}
 
 			// Calculate uptime

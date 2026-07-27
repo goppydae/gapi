@@ -22,7 +22,7 @@ func main() {
 	}
 
 	// Create agents dir if it doesn't exist to avoid errors
-	_ = os.MkdirAll("agents", 0755)
+	_ = os.MkdirAll("agents", 0750)
 
 	// 2. Initialize Supervisor as library
 	log.Println("🔧 Initializing Supervisor...")

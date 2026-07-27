@@ -4,13 +4,13 @@ import (
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/goppydae/gapi/core/crypto"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/internal/db/graphdb"
+	"github.com/goppydae/gapi/internal/safeio"
 	"github.com/goppydae/gapi/internal/toposort"
 )
 
@@ -69,7 +69,7 @@ func (r *AgentRegistry) Register(agent *AgentDescription) error {
 	// Integrity Check
 	if r.verifyKey != nil {
 		sigPath := agent.Path + ".sig"
-		sigHex, err := os.ReadFile(sigPath)
+		sigHex, err := safeio.ReadFile(sigPath)
 		if err != nil {
 			return fmt.Errorf("integrity check failed: missing signature for %s (expected %s): %w", agent.ID, sigPath, err)
 		}

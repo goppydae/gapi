@@ -53,7 +53,11 @@ func (s *Supervisor) collectMetrics(startTime time.Time) {
 			// For now, just use 0 if not available
 			uptimeSeconds := 0.0
 
-			metrics.UpdateAgentResources(agentID, agentType, stats.CPUUsage, uint64(stats.MemoryUsage), uptimeSeconds)
+			memBytes := uint64(0)
+			if stats.MemoryUsage > 0 {
+				memBytes = uint64(stats.MemoryUsage)
+			}
+			metrics.UpdateAgentResources(agentID, agentType, stats.CPUUsage, memBytes, uptimeSeconds)
 		}
 	}
 }

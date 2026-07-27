@@ -207,10 +207,19 @@ func Fmt() error {
 	return magelib.Fmt()
 }
 
-// Lint runs linters
+// Lint runs linters.
+//
+// Rule-level gosec carve-outs (GAPI-DIV-024):
+//   - G204: gapid is a process supervisor; launching operator-registered
+//     agent binaries and interpreters with discovered paths is the product.
+//     Discovery roots are fenced (RUNTIME_AGENT_PATH) and binaries are
+//     signature-verified before start (agentreg integrity check).
+//   - G304: every variable-path open routes through internal/safeio, the
+//     audited chokepoint (clean + absolute, root-confined where a root
+//     exists); the rule now only fires inside that package.
 func Lint() error {
 	mg.Deps(checkHermetic)
-	return magelib.Lint()
+	return magelib.Lint("G204", "G304")
 }
 
 // Tidy runs go mod tidy

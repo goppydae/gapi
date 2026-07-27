@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/core/transport"
+	"github.com/goppydae/gapi/internal/safeio"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -72,7 +72,7 @@ func SetSchemaHash(hash string) {
 // ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
 // Returns empty string on error to simplify binding logic.
 func ComputeSchemaHash(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := safeio.ReadFile(path)
 	if err != nil {
 		log.Printf("[GAPI-ADK] Failed to read file for hashing %s: %v", path, err)
 		return ""
