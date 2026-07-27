@@ -1,0 +1,1 @@
+{"id":"GAPI-DEP-001","surface":"core/eventbus EventBus.SubscribeOnce","owner":"kernel","replacement":"SubscribeCorrelated (request/reply) or WaitForTopic (bounded phase gate)","target_removal_tag":"v0.2.0","migration_status":"complete - zero callers remain in gapi and goblin (review R15)","opened":"2026-07-27"}
