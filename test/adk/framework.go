@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -48,11 +49,14 @@ func (h *TestHarness) Start() error {
 	gapidPath := filepath.Join(h.binDir, "gapid")
 	h.gapidCmd = exec.CommandContext(h.ctx, gapidPath)
 
-	// Set environment
+	// Set environment. RUNTIME_AGENT_PATH is fenced to the fixtures dir
+	// ONLY: including the checkout's production agents/ made discovery
+	// start whatever example agents happen to live there, and their start
+	// timeouts starved the fixture agents' state transitions (the ~90s
+	// TestTimerAgent_Execution failure; GAPI-DIV-021).
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
-	prodAgentsDir := filepath.Join(root, "agents")
 	h.gapidCmd.Env = append(os.Environ(),
-		fmt.Sprintf("RUNTIME_AGENT_PATH=%s:%s", h.agentsDir, prodAgentsDir),
+		fmt.Sprintf("RUNTIME_AGENT_PATH=%s", h.agentsDir),
 		fmt.Sprintf("RUNTIME_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
 		"RUNTIME_FORCE_DUMMY_ADK=1",
 		"RUNTIME_CGROUPS_DISABLE=1",
@@ -61,6 +65,11 @@ func (h *TestHarness) Start() error {
 	// Capture output for debugging
 	h.gapidCmd.Stdout = os.Stdout
 	h.gapidCmd.Stderr = os.Stderr
+
+	// Own process group: Stop kills the whole group, or gapid's agent
+	// children (which inherit the test binary's stdout) outlive the kill
+	// and trip go test's "Test I/O incomplete" watchdog.
+	h.gapidCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := h.gapidCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start gapid: %w", err)
@@ -82,8 +91,11 @@ func (h *TestHarness) Stop() error {
 	}
 
 	if h.gapidCmd != nil && h.gapidCmd.Process != nil {
-		if err := h.gapidCmd.Process.Kill(); err != nil {
-			return fmt.Errorf("failed to kill gapid: %w", err)
+		// Kill the whole process group so agent children die with gapid.
+		if err := syscall.Kill(-h.gapidCmd.Process.Pid, syscall.SIGKILL); err != nil {
+			if err := h.gapidCmd.Process.Kill(); err != nil {
+				return fmt.Errorf("failed to kill gapid: %w", err)
+			}
 		}
 		h.gapidCmd.Wait()
 		h.gapidCmd = nil

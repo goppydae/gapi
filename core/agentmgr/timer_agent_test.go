@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/lifecycle"
 )
 
 func TestTimerAgent_Lifecycle(t *testing.T) {
@@ -206,5 +207,37 @@ func TestTimerAgent_ScheduleExecution(t *testing.T) {
 
 	if !running {
 		t.Error("Timer should still be running")
+	}
+}
+
+// TestTimerAgent_ControllerStart replicates the supervisor's timer
+// auto-start path: ctrl.Apply(ActionStart) must succeed, which requires the
+// timer to publish a RUNNING status carrying the controller-set run id on
+// the lifecycle bus (GAPI-DIV-021: timers previously published nothing and
+// every controller start timed out after 10s).
+func TestTimerAgent_ControllerStart(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	lbus := eventbus.NewInprocBus[*anypb.Any]()
+
+	agent := NewTimerAgent(
+		"ctrl_timer",
+		"/tmp/test_agent.py",
+		"1h", // never fires during the test; only the RUNNING transition matters
+		"runner.py",
+		bus,
+		lbus,
+	)
+
+	if err := agent.Controller().Apply(lifecycle.ActionStart); err != nil {
+		t.Fatalf("controller start failed (no RUNNING status published?): %v", err)
+	}
+	defer func() {
+		if err := agent.Controller().Apply(lifecycle.ActionStop); err != nil {
+			t.Errorf("controller stop failed: %v", err)
+		}
+	}()
+
+	if got := agent.Controller().State(); got != "running" {
+		t.Fatalf("controller state = %q, want running", got)
 	}
 }

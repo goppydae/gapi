@@ -18,7 +18,7 @@ func TestPythonAgent_StartStop(t *testing.T) {
 	}
 	defer h.Stop()
 
-	agentID := "simple_service"
+	agentID := "test_simple_service" // the fixture agent; the search path is fenced to fixtures
 
 	// Agent should start automatically
 	if err := h.WaitForState(agentID, "running", config.TestAgentStartTimeout); err != nil {
@@ -47,7 +47,7 @@ func TestPythonAgent_Reload(t *testing.T) {
 	}
 	defer h.Stop()
 
-	agentID := "simple_service"
+	agentID := "test_simple_service" // the fixture agent; the search path is fenced to fixtures
 
 	// Wait for running
 	if err := h.WaitForState(agentID, "running", config.TestAgentStopTimeout); err != nil {
