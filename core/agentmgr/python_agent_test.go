@@ -174,6 +174,7 @@ func TestPythonAgent_Describe(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 	depResolver := NewMockDependencyResolver()
 
+	sockPath := filepath.Join(t.TempDir(), "my.sock")
 	agent := NewPythonAgent(
 		"my_py_agent",
 		"socket",
@@ -183,7 +184,7 @@ func TestPythonAgent_Describe(t *testing.T) {
 		[]string{},
 		[]string{},
 		[]string{},
-		"/tmp/my.sock",
+		sockPath,
 		"1.0",
 		"512M",
 		[]string{"CAP_SYS_ADMIN"},
@@ -202,7 +203,7 @@ func TestPythonAgent_Describe(t *testing.T) {
 		{"type", "socket"},
 		{"language", "python"},
 		{"path", "/app/service.py"},
-		{"listen_stream", "/tmp/my.sock"},
+		{"listen_stream", sockPath},
 		{"cpu_limit", "1.0"},
 		{"mem_limit", "512M"},
 	}

@@ -64,6 +64,7 @@ func TestGoAgent_Describe(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 	depResolver := NewMockDependencyResolver()
 
+	sockPath := filepath.Join(t.TempDir(), "my.sock")
 	agent := NewGoAgent(
 		"my_agent",
 		"socket",
@@ -72,7 +73,7 @@ func TestGoAgent_Describe(t *testing.T) {
 		[]string{},
 		[]string{},
 		[]string{},
-		"/tmp/my.sock",
+		sockPath,
 		"1.0",
 		"512M",
 		[]string{"CAP_SYS_ADMIN"},
@@ -90,7 +91,7 @@ func TestGoAgent_Describe(t *testing.T) {
 		{"type", "socket"},
 		{"language", "go"},
 		{"path", "/usr/bin/myapp"},
-		{"listen_stream", "/tmp/my.sock"},
+		{"listen_stream", sockPath},
 		{"cpu_limit", "1.0"},
 		{"mem_limit", "512M"},
 	}
