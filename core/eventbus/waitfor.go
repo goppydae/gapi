@@ -25,15 +25,28 @@ func (bus *EventBus[T]) WaitForTopic(ctx context.Context, scope, namespace, topi
 		clk = clock.RealClock{}
 	}
 
+	if !validScopes[scope] {
+		return fmt.Errorf("invalid scope: %s", scope)
+	}
+	k := fullKey(scope, namespace, topic)
+
 	fired := make(chan struct{})
 	var once sync.Once
 	wrapper := Handler[T](func(Event[T]) {
 		once.Do(func() { close(fired) })
 	})
-	if err := bus.Subscribe(scope, namespace, topic, wrapper); err != nil {
-		return err
+
+	// Register by unique id so concurrent same-callsite waiters cannot
+	// remove each other's subscriptions on cleanup.
+	bus.mu.Lock()
+	if bus.closed {
+		bus.mu.Unlock()
+		return fmt.Errorf("eventbus closed")
 	}
-	defer bus.Unsubscribe(scope, namespace, topic, wrapper)
+	bus.ensureInitLocked()
+	id := bus.addSubLocked(bus.subs, k, wrapper)
+	bus.mu.Unlock()
+	defer bus.removeSubByID(k, id)
 
 	select {
 	case <-fired:
