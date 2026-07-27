@@ -1,6 +1,7 @@
 package graphdb
 
 import (
+	"bytes"
 	"container/heap"
 	"encoding/json"
 	"errors"
@@ -101,7 +102,9 @@ func (g *Graph) Neighbors(id string, kind string) ([]Edge, error) {
 		b := tx.Bucket([]byte("edges"))
 		cursor := b.Cursor()
 		prefix := []byte(fmt.Sprintf("%s|%s|", id, kind))
-		for k, v := cursor.Seek(prefix); k != nil && string(k[:len(prefix)]) == string(prefix); k, v = cursor.Next() {
+		// bytes.HasPrefix, not k[:len(prefix)]: a shorter key following in
+		// cursor order makes the slice expression panic.
+		for k, v := cursor.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = cursor.Next() {
 			var edge Edge
 			if err := json.Unmarshal(v, &edge); err != nil {
 				return err
@@ -114,14 +117,9 @@ func (g *Graph) Neighbors(id string, kind string) ([]Edge, error) {
 }
 
 func (g *Graph) ShortestPath(start, end, kind string, ttl int64) ([]string, int, error) {
-	type Item struct {
-		Node     string
-		Cost     int
-		Path     []string
-		Priority int
-		Index    int
-	}
-
+	// Uses the package-level Item: a local shadow type here made every
+	// heap.Pop type assertion panic (Item vs Item from different scopes),
+	// so ShortestPath could never complete a single push/pop cycle.
 	pq := make(PriorityQueue, 0)
 	heap.Init(&pq)
 	heap.Push(&pq, &Item{Node: start, Cost: 0, Path: []string{start}, Priority: 0})
