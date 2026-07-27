@@ -65,20 +65,8 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	bus := eventbus.NewEventBus[*anypb.Any](t)
 	typedBus := lifecycle.TypedBus{}
 
-	// Agent Manager
-	pyRunner := resolvePyRunner()
-	manager := agentmgr.NewAgentManager(bus, &typedBus, pyRunner, cfg.Supervisor.ProductionMode)
-
-	// Store & Registry
-	raw, err := store.Open(store.Hybrid)
-	if err != nil {
-		// The registry is not optional: without it, agent integrity verification
-		// is silently skipped and later lookups panic on a nil registry. Fail
-		// construction instead of returning a half-built supervisor.
-		return nil, fmt.Errorf("open store: %w", err)
-	}
-
-	// Security: Verification Key
+	// Security: Verification Key (loaded before the agent manager so
+	// production-mode discovery can verify signatures; review R20)
 	var pubKey *ed25519.PublicKey
 	// Check config first, then env
 	kp := cfg.Security.VerifyKey
@@ -93,6 +81,23 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		}
 		logger.Debug().Str("key_path", kp).Msg("integrity verification enabled")
 		pubKey = &pk
+	}
+
+	// Agent Manager
+	pyRunner := resolvePyRunner()
+	var discoveryKey ed25519.PublicKey
+	if pubKey != nil {
+		discoveryKey = *pubKey
+	}
+	manager := agentmgr.NewAgentManager(bus, &typedBus, pyRunner, cfg.Supervisor.ProductionMode, discoveryKey)
+
+	// Store & Registry
+	raw, err := store.Open(store.Hybrid)
+	if err != nil {
+		// The registry is not optional: without it, agent integrity verification
+		// is silently skipped and later lookups panic on a nil registry. Fail
+		// construction instead of returning a half-built supervisor.
+		return nil, fmt.Errorf("open store: %w", err)
 	}
 
 	db, ok := raw.(store.HybridStore)
