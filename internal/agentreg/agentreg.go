@@ -11,6 +11,7 @@ import (
 	"github.com/goppydae/gapi/core/crypto"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/internal/db/graphdb"
+	"github.com/goppydae/gapi/internal/toposort"
 )
 
 type AgentDescription struct {
@@ -190,53 +191,18 @@ func (r *AgentRegistry) TopologicalSort() ([]string, error) {
 		return nil, err
 	}
 
-	// Build the dependency DAG using ONLY hard deps (Requires); Wants stay soft.
-	// Edge direction is dep -> dependent, so in-degree(id) is the count of id's
-	// unmet hard prerequisites. A reverse-adjacency (dependents) map lets Kahn's
-	// run in O(V+E) instead of rescanning every agent's deps on each dequeue.
-	exists := make(map[string]struct{}, len(agents))
+	// Shared toposort (review R5: one implementation): Requires edges order
+	// and cycle-reject; Wants edges order when satisfiable and never block
+	// (review R14). Unknown deps (external services) are ignored.
+	hard := make(map[string][]string, len(agents))
+	soft := make(map[string][]string, len(agents))
 	for _, a := range agents {
-		exists[a.ID] = struct{}{}
+		hard[a.ID] = a.Requires
+		soft[a.ID] = a.Wants
 	}
-
-	dependents := make(map[string][]string, len(agents)) // dep -> [dependents]
-	inDeg := make(map[string]int, len(agents))
-	for _, a := range agents {
-		if _, ok := inDeg[a.ID]; !ok {
-			inDeg[a.ID] = 0
-		}
-		for _, dep := range a.Requires {
-			if _, ok := exists[dep]; !ok {
-				continue // external/unknown hard dep: ignore for local ordering
-			}
-			dependents[dep] = append(dependents[dep], a.ID)
-			inDeg[a.ID]++
-		}
-	}
-
-	queue := make([]string, 0, len(agents))
-	for id, deg := range inDeg {
-		if deg == 0 {
-			queue = append(queue, id)
-		}
-	}
-
-	order := make([]string, 0, len(agents))
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		order = append(order, id)
-
-		for _, dependent := range dependents[id] {
-			inDeg[dependent]--
-			if inDeg[dependent] == 0 {
-				queue = append(queue, dependent)
-			}
-		}
-	}
-
-	if len(order) != len(agents) {
-		return nil, fmt.Errorf("cycle detected or missing hard dependency")
+	order, err := toposort.Sort(hard, soft)
+	if err != nil {
+		return nil, fmt.Errorf("topological sort: %w", err)
 	}
 
 	// Sync now we know the DAG is valid.

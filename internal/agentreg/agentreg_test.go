@@ -1,6 +1,8 @@
 package agentreg
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/goppydae/gapi/core/store"
@@ -101,5 +103,42 @@ func TestGetDependencies_SurvivesSync(t *testing.T) {
 	}
 	if !found["cache"] {
 		t.Errorf("expected soft dep 'cache' in %v after sync", deps)
+	}
+}
+
+// #8: concurrent Register calls must be serialized by nodeMu; the -race run
+// is the real assertion, the List check is the functional one.
+func TestRegister_ConcurrentRegistrations(t *testing.T) {
+	r := newTestRegistry(t)
+
+	const n = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("agent-%02d", i)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- r.Register(&AgentDescription{
+				ID:       id,
+				Type:     "service",
+				Requires: []string{"agent-00"},
+			})
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent Register: %v", err)
+		}
+	}
+
+	agents, err := r.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(agents) != n {
+		t.Fatalf("registered %d agents, want %d", len(agents), n)
 	}
 }

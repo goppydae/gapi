@@ -8,17 +8,20 @@ import (
 
 // MockAgent to satisfy Agent interface
 type MockAgent struct {
-	id   string
-	deps []string
-	caps []string
+	id    string
+	deps  []string
+	wants []string
+	caps  []string
 }
 
-func (m *MockAgent) ID() string                        { return m.id }
-func (m *MockAgent) Type() string                      { return "service" }
-func (m *MockAgent) Lang() string                      { return "mock" }
-func (m *MockAgent) Dependencies() []string            { return m.deps }
+func (m *MockAgent) ID() string   { return m.id }
+func (m *MockAgent) Type() string { return "service" }
+func (m *MockAgent) Lang() string { return "mock" }
+func (m *MockAgent) Dependencies() []string {
+	return append(append([]string(nil), m.deps...), m.wants...)
+}
 func (m *MockAgent) Requires() []string                { return m.deps }
-func (m *MockAgent) Wants() []string                   { return nil }
+func (m *MockAgent) Wants() []string                   { return m.wants }
 func (m *MockAgent) SetRunID(string)                   {}
 func (m *MockAgent) Controller() *lifecycle.Controller { return nil }
 func (m *MockAgent) Describe() map[string]string {
@@ -95,5 +98,73 @@ func TestTopologicalSort(t *testing.T) {
 				t.Errorf("Missing agents in output. Got %d, want %d", len(got), len(tt.agents))
 			}
 		})
+	}
+}
+
+func sortIndexOf(order []string, id string) int {
+	for i, v := range order {
+		if v == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// R14: Wants orders when satisfiable...
+func TestTopologicalSort_SoftDepOrders(t *testing.T) {
+	agents := map[string]Agent{
+		"api":   &MockAgent{id: "api", wants: []string{"cache"}},
+		"cache": &MockAgent{id: "cache"},
+	}
+	order, err := TopologicalSort(agents)
+	if err != nil {
+		t.Fatalf("TopologicalSort: %v", err)
+	}
+	if sortIndexOf(order, "cache") > sortIndexOf(order, "api") {
+		t.Fatalf("order %v: want cache before api (soft dep should order)", order)
+	}
+}
+
+// ...but never blocks: a cycle through a soft edge is broken, not an error.
+func TestTopologicalSort_SoftCycleNeverBlocks(t *testing.T) {
+	agents := map[string]Agent{
+		"a": &MockAgent{id: "a", wants: []string{"b"}},
+		"b": &MockAgent{id: "b", wants: []string{"a"}},
+	}
+	order, err := TopologicalSort(agents)
+	if err != nil {
+		t.Fatalf("soft cycle must not error, got %v", err)
+	}
+	if len(order) != 2 {
+		t.Fatalf("order %v: want both agents emitted", order)
+	}
+}
+
+// Mixed cycle: the soft edge is the one dropped; hard ordering holds.
+func TestTopologicalSort_MixedCycleDropsSoftEdge(t *testing.T) {
+	agents := map[string]Agent{
+		"a": &MockAgent{id: "a", deps: []string{"b"}},
+		"b": &MockAgent{id: "b", wants: []string{"a"}},
+	}
+	order, err := TopologicalSort(agents)
+	if err != nil {
+		t.Fatalf("mixed cycle must not error, got %v", err)
+	}
+	if sortIndexOf(order, "b") > sortIndexOf(order, "a") {
+		t.Fatalf("order %v: want b before a (hard edge wins)", order)
+	}
+}
+
+// A want naming an unknown agent is advisory: ignored, never an error.
+func TestTopologicalSort_MissingWantIgnored(t *testing.T) {
+	agents := map[string]Agent{
+		"api": &MockAgent{id: "api", wants: []string{"ghost"}},
+	}
+	order, err := TopologicalSort(agents)
+	if err != nil {
+		t.Fatalf("missing want must be ignored, got %v", err)
+	}
+	if len(order) != 1 || order[0] != "api" {
+		t.Fatalf("order %v, want [api]", order)
 	}
 }
