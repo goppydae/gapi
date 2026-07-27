@@ -50,10 +50,6 @@
             # Python verification tools
             (python3.withPackages (ps: with ps; [
               pytest
-              mdformat
-              mdformat-gfm
-              mdformat-frontmatter
-              mdformat-footnote
               jsonschema
               pybindgen
             ]))
