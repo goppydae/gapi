@@ -371,7 +371,9 @@ func (Python) Build() error {
 	// The Makefile hardcoded some paths, but using python3-config is more portable.
 	// However, to match the Makefile exactly (and the fix we made), we need to ensure RPATH is there.
 
-	linkCmdStr := fmt.Sprintf("gcc adk.c adk_go.so -o _adk.so %s %s -fPIC --shared -w -Wl,-rpath,$ORIGIN", cflags, ldflags)
+	// -std=gnu17: gopy-generated C assumes the pre-C23 'bool'; see the
+	// CGO_CFLAGS pin in the shell hook.
+	linkCmdStr := fmt.Sprintf("gcc -std=gnu17 adk.c adk_go.so -o _adk.so %s %s -fPIC --shared -w -Wl,-rpath,$ORIGIN", cflags, ldflags)
 
 	linkCmd := exec.Command("sh", "-c", linkCmdStr)
 	linkCmd.Dir = nativeDir

@@ -127,31 +127,15 @@ extern "C" {
 #endif
 
 extern void GoPyInit(void);
-
-// DecRef decrements the reference count for the specified handle
-// and deletes it it goes to zero.
-//
 extern void DecRef(long long int handle);
-
-// IncRef increments the reference count for the specified handle.
-//
 extern void IncRef(long long int handle);
-
-// NumHandles returns the number of handles currently in use.
-//
 extern GoInt NumHandles(void);
-
-// --- wrapping slice: []bool ---
-//
 extern long long int Slice_bool_CTor(void);
 extern GoInt Slice_bool_len(long long int handle);
 extern char Slice_bool_elem(long long int handle, GoInt _idx);
 extern long long int Slice_bool_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_bool_set(long long int handle, GoInt _idx, char _vl);
 extern void Slice_bool_append(long long int handle, char _vl);
-
-// --- wrapping slice: []byte ---
-//
 extern long long int Slice_byte_CTor(void);
 extern GoInt Slice_byte_len(long long int handle);
 extern char Slice_byte_elem(long long int handle, GoInt _idx);
@@ -160,157 +144,109 @@ extern void Slice_byte_set(long long int handle, GoInt _idx, char _vl);
 extern void Slice_byte_append(long long int handle, char _vl);
 extern long long int Slice_byte_from_bytes(PyObject* o);
 extern PyObject* Slice_byte_to_bytes(long long int handle);
-
-// --- wrapping slice: []error ---
-//
 extern long long int Slice_error_CTor(void);
 extern GoInt Slice_error_len(long long int handle);
 extern char* Slice_error_elem(long long int handle, GoInt _idx);
 extern long long int Slice_error_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_error_set(long long int handle, GoInt _idx, char* _vl);
 extern void Slice_error_append(long long int handle, char* _vl);
-
-// --- wrapping slice: []float32 ---
-//
 extern long long int Slice_float32_CTor(void);
 extern GoInt Slice_float32_len(long long int handle);
 extern float Slice_float32_elem(long long int handle, GoInt _idx);
 extern long long int Slice_float32_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_float32_set(long long int handle, GoInt _idx, float _vl);
 extern void Slice_float32_append(long long int handle, float _vl);
-
-// --- wrapping slice: []float64 ---
-//
 extern long long int Slice_float64_CTor(void);
 extern GoInt Slice_float64_len(long long int handle);
 extern double Slice_float64_elem(long long int handle, GoInt _idx);
 extern long long int Slice_float64_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_float64_set(long long int handle, GoInt _idx, double _vl);
 extern void Slice_float64_append(long long int handle, double _vl);
-
-// --- wrapping slice: []int ---
-//
 extern long long int Slice_int_CTor(void);
 extern GoInt Slice_int_len(long long int handle);
 extern long long int Slice_int_elem(long long int handle, GoInt _idx);
 extern long long int Slice_int_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_int_set(long long int handle, GoInt _idx, long long int _vl);
 extern void Slice_int_append(long long int handle, long long int _vl);
-
-// --- wrapping slice: []int16 ---
-//
 extern long long int Slice_int16_CTor(void);
 extern GoInt Slice_int16_len(long long int handle);
 extern short int Slice_int16_elem(long long int handle, GoInt _idx);
 extern long long int Slice_int16_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_int16_set(long long int handle, GoInt _idx, short int _vl);
 extern void Slice_int16_append(long long int handle, short int _vl);
-
-// --- wrapping slice: []int32 ---
-//
 extern long long int Slice_int32_CTor(void);
 extern GoInt Slice_int32_len(long long int handle);
 extern long int Slice_int32_elem(long long int handle, GoInt _idx);
 extern long long int Slice_int32_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_int32_set(long long int handle, GoInt _idx, long int _vl);
 extern void Slice_int32_append(long long int handle, long int _vl);
-
-// --- wrapping slice: []int64 ---
-//
 extern long long int Slice_int64_CTor(void);
 extern GoInt Slice_int64_len(long long int handle);
 extern long long int Slice_int64_elem(long long int handle, GoInt _idx);
 extern long long int Slice_int64_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_int64_set(long long int handle, GoInt _idx, long long int _vl);
 extern void Slice_int64_append(long long int handle, long long int _vl);
-
-// --- wrapping slice: []int8 ---
-//
 extern long long int Slice_int8_CTor(void);
 extern GoInt Slice_int8_len(long long int handle);
 extern char Slice_int8_elem(long long int handle, GoInt _idx);
 extern long long int Slice_int8_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_int8_set(long long int handle, GoInt _idx, char _vl);
 extern void Slice_int8_append(long long int handle, char _vl);
-
-// --- wrapping slice: []rune ---
-//
 extern long long int Slice_rune_CTor(void);
 extern GoInt Slice_rune_len(long long int handle);
 extern long int Slice_rune_elem(long long int handle, GoInt _idx);
 extern long long int Slice_rune_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_rune_set(long long int handle, GoInt _idx, long int _vl);
 extern void Slice_rune_append(long long int handle, long int _vl);
-
-// --- wrapping slice: []string ---
-//
 extern long long int Slice_string_CTor(void);
 extern GoInt Slice_string_len(long long int handle);
 extern char* Slice_string_elem(long long int handle, GoInt _idx);
 extern long long int Slice_string_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_string_set(long long int handle, GoInt _idx, char* _vl);
 extern void Slice_string_append(long long int handle, char* _vl);
-
-// --- wrapping slice: []uint ---
-//
 extern long long int Slice_uint_CTor(void);
 extern GoInt Slice_uint_len(long long int handle);
 extern long long unsigned int Slice_uint_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint_set(long long int handle, GoInt _idx, long long unsigned int _vl);
 extern void Slice_uint_append(long long int handle, long long unsigned int _vl);
-
-// --- wrapping slice: []uint16 ---
-//
 extern long long int Slice_uint16_CTor(void);
 extern GoInt Slice_uint16_len(long long int handle);
 extern short unsigned int Slice_uint16_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint16_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint16_set(long long int handle, GoInt _idx, short unsigned int _vl);
 extern void Slice_uint16_append(long long int handle, short unsigned int _vl);
-
-// --- wrapping slice: []uint32 ---
-//
 extern long long int Slice_uint32_CTor(void);
 extern GoInt Slice_uint32_len(long long int handle);
 extern long unsigned int Slice_uint32_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint32_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint32_set(long long int handle, GoInt _idx, long unsigned int _vl);
 extern void Slice_uint32_append(long long int handle, long unsigned int _vl);
-
-// --- wrapping slice: []uint64 ---
-//
 extern long long int Slice_uint64_CTor(void);
 extern GoInt Slice_uint64_len(long long int handle);
 extern long long unsigned int Slice_uint64_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint64_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint64_set(long long int handle, GoInt _idx, long long unsigned int _vl);
 extern void Slice_uint64_append(long long int handle, long long unsigned int _vl);
-
-// --- wrapping slice: []uint8 ---
-//
 extern long long int Slice_uint8_CTor(void);
 extern GoInt Slice_uint8_len(long long int handle);
 extern unsigned char Slice_uint8_elem(long long int handle, GoInt _idx);
 extern long long int Slice_uint8_subslice(long long int handle, GoInt _st, GoInt _ed);
 extern void Slice_uint8_set(long long int handle, GoInt _idx, unsigned char _vl);
 extern void Slice_uint8_append(long long int handle, unsigned char _vl);
-
-// --- wrapping struct: adk.ChannelManager ---
-//
 extern long long int adk_ChannelManager_CTor(void);
 extern void adk_ChannelManager_Send(long long int _handle, char* msg, char goRun);
 extern char* adk_ChannelManager_Receive(long long int _handle, long long int timeoutSeconds);
 extern void adk_ChannelManager_Close(long long int _handle, char goRun);
 extern long long int adk_NewChannelManager(void);
+extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
+extern void adk_SendEvent(char* jsonStr, char goRun);
+extern void adk_SetSchemaHash(char* hash, char goRun);
+extern void adk_InjectCommand(char* cmd, char goRun);
 extern void adk_StartHeartbeat(char* id, char* typeStr, char goRun);
 extern char* adk_StartQUIC(char* addr);
 extern char* adk_AwaitCommand(void);
 extern char* adk_ComputeSchemaHash(char* path);
-extern void adk_InjectCommand(char* cmd, char goRun);
-extern void adk_Initialize(char* name, char* version, char* typeStr, char goRun);
-extern void adk_SendEvent(char* jsonStr, char goRun);
-extern void adk_SetSchemaHash(char* hash, char goRun);
 
 #ifdef __cplusplus
 }

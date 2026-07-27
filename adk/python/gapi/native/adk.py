@@ -124,6 +124,30 @@ def NewChannelManager():
 
 
 # ---- Functions ---
+def Initialize(name, version, typeStr, goRun=False):
+	"""Initialize(str name, str version, str typeStr) 
+	
+	Initialize sets up the agent identity.
+	"""
+	_adk.adk_Initialize(name, version, typeStr, goRun)
+def SendEvent(jsonStr, goRun=False):
+	"""SendEvent(str jsonStr) 
+	
+	SendEvent sends a generic event to the supervisor via QUIC.
+	"""
+	_adk.adk_SendEvent(jsonStr, goRun)
+def SetSchemaHash(hash, goRun=False):
+	"""SetSchemaHash(str hash) 
+	
+	SetSchemaHash sets the schema hash for the agent.
+	"""
+	_adk.adk_SetSchemaHash(hash, goRun)
+def InjectCommand(cmd, goRun=False):
+	"""InjectCommand(str cmd) 
+	
+	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
+	"""
+	_adk.adk_InjectCommand(cmd, goRun)
 def StartHeartbeat(id, typeStr, goRun=False):
 	"""StartHeartbeat(str id, str typeStr) 
 	
@@ -151,29 +175,5 @@ def ComputeSchemaHash(path):
 	Returns empty string on error to simplify binding logic.
 	"""
 	return _adk.adk_ComputeSchemaHash(path)
-def InjectCommand(cmd, goRun=False):
-	"""InjectCommand(str cmd) 
-	
-	InjectCommand is a helper for testing/simulation to push a command into the mailbox.
-	"""
-	_adk.adk_InjectCommand(cmd, goRun)
-def Initialize(name, version, typeStr, goRun=False):
-	"""Initialize(str name, str version, str typeStr) 
-	
-	Initialize sets up the agent identity.
-	"""
-	_adk.adk_Initialize(name, version, typeStr, goRun)
-def SendEvent(jsonStr, goRun=False):
-	"""SendEvent(str jsonStr) 
-	
-	SendEvent sends a generic event to the supervisor via QUIC.
-	"""
-	_adk.adk_SendEvent(jsonStr, goRun)
-def SetSchemaHash(hash, goRun=False):
-	"""SetSchemaHash(str hash) 
-	
-	SetSchemaHash sets the schema hash for the agent.
-	"""
-	_adk.adk_SetSchemaHash(hash, goRun)
 
 
