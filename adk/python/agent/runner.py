@@ -7,6 +7,14 @@ from contextlib import redirect_stdout, redirect_stderr
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 
+# gopy's generated gapi/native/adk.py chdirs into its own directory so
+# dlopen can find _adk.so, and restores the caller's directory only on
+# the success path. When the extension was never built the ImportError
+# escapes with the process parked in adk/python/gapi/native, and every
+# relative path handed to this runner afterwards resolves against the
+# wrong root (GAPI-DIV-025). The runner owns its working directory, so
+# it restores it here rather than trusting generated code to unwind.
+_entry_cwd = os.getcwd()
 try:
     if os.getenv("RUNTIME_FORCE_DUMMY_ADK"):
         raise ImportError("Forced Dummy ADK")
@@ -39,8 +47,12 @@ except ImportError as e:
     if not os.getenv("RUNTIME_FORCE_DUMMY_ADK"):
         print("[WARNING] Running with DummyAdk (stdout fallback mode). "
               "This should only be used for development/testing. "
-              "Set RUNTIME_FORCE_DUMMY_ADK=1 to suppress this warning.", 
+              "Set RUNTIME_FORCE_DUMMY_ADK=1 to suppress this warning.",
               file=sys.stderr)
+finally:
+    # Unconditional: this block never leaves the process somewhere the
+    # caller did not put it, whatever the generated importer did.
+    os.chdir(_entry_cwd)
 
 try:
     from gapi.schemas import AgentMetadata
