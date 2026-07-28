@@ -340,7 +340,11 @@ func (Python) Build() error {
 	// We need to run this command *in* the native directory because it compiles the generated adk.go
 	// which depends on imports.
 
-	buildCmd := exec.Command("go", "build", "-mod=mod", "-buildmode=c-shared", "-o", "adk_go.so", "adk.go")
+	// No -mod flag: it is illegal in workspace mode (go.work), so hardcoding
+	// -mod=mod made this target fail in the dev shell and pass in CI only
+	// because CI sets GOWORK=off globally. The default (readonly) is correct
+	// in both modes; go.work resolves the sibling modules in the dev shell.
+	buildCmd := exec.Command("go", "build", "-buildmode=c-shared", "-o", "adk_go.so", "adk.go")
 	buildCmd.Dir = nativeDir
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
