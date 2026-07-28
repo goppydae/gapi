@@ -29,6 +29,14 @@ jobs:
       - name: Compile System Binaries
         run: nix develop -c mage build
 
+      # The Magefile has carried a govulncheck target since the build
+      # library landed, but no workflow ever called it, so CVE drift
+      # accumulated as Dependabot alerts instead of failing a build.
+      # govulncheck is call-graph filtered: it fails only on a
+      # vulnerability this code actually reaches.
+      - name: Audit Dependencies for Reachable CVEs
+        run: nix develop -c mage vuln
+
       # test/adk exercises the python ADK through the gopy native
       # extension. *.so is gitignored, so a fresh checkout has none and
       # the runner silently degrades to DummyAdk - the python half of
