@@ -188,14 +188,11 @@ func Clean() error {
 }
 
 // Proto generates protobuf code through the buf gate (generate, lint,
-// breaking against HEAD), then mirrors the generated *.pb.go into pkg/proto
-// (the imported location).
+// breaking against HEAD). Generated code lands directly in pkg/proto
+// (buf.gen.yaml module opt strips the module prefix from go_package).
 func Proto() error {
 	mg.Deps(checkHermetic)
 	if err := magelib.BufGenerate(".git#ref=HEAD"); err != nil {
-		return err
-	}
-	if err := magelib.MirrorGenerated("proto/*.pb.go", "pkg/proto"); err != nil {
 		return err
 	}
 	fmt.Println("Protobuf generation complete (buf generate + lint + breaking)")

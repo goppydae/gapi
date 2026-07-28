@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package gapi.v1.proto;
+package gapi.v1;
 
 option go_package = "github.com/goppydae/gapi/pkg/proto;gapiv1";
 

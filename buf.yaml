@@ -1,10 +1,6 @@
 version: v2
 modules:
-  - path: .
-    excludes:
-      - vendor
-      - bin
-      - artifacts
+  - path: proto
 lint:
   use:
     - STANDARD

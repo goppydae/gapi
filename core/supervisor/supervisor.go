@@ -390,7 +390,7 @@ func (s *Supervisor) registerHandlers() {
 
 		var agentStatuses []*protopkg.AgentStatus
 		for _, entry := range entries {
-			st := protopkg.AgentState_AGENT_STATE_UNKNOWN
+			st := protopkg.AgentState_AGENT_STATE_UNSPECIFIED
 			if ag := getAgentCI(s.manager, entry.ID); ag != nil {
 				st = mapStateToProto(ag.Controller().State())
 			}
@@ -583,7 +583,7 @@ func mapStateToProto(s string) protopkg.AgentState {
 	case lifecycle.StateError:
 		return protopkg.AgentState_AGENT_STATE_FAILED
 	default:
-		return protopkg.AgentState_AGENT_STATE_UNKNOWN
+		return protopkg.AgentState_AGENT_STATE_UNSPECIFIED
 	}
 }
 
@@ -650,13 +650,13 @@ func splitCSV(s string) []string {
 
 func actionFromEnum(act protopkg.LifecycleControl_Action) string {
 	switch act {
-	case protopkg.LifecycleControl_START:
+	case protopkg.LifecycleControl_ACTION_START:
 		return "start"
-	case protopkg.LifecycleControl_STOP:
+	case protopkg.LifecycleControl_ACTION_STOP:
 		return "stop"
-	case protopkg.LifecycleControl_RELOAD:
+	case protopkg.LifecycleControl_ACTION_RELOAD:
 		return "reload"
-	case protopkg.LifecycleControl_RESTART:
+	case protopkg.LifecycleControl_ACTION_RESTART:
 		return "restart"
 	default:
 		return "initialize"

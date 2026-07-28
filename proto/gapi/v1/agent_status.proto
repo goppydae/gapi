@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package gapi.v1.proto;
+package gapi.v1;
 
 option go_package = "github.com/goppydae/gapi/pkg/proto;gapiv1";
 
 enum AgentState {
-  AGENT_STATE_UNKNOWN = 0;
+  AGENT_STATE_UNSPECIFIED = 0;
   AGENT_STATE_INITIALIZING = 1;
   AGENT_STATE_INITIALIZED = 2;
   AGENT_STATE_STARTING = 3;
@@ -33,7 +33,3 @@ message AgentStatus {
 
 message AgentStatusRequest {} // usually empty or may filter by id/prefix
 message AgentStatusResponse { repeated AgentStatus agents = 1; }
-
-service Supervisor {
-  rpc ListAgents(AgentStatusRequest) returns (AgentStatusResponse);
-}
