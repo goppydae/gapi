@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package gapi.v1;
+
+option go_package = "github.com/goppydae/gapi/pkg/proto;gapiv1";
+
+// CapabilityToken is a bearer token authorizing an action against one
+// agent instance. The signature covers the literal payload bytes, not
+// a message: protobuf serialization is not canonical, so verifiers
+// check Ed25519(payload) and only then unmarshal the payload.
+message CapabilityToken {
+  bytes payload = 1;   // serialized CapabilityTokenPayload
+  bytes signature = 2; // Ed25519 over payload bytes
+}
+
+// CapabilityTokenPayload is the signed content of a capability token.
+// TTL policy (issuer-side): 120s default, clamped to 60-300s.
+message CapabilityTokenPayload {
+  bytes token_id = 1;       // UUIDv7
+  bytes instance_uuid = 2;  // subject instance
+  uint64 rights = 3;        // rights bitmap (see crypto package constants)
+  int64 issued_at_ms = 4;   // unix milliseconds
+  int64 expires_at_ms = 5;  // unix milliseconds
+  string issuer_node_id = 6;
+  string key_id = 7;        // identifies the issuer signing key
+}
