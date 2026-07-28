@@ -33,7 +33,7 @@ func mintToken(t *testing.T, priv ed25519.PrivateKey, mutate func(*gapiv1.Capabi
 	t.Helper()
 	payload := &gapiv1.CapabilityTokenPayload{
 		TokenId:      []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-		InstanceUuid: []byte{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
+		SubjectUuid:  []byte{16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
 		Rights:       crypto.RightSignalTerm,
 		IssuedAtMs:   time.Unix(1000, 0).UnixMilli(),
 		ExpiresAtMs:  time.Unix(1120, 0).UnixMilli(),

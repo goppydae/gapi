@@ -5,9 +5,10 @@ package gapi.v1;
 option go_package = "github.com/goppydae/gapi/pkg/proto;gapiv1";
 
 // CapabilityToken is a bearer token authorizing an action against one
-// agent instance. The signature covers the literal payload bytes, not
-// a message: protobuf serialization is not canonical, so verifiers
-// check Ed25519(payload) and only then unmarshal the payload.
+// subject: an agent instance, or a named orchestration resource such as
+// a spec, node, job, or topic. The signature covers the literal payload
+// bytes, not a message: protobuf serialization is not canonical, so
+// verifiers check Ed25519(payload) and only then unmarshal the payload.
 message CapabilityToken {
   bytes payload = 1;   // serialized CapabilityTokenPayload
   bytes signature = 2; // Ed25519 over payload bytes
@@ -17,7 +18,12 @@ message CapabilityToken {
 // TTL policy (issuer-side): 120s default, clamped to 60-300s.
 message CapabilityTokenPayload {
   bytes token_id = 1;       // UUIDv7
-  bytes instance_uuid = 2;  // subject instance
+  // The subject this token authorizes against. Usually an agent
+  // instance, but orchestration tokens scope to a named resource -
+  // spec, node, job, or topic (GOBLIN-DIV-027). Renamed from
+  // instance_uuid; the field number does not move, so the wire is
+  // unaffected and persisted data stays readable (GOBLIN-DIV-028).
+  bytes subject_uuid = 2;
   uint64 rights = 3;        // rights bitmap (see crypto package constants)
   int64 issued_at_ms = 4;   // unix milliseconds
   int64 expires_at_ms = 5;  // unix milliseconds
