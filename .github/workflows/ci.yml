@@ -28,7 +28,23 @@ jobs:
       
       - name: Compile System Binaries
         run: nix develop -c mage build
-      
+
+      # test/adk exercises the python ADK through the gopy native
+      # extension. *.so is gitignored, so a fresh checkout has none and
+      # the runner silently degrades to DummyAdk - the python half of
+      # the parity suite then tests the fallback, not the ADK
+      # (GAPI-DIV-025). Build it where the gate runs.
+      - name: Build Python ADK Bindings
+        run: nix develop -c mage python:build
+
+      # quic-go warns "failed to sufficiently increase receive buffer
+      # size" on stock runners; the control plane is QUIC over loopback
+      # and handshakes drop under the default 208 kiB ceiling.
+      - name: Raise UDP Buffers for the QUIC Control Plane
+        run: |
+          sudo sysctl -w net.core.rmem_max=7500000
+          sudo sysctl -w net.core.wmem_max=7500000
+
       - name: Execute System Tests
         run: nix develop -c go test -v ./...
       
@@ -53,6 +69,10 @@ jobs:
     name: Execute Cross-ADK Tests
     runs-on: ubuntu-latest
     needs: full-build-and-test
+    env:
+      # Same lone-clone contract as the build job: CI has no sibling
+      # checkouts for the committed go.work to resolve.
+      GOWORK: "off"
     steps:
       - name: Checkout Workspace
         uses: actions/checkout@v4
@@ -64,6 +84,12 @@ jobs:
       
 
       
+      # The parity claim is that the python ADK behaves like the Go one.
+      # Without the native extension the python side is DummyAdk and the
+      # comparison is meaningless (GAPI-DIV-025).
+      - name: Build Python ADK Bindings
+        run: nix develop -c mage python:build
+
       - name: Execute Cross-ADK Tests
         run: |
           nix develop -c go test -v ./test/adk/ -run TestCrossADKParity 2>&1 | tee /tmp/cross-adk-test.log
