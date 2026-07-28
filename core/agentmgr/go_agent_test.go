@@ -3,6 +3,7 @@ package agentmgr
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,18 @@ import (
 
 	"github.com/goppydae/gapi/core/eventbus"
 )
+
+// binPath resolves name from the hermetic shell's PATH: hardcoded FHS
+// paths like /bin/true do not exist on NixOS hosts, so tests exec what
+// the dev shell provides instead.
+func binPath(t *testing.T, name string) string {
+	t.Helper()
+	p, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("%s not found in PATH: %v", name, err)
+	}
+	return p
+}
 
 func TestGoAgent_Constructor(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
@@ -118,7 +131,7 @@ func TestGoAgent_Controller(t *testing.T) {
 	agent := NewGoAgent(
 		"test_agent",
 		"service",
-		"/bin/true",
+		binPath(t, "true"),
 		nil, nil, nil, nil,
 		"",
 		"", "",
@@ -194,11 +207,11 @@ func TestGoAgent_StartStop_Simple(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 	depResolver := NewMockDependencyResolver()
 
-	// Use /bin/true as a simple command that exits immediately
+	// A trivially-exiting command resolved from the shell's PATH
 	agent := NewGoAgent(
 		"test_agent",
 		"oneshot",
-		"/bin/true",
+		binPath(t, "true"),
 		nil, nil, nil, nil,
 		"",
 		"", "",
@@ -252,7 +265,7 @@ func TestGoAgent_StartStop_WithSleep(t *testing.T) {
 	// Let's create a wrapper script
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "test_script.sh")
-	script := `#!/bin/bash
+	script := `#!/bin/sh
 sleep 30
 `
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
@@ -309,7 +322,7 @@ func TestGoAgent_EventPublishing(t *testing.T) {
 	agent := NewGoAgent(
 		"test_agent",
 		"service",
-		"/bin/true",
+		binPath(t, "true"),
 		nil, nil, nil, nil,
 		"",
 		"", "",
@@ -345,7 +358,7 @@ func TestGoAgent_Reload(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	scriptPath := filepath.Join(tmpDir, "test_script.sh")
-	script := `#!/bin/bash
+	script := `#!/bin/sh
 echo "running"
 sleep 10
 `

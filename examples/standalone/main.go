@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/supervisor"
+	"github.com/goppydae/gapi/internal/logattr"
 )
 
 func main() {
-	log.Println("📚 standalone GAPI library example starting...")
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "standalone gapi library example starting")
 
 	// 1. Programmatic Config
 	// In a real embed, you might read this from your own app's config
@@ -25,10 +26,11 @@ func main() {
 	_ = os.MkdirAll("agents", 0750)
 
 	// 2. Initialize Supervisor as library
-	log.Println("🔧 Initializing Supervisor...")
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "initializing supervisor")
 	sup, err := supervisor.New(cfg)
 	if err != nil {
-		log.Fatalf("❌ Failed to init supervisor: %v", err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelError, "failed to init supervisor", logattr.Err(err))
+		os.Exit(1)
 	}
 
 	// 3. Run with a timeout context to demonstrate lifecycle control
@@ -36,10 +38,10 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	log.Println("🚀 Running Supervisor (5s duration)...")
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "running supervisor for 5s")
 	if err := sup.Run(ctx); err != nil {
-		log.Printf("⚠️ Supervisor exited with error: %v", err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "supervisor exited with error", logattr.Err(err))
 	}
 
-	log.Println("✅ Standalone example finished.")
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "standalone example finished")
 }

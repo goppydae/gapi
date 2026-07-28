@@ -1,11 +1,14 @@
 package supervisor
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/goppydae/gapi/core/cgroups"
 	"github.com/goppydae/gapi/core/metrics"
+	"github.com/goppydae/gapi/internal/logattr"
 )
 
 // collectMetrics gathers resource usage metrics from all agents
@@ -17,14 +20,15 @@ func (s *Supervisor) collectMetrics(startTime time.Time) {
 	// Get all registered agents
 	entries, err := s.registry.List()
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("failed to list agents for metrics collection")
+		s.logger.LogAttrs(context.Background(), slog.LevelWarn, "failed to list agents for metrics collection", logattr.Err(err))
 		return
 	}
 
 	// Update total agent count
 	metrics.AgentsTotal.Set(float64(len(entries)))
 
-	s.logger.Debug().Int("agent_count", len(entries)).Dur("uptime", s.clock.Since(startTime)).Msg("collecting metrics")
+	s.logger.LogAttrs(context.Background(), slog.LevelDebug, "collecting metrics",
+		slog.Int("agent_count", len(entries)), slog.Duration("uptime", s.clock.Since(startTime)))
 
 	// Collect per-agent metrics
 	for _, entry := range entries {

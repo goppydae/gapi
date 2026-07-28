@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/core/transport"
+	"github.com/goppydae/gapi/internal/logattr"
 	"github.com/goppydae/gapi/internal/safeio"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/zeebo/blake3"
@@ -52,13 +53,13 @@ func StartQUIC(addr string) error {
 		return fmt.Errorf("failed to start QUIC client: %w", err)
 	}
 	quicClient = agent
-	log.Printf("[GAPI-ADK] Connected to supervisor at %s (QUIC)", addr)
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "connected to supervisor", logattr.Component("gapi-adk"), logattr.Addr(addr))
 	return nil
 }
 
 // Initialize sets up the agent identity.
 func Initialize(name, version, typeStr string) {
-	log.Printf("[GAPI-ADK] Initialized agent: %s v%s (%s)", name, version, typeStr)
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "initialized agent", logattr.Component("gapi-adk"), logattr.AgentID(name), logattr.Version(version), logattr.Type(typeStr))
 }
 
 // SetSchemaHash sets the schema hash for the agent.
@@ -66,7 +67,7 @@ func SetSchemaHash(hash string) {
 	mu.Lock()
 	defer mu.Unlock()
 	schemaHash = hash
-	log.Printf("[GAPI-ADK] Schema Hash set: %s", hash)
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "schema hash set", logattr.Component("gapi-adk"), logattr.Hash(hash))
 }
 
 // ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
@@ -74,7 +75,7 @@ func SetSchemaHash(hash string) {
 func ComputeSchemaHash(path string) string {
 	data, err := safeio.ReadFile(path)
 	if err != nil {
-		log.Printf("[GAPI-ADK] Failed to read file for hashing %s: %v", path, err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelError, "failed to read file for hashing", logattr.Component("gapi-adk"), logattr.Path(path), logattr.Err(err))
 		return ""
 	}
 	hash := blake3.Sum256(data)
@@ -95,7 +96,7 @@ func SendEvent(jsonStr string) {
 	// Parse JSON to extract topic/id/type
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		log.Printf("[GAPI-ADK] SendEvent JSON error: %v", err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelError, "sendevent json marshal failed", logattr.Component("gapi-adk"), logattr.Err(err))
 		return
 	}
 
@@ -121,7 +122,7 @@ func SendEvent(jsonStr string) {
 
 	anyStat, err := anypb.New(stat)
 	if err != nil {
-		log.Printf("[GAPI-ADK] Proto marshal error: %v", err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelError, "proto marshal failed", logattr.Component("gapi-adk"), logattr.Err(err))
 		return
 	}
 
@@ -133,7 +134,7 @@ func SendEvent(jsonStr string) {
 	}
 
 	if err := quicClient.PublishRemote(context.Background(), ev); err != nil {
-		log.Printf("[GAPI-ADK] QUIC publish error: %v", err)
+		slog.Default().LogAttrs(context.Background(), slog.LevelError, "quic publish failed", logattr.Component("gapi-adk"), logattr.Err(err))
 		// Fallback
 		fmt.Println(jsonStr)
 	}
