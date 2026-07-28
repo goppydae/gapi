@@ -124,12 +124,6 @@ def NewChannelManager():
 
 
 # ---- Functions ---
-def Initialize(name, version, typeStr, goRun=False):
-	"""Initialize(str name, str version, str typeStr) 
-	
-	Initialize sets up the agent identity.
-	"""
-	_adk.adk_Initialize(name, version, typeStr, goRun)
 def SendEvent(jsonStr, goRun=False):
 	"""SendEvent(str jsonStr) 
 	
@@ -142,6 +136,19 @@ def SetSchemaHash(hash, goRun=False):
 	SetSchemaHash sets the schema hash for the agent.
 	"""
 	_adk.adk_SetSchemaHash(hash, goRun)
+def ComputeSchemaHash(path):
+	"""ComputeSchemaHash(str path) str
+	
+	ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
+	Returns empty string on error to simplify binding logic.
+	"""
+	return _adk.adk_ComputeSchemaHash(path)
+def Initialize(name, version, typeStr, goRun=False):
+	"""Initialize(str name, str version, str typeStr) 
+	
+	Initialize sets up the agent identity.
+	"""
+	_adk.adk_Initialize(name, version, typeStr, goRun)
 def InjectCommand(cmd, goRun=False):
 	"""InjectCommand(str cmd) 
 	
@@ -168,12 +175,5 @@ def AwaitCommand():
 	In a real implementation, this would read from a QUIC stream or IPC socket.
 	"""
 	return _adk.adk_AwaitCommand()
-def ComputeSchemaHash(path):
-	"""ComputeSchemaHash(str path) str
-	
-	ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
-	Returns empty string on error to simplify binding logic.
-	"""
-	return _adk.adk_ComputeSchemaHash(path)
 
 

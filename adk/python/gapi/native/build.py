@@ -154,14 +154,14 @@ add_checked_function(mod, 'adk_ChannelManager_Send', None, [param('int64_t', '_h
 add_checked_string_function(mod, 'adk_ChannelManager_Receive', retval('char*'), [param('int64_t', '_handle'), param('int64_t', 'timeoutSeconds')])
 add_checked_function(mod, 'adk_ChannelManager_Close', None, [param('int64_t', '_handle'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_NewChannelManager', retval('int64_t'), [])
-add_checked_function(mod, 'adk_Initialize', None, [param('char*', 'name'), param('char*', 'version'), param('char*', 'typeStr'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_SendEvent', None, [param('char*', 'jsonStr'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_SetSchemaHash', None, [param('char*', 'hash'), param('bool', 'goRun')])
+add_checked_string_function(mod, 'adk_ComputeSchemaHash', retval('char*'), [param('char*', 'path')])
+add_checked_function(mod, 'adk_Initialize', None, [param('char*', 'name'), param('char*', 'version'), param('char*', 'typeStr'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_InjectCommand', None, [param('char*', 'cmd'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_StartHeartbeat', None, [param('char*', 'id'), param('char*', 'typeStr'), param('bool', 'goRun')])
 add_checked_function(mod, 'adk_StartQUIC', retval('char*'), [param('char*', 'addr')])
 add_checked_string_function(mod, 'adk_AwaitCommand', retval('char*'), [])
-add_checked_string_function(mod, 'adk_ComputeSchemaHash', retval('char*'), [param('char*', 'path')])
 
 mod.generate(open('adk.c', 'w'))
 
