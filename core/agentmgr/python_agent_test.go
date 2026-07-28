@@ -1,17 +1,20 @@
 package agentmgr
 
 import (
-	_ "context"
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
-	_ "time"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	"github.com/goppydae/gapi/core/cgroups"
 	"github.com/goppydae/gapi/core/eventbus"
+	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
 
 func TestParseLimits(t *testing.T) {
@@ -367,4 +370,124 @@ func TestPythonAgent_PublishStatus(t *testing.T) {
 	agent.publishStatus("running", "Agent started successfully")
 
 	// Verify event was published
+}
+
+// TestPythonAgent_UnexpectedExitReported mirrors the GoAgent watcher
+// contract (GAPI-DIV-026): a service process that dies without Stop is
+// reaped and reported FAILED - cross-ADK parity for exit handling.
+func TestPythonAgent_UnexpectedExitReported(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping process execution test in short mode")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skipf("python3 not in PATH: %v", err)
+	}
+
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+
+	tmpDir := t.TempDir()
+	runner := filepath.Join(tmpDir, "runner.py")
+	if err := os.WriteFile(runner, []byte("import time\ntime.sleep(30)\n"), 0o644); err != nil {
+		t.Fatalf("write fake runner: %v", err)
+	}
+
+	agent := NewPythonAgent(
+		"test_py_unexpected_exit", "service", "unused.py", runner,
+		nil, nil, nil, nil, "", "", "", nil, bus, NewMockDependencyResolver(), false,
+	)
+
+	failed := make(chan string, 4)
+	if err := bus.Subscribe("system", "", eventbus.TopicAgentLifecycleStatus, func(e eventbus.Event[*anypb.Any]) {
+		var st protopkg.LifecycleStatus
+		if e.Payload == nil || e.Payload.UnmarshalTo(&st) != nil {
+			return
+		}
+		if st.AgentId == "test_py_unexpected_exit" && st.State == "FAILED" {
+			failed <- st.Message
+		}
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	if err := agent.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	pid, running := agent.Pid()
+	if !running {
+		t.Fatal("agent not running after Start")
+	}
+
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatalf("kill: %v", err)
+	}
+
+	select {
+	case msg := <-failed:
+		t.Logf("unexpected exit reported: %s", msg)
+	case <-time.After(3 * time.Second):
+		t.Fatal("no FAILED status within 3s of the process dying")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, running := agent.Pid(); !running {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("agent still reports a running process after unexpected exit")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestPythonAgent_StopDoesNotDoubleReportFailure: Stop-initiated exits
+// stay quiet, exactly like the GoAgent watcher.
+func TestPythonAgent_StopDoesNotDoubleReportFailure(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping process execution test in short mode")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skipf("python3 not in PATH: %v", err)
+	}
+
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+
+	tmpDir := t.TempDir()
+	runner := filepath.Join(tmpDir, "runner.py")
+	if err := os.WriteFile(runner, []byte("import time\ntime.sleep(30)\n"), 0o644); err != nil {
+		t.Fatalf("write fake runner: %v", err)
+	}
+
+	agent := NewPythonAgent(
+		"test_py_stop_no_double", "service", "unused.py", runner,
+		nil, nil, nil, nil, "", "", "", nil, bus, NewMockDependencyResolver(), false,
+	)
+
+	failed := make(chan string, 4)
+	if err := bus.Subscribe("system", "", eventbus.TopicAgentLifecycleStatus, func(e eventbus.Event[*anypb.Any]) {
+		var st protopkg.LifecycleStatus
+		if e.Payload == nil || e.Payload.UnmarshalTo(&st) != nil {
+			return
+		}
+		if st.AgentId == "test_py_stop_no_double" && st.State == "FAILED" {
+			failed <- st.Message
+		}
+	}); err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+
+	if err := agent.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := agent.Stop(stopCtx); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	select {
+	case msg := <-failed:
+		t.Fatalf("Stop-initiated exit was reported as FAILED: %s", msg)
+	case <-time.After(500 * time.Millisecond):
+	}
 }

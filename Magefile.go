@@ -139,6 +139,14 @@ func TestADK() error {
 	return sh.RunV("go", "test", "-v", "./test/adk/...")
 }
 
+// TestPid1 runs the PID-1 container e2e: gapid as init of a rootless
+// podman container (orphan reaping, signal semantics, teardown order).
+func TestPid1() error {
+	mg.Deps(checkHermetic)
+	fmt.Println("Running PID-1 container e2e (rootless podman)...")
+	return sh.RunV("go", "test", "-tags", "pid1", "-timeout", "10m", "-v", "-run", "TestPid1", "./test/pid1/")
+}
+
 // TestE2E runs end-to-end tests
 func TestE2E() error {
 	mg.Deps(Build, Python{}.Build)
