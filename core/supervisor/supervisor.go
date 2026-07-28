@@ -454,7 +454,7 @@ func (s *Supervisor) registerHandlers() {
 	}
 
 	// Lifecycle Actions
-	err = s.bus.Subscribe("system", "", "agent/lifecycle.action", func(e eventbus.Event[*anypb.Any]) {
+	err = s.bus.Subscribe("system", "", eventbus.TopicAgentLifecycleAction, func(e eventbus.Event[*anypb.Any]) {
 		s.handleLifecycleAction(e)
 	})
 	if err != nil {
@@ -558,7 +558,7 @@ func (s *Supervisor) replyStatus(agentID, state, msg string) {
 		Time:     timestamppb.Now(),
 		Hostname: s.host,
 	}); err == nil {
-		resp := eventbus.NewEvent("system", "", "agent/lifecycle.status", "gapid", anyPayload, true)
+		resp := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleStatus, "gapid", anyPayload, true)
 		_ = s.bus.Publish(resp)
 	}
 }

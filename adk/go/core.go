@@ -106,18 +106,14 @@ func SendEvent(jsonStr string) {
 	stateRaw, _ := data["state"].(string)
 	runID, _ := data["run_id"].(string)
 
-	msg := jsonStr
-	if runID != "" {
-		msg += fmt.Sprintf(" run_id=%s", runID)
-	}
-
-	// Map to LifecycleStatus
-	// Create a minimal LifecycleStatus matching proto definition
+	// Map to LifecycleStatus. run_id travels as the structural field,
+	// never inside the message text (R16).
 	stat := &protopkg.LifecycleStatus{
 		AgentId:    id,
 		State:      strings.ToUpper(stateRaw),
-		Message:    msg,
+		Message:    jsonStr,
 		SchemaHash: schemaHash,
+		RunId:      runID,
 	}
 
 	anyStat, err := anypb.New(stat)
@@ -128,7 +124,7 @@ func SendEvent(jsonStr string) {
 
 	ev := eventbus.Event[*anypb.Any]{
 		ID:      id,
-		Topic:   "agent/lifecycle.status",
+		Topic:   eventbus.TopicAgentLifecycleStatus,
 		Payload: anyStat,
 		Source:  "agent:" + id,
 	}
