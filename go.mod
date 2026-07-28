@@ -13,7 +13,7 @@ require (
 	github.com/go-python/gopy v0.4.10
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/goppydae/magelib v0.0.0-00010101000000-000000000000
+	github.com/goppydae/magelib v0.1.0
 	github.com/magefile/mage v1.15.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quic-go/quic-go v0.57.1
@@ -24,7 +24,6 @@ require (
 	go.etcd.io/bbolt v1.4.3
 	golang.org/x/sys v0.43.0
 	golang.org/x/tools v0.43.0
-	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
@@ -72,7 +71,4 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260311193753-579e4da9a98c // indirect
 	golang.org/x/text v0.36.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 )
-
-replace github.com/goppydae/magelib => ../magelib
