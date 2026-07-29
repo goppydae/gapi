@@ -76,7 +76,7 @@ type Agent interface {
 }
 
 type AgentManager struct {
-	bus   *eventbus.EventBus[*anypb.Any] // ← T is *anypb.Any
+	bus   *eventbus.EventBus[*anypb.Any] // T is *anypb.Any
 	lbus  *lifecycle.TypedBus
 	pyRun string // path to adk runner
 	// mu guards agents: discovery, Register, and the orchestrator's
@@ -123,7 +123,7 @@ func (am *AgentManager) TopologicalSort() ([]string, error) {
 }
 
 // DiscoverFromPaths discovers agents from all configured search paths.
-// Paths are searched in priority order (Development → User → System).
+// Paths are searched in priority order (Development -> User -> System).
 // First occurrence of an agent ID wins (higher priority path).
 func (am *AgentManager) DiscoverFromPaths() ([]map[string]string, error) {
 	searchPaths := config.AgentSearchPaths()

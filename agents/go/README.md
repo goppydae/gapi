@@ -4,7 +4,7 @@ Go agents are used for **foundational** and **high-performance** use cases. Use 
 
 ## When to Use Go Agents
 
-✅ **Use Go for**:
+**Use Go for**:
 
 - System boot agents (PID 1 init)
 - Cluster coordination (Serf/Raft join)
@@ -12,7 +12,7 @@ Go agents are used for **foundational** and **high-performance** use cases. Use 
 - Low-latency requirements (\<10ms startup)
 - Self-contained binaries (no runtime dependencies)
 
-❌ **Use Python for**:
+**Use Python for**:
 
 - Business logic and application services
 - Rapid iteration and development
@@ -182,9 +182,9 @@ After building, you'll have:
 
 ```
 agents/build/go/
-├── my_agent        # Binary
-├── my_agent.b3     # BLAKE3 hash
-└── my_agent.sig    # ED25519 signature (if --sign used)
+|-- my_agent        # Binary
+|-- my_agent.b3     # BLAKE3 hash
+`-- my_agent.sig    # ED25519 signature (if --sign used)
 ```
 
 ## Dependencies

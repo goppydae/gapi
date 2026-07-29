@@ -1,10 +1,10 @@
 # GAPI Plugins (Experimental)
 
-⚠️ **EXPERIMENTAL FEATURE** - Requires `GAPI_ENABLE_PLUGINS=1`
+**EXPERIMENTAL FEATURE** - Requires `GAPI_ENABLE_PLUGINS=1`
 
 Shared-object plugins provide **ultra-low-latency** in-process agent execution. Use plugins only for performance-critical coordination tasks where microsecond latency matters.
 
-## ⚠️ Limitations
+## Limitations
 
 - **Linux-only**: Go plugin system doesn't support Windows/macOS
 - **ABI fragility**: Plugin must be compiled with exact same Go version as gapid
@@ -13,19 +13,19 @@ Shared-object plugins provide **ultra-low-latency** in-process agent execution. 
 
 ## When to Use Plugins
 
-✅ **Use plugins for**:
+**Use plugins for**:
 
 - Raft consensus voting (microsecond latency)
 - In-process event routing
 - High-frequency coordination tasks
 
-❌ **Use compiled Go agents for**:
+**Use compiled Go agents for**:
 
 - System boot, foundational services
 - Anything requiring crash isolation
 - Cross-platform support
 
-❌ **Use Python agents for**:
+**Use Python agents for**:
 
 - Everything else
 
@@ -106,8 +106,8 @@ type Agent interface {
 
 ```
 agents/build/plugins/
-├── event_router.so      # Shared library
-└── event_router.so.b3   # BLAKE3 hash
+|-- event_router.so      # Shared library
+`-- event_router.so.b3   # BLAKE3 hash
 ```
 
 ## Version Compatibility

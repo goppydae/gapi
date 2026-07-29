@@ -23,7 +23,7 @@ func TestSubscribeCorrelated_FiltersByID(t *testing.T) {
 		t.Fatalf("subscribe B: %v", err)
 	}
 
-	// Publish B's reply first, then A's — each waiter must receive only its own.
+	// Publish B's reply first, then A's - each waiter must receive only its own.
 	evB := NewEvent("system", "", "reply", "srv", "payloadB", false)
 	evB.ID = "corr-B"
 	if err := bus.Publish(evB); err != nil {

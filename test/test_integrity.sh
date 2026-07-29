@@ -36,7 +36,7 @@ EOF
 
 echo "[TEST] Using existing certs..."
 if [ ! -f config/certs/server.crt ]; then
-    echo "❌ Certs not found, run: ./test/e2e.sh first"
+    echo "[FAIL] Certs not found, run: ./test/e2e.sh first"
     exit 1
 fi
 
@@ -65,27 +65,27 @@ sleep 3
 
 echo "[TEST] Checking logs..."
 if grep -q "integrity verification enabled" test_integrity.log; then
-    echo "✅ Integrity verification enabled"
+    echo "[OK] Integrity verification enabled"
 else
-    echo "❌ Integrity verification NOT enabled"
+    echo "[FAIL] Integrity verification NOT enabled"
     cat test_integrity.log
     kill $GAPID_PID 2>/dev/null || true
     exit 1
 fi
 
 if grep -q "integrity check failed.*unsigned" test_integrity.log; then
-    echo "✅ Unsigned agent rejected"
+    echo "[OK] Unsigned agent rejected"
 else
-    echo "❌ Unsigned agent NOT rejected"
+    echo "[FAIL] Unsigned agent NOT rejected"
     cat test_integrity.log
     kill $GAPID_PID 2>/dev/null || true
     exit 1
 fi
 
 if grep -q "registered agent.*test" test_integrity.log; then
-    echo "✅ Signed agent loaded"
+    echo "[OK] Signed agent loaded"
 else
-    echo "⚠️  Signed agent may not have loaded (check logs)"
+    echo "[WARN] Signed agent may not have loaded (check logs)"
 fi
 
 echo "[TEST] Cleaning up..."

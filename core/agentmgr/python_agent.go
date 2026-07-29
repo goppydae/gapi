@@ -637,7 +637,7 @@ func (a *PythonAgent) streamControl(r io.Reader) {
 		case "heartbeat":
 			a.publishHeartbeat()
 		default:
-			// no control topic publications from agents — by design
+			// no control topic publications from agents - by design
 		}
 	}
 }

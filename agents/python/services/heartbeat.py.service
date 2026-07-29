@@ -15,7 +15,7 @@ _thread = None
 
 def _heartbeat_loop():
     while _running:
-        print(f"[heartbeat] 💓  heartbeat at {time.strftime('%Y-%m-%d %H:%M:%S')}", file=sys.stderr)
+        print(f"[heartbeat] heartbeat at {time.strftime('%Y-%m-%d %H:%M:%S')}", file=sys.stderr)
         time.sleep(5)
 
 def initialize():

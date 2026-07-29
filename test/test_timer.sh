@@ -30,27 +30,27 @@ echo "[TEST] Checking logs..."
 kill $GAPID_PID 2>/dev/null || true
 
 if grep -q "timer agent started" test_timer.log; then
-    echo "✅ Timer agent started"
+    echo "[OK] Timer agent started"
 else
-    echo "❌ Timer agent did not start"
+    echo "[FAIL] Timer agent did not start"
     cat test_timer.log
     exit 1
 fi
 
 if grep -q "timer triggered" test_timer.log; then
-    echo "✅ Timer triggered"
+    echo "[OK] Timer triggered"
     TICK_COUNT=$(grep -c "timer triggered" test_timer.log)
     echo "   Timer ticked $TICK_COUNT times"
 else
-    echo "❌ Timer did not trigger"
+    echo "[FAIL] Timer did not trigger"
     cat test_timer.log
     exit 1
 fi
 
 if grep -q "Timer tick!" test_timer.log; then
-    echo "✅ Timer agent executed successfully"
+    echo "[OK] Timer agent executed successfully"
 else
-    echo "⚠️  Timer triggered but agent may not have executed"
+    echo "[WARN] Timer triggered but agent may not have executed"
 fi
 
 echo "[TEST] Cleaning up..."

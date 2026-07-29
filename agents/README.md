@@ -6,17 +6,17 @@ This directory contains GAPI agents organized by language and type.
 
 ```
 agents/
-├── python/          # Python agents (primary ADK)
-│   ├── services/    # Long-running services
-│   ├── timers/      # Scheduled/periodic tasks
-│   └── sockets/     # Socket-activated services
-├── go/              # Go agents (foundational/high-performance)
-│   ├── foundational/  # System boot, core services
-│   └── coordination/  # Cluster coordination
-├── plugins/         # Shared-object plugins (experimental)
-└── build/           # Build artifacts (gitignored)
-    ├── go/          # Compiled Go binaries
-    └── plugins/     # Compiled plugin .so files
+|-- python/          # Python agents (primary ADK)
+|   |-- services/    # Long-running services
+|   |-- timers/      # Scheduled/periodic tasks
+|   `-- sockets/     # Socket-activated services
+|-- go/              # Go agents (foundational/high-performance)
+|   |-- foundational/  # System boot, core services
+|   `-- coordination/  # Cluster coordination
+|-- plugins/         # Shared-object plugins (experimental)
+`-- build/           # Build artifacts (gitignored)
+    |-- go/          # Compiled Go binaries
+    `-- plugins/     # Compiled plugin .so files
 ```
 
 ## Agent Naming Convention
