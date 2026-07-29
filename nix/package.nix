@@ -4,14 +4,18 @@ buildGoModule rec {
   pname = "gapi";
   version = "0.1.0";
   
-  # Use cleanSource which respects .gitignore (vendor/ is in .gitignore)
+  # cleanSource filters VCS and editor files - it does NOT read
+  # .gitignore. vendor/ is tracked (2203 files) and is what this build
+  # consumes, which is what vendorHash = null selects.
   src = lib.cleanSource ../.;
-  
-  # Skip vendoring since protobuf files are generated during build
   vendorHash = null;
-  
-  # Ignore vendor directory during build
-  buildFlags = [ "-mod=mod" ];
+
+  # The committed go.work lists ../magelib, which src does not carry into
+  # the sandbox, so go would enter workspace mode and fail to resolve it.
+  # GOWORK=off is the lone-clone contract CI already uses. The previous
+  # buildFlags = [ "-mod=mod" ] made this worse: -mod is illegal in
+  # workspace mode, so the build could not succeed either way.
+  env.GOWORK = "off";
   
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ gcc python3 pam ];
@@ -22,10 +26,15 @@ buildGoModule rec {
   # Skip tests in Nix build - they work fine in dev shell but fail in build sandbox
   doCheck = false;
   
+  # Stamp the real injection point. core/version.GAPIVersion is what
+  # both binaries read (core/version/version.go); main.version does not
+  # exist, so the previous flag silently left the "dev" placeholder in
+  # place - the unfixed half of GAPI-DIV-007, which was closed on the
+  # Magefile change alone.
   ldflags = [
     "-s"
     "-w"
-    "-X main.version=${version}"
+    "-X github.com/goppydae/gapi/core/version.GAPIVersion=${version}"
   ];
   
   # Run tests

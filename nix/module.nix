@@ -5,13 +5,20 @@ with lib;
 let
   cfg = config.services.gapi;
   
-  # Default configuration file
+  # Default configuration file.
+  #
+  # The TLS keys are tlsCert/tlsKey - the mapstructure tags on
+  # core/config.TransportConfig. Viper drops unknown keys silently, so
+  # the previous certFile/keyFile spelling meant the daemon ignored the
+  # configured certificate and generated a throwaway self-signed one
+  # instead: a silent downgrade rather than an error. This note lives
+  # here rather than in the emitted YAML, which operators read.
   defaultConfig = pkgs.writeText "gapi-config.yaml" ''
     transport:
       type: quic
       address: ${cfg.listenAddress}
-      certFile: ${cfg.certFile}
-      keyFile: ${cfg.keyFile}
+      tlsCert: ${cfg.certFile}
+      tlsKey: ${cfg.keyFile}
     
     ${optionalString (cfg.verifyKey != null) ''
     security:
@@ -50,7 +57,9 @@ in {
     
     listenAddress = mkOption {
       type = types.str;
-      default = "127.0.0.1:4242";
+      # Matches the runtime default in core/config/config.go
+      # (transport.address defaults to :14242). 4242 was never the port.
+      default = "127.0.0.1:14242";
       description = "Address for GAPI to listen on";
     };
     
@@ -98,6 +107,12 @@ in {
   };
 
   config = mkIf cfg.enable {
+    # Put gapid and gapictl on PATH. Enabling the service without them
+    # leaves an operator with a running daemon and no way to talk to it
+    # short of digging the store path out of the unit. goblin's module
+    # does the same.
+    environment.systemPackages = [ cfg.package ];
+
     # Create system user
     users.users.${cfg.user} = {
       isSystemUser = true;
@@ -120,7 +135,13 @@ in {
         Type = "simple";
         User = cfg.user;
         Group = cfg.group;
-        ExecStart = "${cfg.package}/bin/gapid ${optionalString (cfg.configFile != null) "-config ${cfg.configFile}"}";
+        # gapid takes no -config flag: cmd/gapid/gapid.go registers only
+        # --runtime-addr, --log-level, --pid1 and --no-early-mounts, and
+        # cobra rejects anything else, so passing one made the unit fail
+        # to start whenever configFile was set. The config override is an
+        # environment variable (core/config/config.go reads
+        # RUNTIME_CONFIG), set below.
+        ExecStart = "${cfg.package}/bin/gapid";
         Restart = "on-failure";
         RestartSec = "5s";
         
@@ -155,8 +176,15 @@ in {
         TasksMax = 256;
       };
       
+      # RUNTIME_-prefixed, because that is what the loader reads.
+      # GAPI_AGENTS_DIR was set here and consumed by nothing
+      # (core/config/agent_paths.go reads RUNTIME_AGENT_PATH), so
+      # services.gapi.agentsDir was a no-op and its default was not even
+      # on the search path.
       environment = {
-        GAPI_AGENTS_DIR = cfg.agentsDir;
+        RUNTIME_AGENT_PATH = cfg.agentsDir;
+      } // optionalAttrs (cfg.configFile != null) {
+        RUNTIME_CONFIG = toString cfg.configFile;
       };
     };
     
