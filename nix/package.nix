@@ -2,8 +2,13 @@
 
 buildGoModule rec {
   pname = "gapi";
-  version = "0.1.0";
-  
+  # Read from the root VERSION file, which is the single source of version
+  # truth (magelib.Version reads the same file). Hardcoding it here meant
+  # the packaged binary stamped 0.1.0 while every mage build stamped
+  # whatever VERSION said - the same class of drift as GAPI-DIV-007, just
+  # on the Nix side.
+  version = lib.fileContents ../VERSION;
+
   # cleanSource filters VCS and editor files - it does NOT read
   # .gitignore. vendor/ is tracked (2203 files) and is what this build
   # consumes, which is what vendorHash = null selects.
@@ -46,7 +51,9 @@ buildGoModule rec {
   meta = with lib; {
     description = "GoPPydae Agent Programming Interface (GAPI) - Agent supervision framework with event-driven daemon management";
     homepage = "https://github.com/goppydae/gapi";
-    license = licenses.mit;
+    # MPL-2.0, per the root LICENSE file and the README. This said mit,
+    # which is not the licence this code ships under.
+    license = licenses.mpl20;
     maintainers = with maintainers; [ ];
     platforms = platforms.linux;
   };
