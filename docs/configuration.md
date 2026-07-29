@@ -26,7 +26,7 @@ default.
 
 ### Environment overrides
 
-Some keys can be overridden by an environment variable: prefix
+**Every** key can be overridden by an environment variable: prefix
 `RUNTIME_`, uppercase, dots become underscores.
 
 ```bash
@@ -34,31 +34,26 @@ RUNTIME_LOGGING_LEVEL=debug gapid
 ```
 
 ```bash
-RUNTIME_METRICS_ENABLED=true gapid
+RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid
 ```
 
-The prefix is `RUNTIME`, not `GAPI`.
+```bash
+RUNTIME_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
+```
 
-> **The override does not cover every key, and the ones it misses fail
-> silently.** `Load` registers viper defaults for the `transport`
-> (non-TLS), `metrics`, `logging` and `timeouts` sections only, and
-> viper's `Unmarshal` will not consult the environment for a key it has
-> never seen. So these work:
->
-> | Section | Env override |
-> | ------- | ------------ |
-> | `transport.type`, `.address`, `.insecureSkipVerify` | yes |
-> | `transport.tlsCert`, `.tlsKey`, `.tlsCa` | **no** |
-> | `security.verifyKey` | **no** - but see `RUNTIME_VERIFY_KEY` below |
-> | `metrics.*` | yes |
-> | `logging.*` | yes |
-> | `timeouts.*` | yes |
-> | `supervisor.*` (all of it) | **no** |
->
-> `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true` therefore yields a daemon
-> running *without* production mode and without signature enforcement,
-> and reports nothing. Set those keys in the config file. Tracked as
-> GAPI-DIV-038.
+The prefix is `RUNTIME`, not `GAPI`. Precedence is environment over
+config file over default.
+
+The one shape with no variable is a map: `logging.loki.labels` is
+config-file only.
+
+> This used to cover only the keys that happened to carry a registered
+> default - the whole `supervisor` section, `security.verifyKey` and the
+> TLS paths were dropped in silence, so
+> `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true` produced a daemon with
+> signature enforcement off and no error (GAPI-DIV-038). Bindings are now
+> derived from the config struct itself, and a test walks every field to
+> keep it that way.
 
 ### The complete file
 
@@ -141,10 +136,11 @@ JSON output comes from the stdlib `slog` JSON handler, so records carry
 
 ### Agent signature verification
 
-`security.verifyKey` points at an Ed25519 public key.
-`RUNTIME_VERIFY_KEY` is consulted when the config key is empty - a
-direct `os.Getenv` in the supervisor, not the viper path, which is why
-this one variable works where `RUNTIME_SECURITY_VERIFYKEY` does not.
+`security.verifyKey` points at an Ed25519 public key. Either
+`RUNTIME_SECURITY_VERIFYKEY` (the ordinary override) or
+`RUNTIME_VERIFY_KEY` sets it; the latter is a separate `os.Getenv` in
+the supervisor, consulted when the config key is empty, and predates the
+override covering every key.
 
 Verification is gated on
 **production mode**, not on the key being present: with
@@ -285,7 +281,7 @@ prefix mechanism for injecting custom variables.
 | `RUNTIME_AGENT_PATH` | Override the agent search root |
 | `RUNTIME_DEV_AGENTS` | Include development agent paths |
 | `RUNTIME_SKIP_SYSTEM_AGENTS` | Skip the system agent directories |
-| `RUNTIME_VERIFY_KEY` | Agent signing public key |
+| `RUNTIME_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
 | `RUNTIME_PY_RUNNER` | Override the Python runner path |
 | `RUNTIME_CGROUPS_DISABLE` | Disable cgroup setup |
 | `GAPID_KMSG_PATH` | Override the kmsg device (PID 1 mode) |

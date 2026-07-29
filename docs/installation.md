@@ -330,10 +330,8 @@ See [configuration.md](configuration.md) for every key, and
 
 - A release build reads `/etc/gapi/config.yaml` and nothing else.
 - `RUNTIME_CONFIG` points it elsewhere. There is no `--config` flag.
-- The `RUNTIME_` environment override covers the `transport` (non-TLS),
-  `metrics`, `logging` and `timeouts` sections. It does **not** cover
-  `supervisor.*`, `security.verifyKey` or the TLS paths, and ignores
-  them silently (GAPI-DIV-038) - put those in the file.
+- Every config key can be set by environment variable: `RUNTIME_`,
+  uppercase, dots to underscores. Environment beats file beats default.
 - `transport.insecureSkipVerify` defaults to **true**. Set it to
   `false` before exposing a daemon beyond loopback.
   `supervisor.productionMode` does not do this for you - it gates agent

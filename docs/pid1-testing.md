@@ -141,10 +141,8 @@ qemu-system-x86_64 \
 
 Build the initrd with `gapid` symlinked to `/init`, and remember that
 `gapid` needs `--pid1`. Bake the flag into a wrapper script used as
-`/init`, or put `supervisor.pid1Mode: true` in the config file.
-**`RUNTIME_SUPERVISOR_PID1MODE` does not work** - no `supervisor.*` key
-can be set from the environment, and the attempt is silently ignored
-(GAPI-DIV-038).
+`/init`, put `supervisor.pid1Mode: true` in the config file, or set
+`RUNTIME_SUPERVISOR_PID1MODE=true` in the environment.
 
 ### systemd-nspawn
 

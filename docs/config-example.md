@@ -140,19 +140,22 @@ Use the file sink and ship the file, until this is built.
 
 ## Environment-only configuration
 
-Many keys can be set without a file. Prefix `RUNTIME_`, uppercase, dots
+Every key can be set without a file. Prefix `RUNTIME_`, uppercase, dots
 to underscores:
 
 ```bash
 RUNTIME_TRANSPORT_ADDRESS=:15000 RUNTIME_LOGGING_LEVEL=warn RUNTIME_METRICS_ENABLED=true gapid
 ```
 
-The prefix is `RUNTIME`, not `GAPI`.
+The prefix is `RUNTIME`, not `GAPI`. That includes the `supervisor`
+section and the TLS paths:
 
-This does **not** cover the `supervisor` section, `security.verifyKey`
-or the `transport` TLS paths - those are silently ignored from the
-environment (GAPI-DIV-038) and must go in the file. The one exception is
-`RUNTIME_VERIFY_KEY`, which the supervisor reads directly.
+```bash
+RUNTIME_SUPERVISOR_PRODUCTIONMODE=true RUNTIME_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
+```
+
+Only maps have no environment spelling; `logging.loki.labels` is
+config-file only.
 
 ## Pointing at a specific file
 

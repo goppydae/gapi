@@ -109,9 +109,8 @@ logging:
   level: debug
 EOF
 
-# supervisor.* and security.* cannot be set from the environment
-# (GAPI-DIV-038), so they live in the file; only the os.Getenv-backed
-# variables are exported here.
+# These could equally be exported as RUNTIME_ variables now that every
+# key binds; the file keeps the test's intent readable in one place.
 export RUNTIME_CONFIG="$WORK/config.yaml"
 export RUNTIME_AGENT_PATH="$WORK/agents"
 export RUNTIME_SKIP_SYSTEM_AGENTS=1

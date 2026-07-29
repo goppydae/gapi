@@ -27,23 +27,23 @@ for a two-sided protocol, drive each side from its real entry point.
 
 ## Configuration
 
-### Half the environment overrides do nothing
+### AutomaticEnv does not make a key reachable
 
-**Symptom**: `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid` starts a
-daemon that is *not* in production mode, silently.
+**Symptom**: `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid` started a
+daemon that was *not* in production mode, silently.
 
-**Cause**: `config.Load` uses viper's `AutomaticEnv` plus `Unmarshal`.
-`Unmarshal` will not consult the environment for a key viper has never
-seen, and only the `transport` (non-TLS), `metrics`, `logging` and
-`timeouts` sections have registered defaults. Every `supervisor.*` key,
-`security.verifyKey` and the TLS paths are unreachable from the
-environment.
+**Cause**: viper's `Unmarshal` builds its result from the keys viper
+already knows, and it learns a key only from a config file, a default, or
+an explicit `BindEnv`. `AutomaticEnv` does not enumerate anything. Every
+key that happened to lack a `SetDefault` was therefore invisible - the
+whole `supervisor` section, `security.verifyKey`, the TLS paths.
 
-**Fix**: put those keys in the config file. `security.verifyKey` has a
-back door - the supervisor reads `RUNTIME_VERIFY_KEY` directly with
-`os.Getenv`, which is why that one variable works.
+**Fix**: `Load` now derives bindings from the `Config` struct by
+reflection, so a field is reachable because it exists rather than because
+someone remembered to list it. If you add a config field, do nothing; if
+you add a config *shape* that reflection cannot walk, extend the walk.
 
-**Ref**: GAPI-DIV-038.
+**Ref**: GAPI-DIV-038, `core/config/envoverride_test.go`.
 
 ### Unknown config keys vanish
 
