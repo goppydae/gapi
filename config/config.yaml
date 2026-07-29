@@ -1,8 +1,13 @@
 transport:
   type: quic
-  address: "localhost:4242"
-  certFile: "config/certs/server.crt"
-  keyFile: "config/certs/server.key"
+  address: "localhost:14242"
+  # tlsCert/tlsKey are the mapstructure tags on
+  # core/config.TransportConfig. Viper drops unknown keys silently, so
+  # the previous certFile/keyFile spelling was ignored and the daemon
+  # generated a throwaway self-signed certificate instead of loading
+  # these - a silent downgrade rather than an error.
+  tlsCert: "config/certs/server.crt"
+  tlsKey: "config/certs/server.key"
 
 timeouts:
   quicStream: "10s"
