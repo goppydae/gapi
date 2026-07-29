@@ -210,7 +210,15 @@ func (ta *TimerAgent) execute() {
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, pythonBin, ta.pyRunner, "--module", ta.path, "--start")
+	// --id and --type are not optional here. Without --type the runner
+	// defaulted to "service", entered its supervision loop and never
+	// exited, so cmd.Run blocked until the deadline above and the next
+	// fire never happened (GAPI-DIV-039).
+	cmd := exec.CommandContext(ctx, pythonBin, ta.pyRunner,
+		"--module", ta.path,
+		"--id", ta.id,
+		"--type", "timer",
+		"--start")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 

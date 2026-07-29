@@ -142,6 +142,12 @@ class AgentWrapper:
         self.mod = mod
         self.agent_id = agent_id
         self.agent_type = (agent_type or "service").lower()
+        # A one-shot agent runs start() to completion and exits. A timer is
+        # invoked once per fire by TimerAgent.execute, which waits for the
+        # process; treating it as a service made every fire block on the
+        # readiness poll and then on the supervision loop, so the interval
+        # was never honoured (GAPI-DIV-039).
+        self.oneshot = self.agent_type in ("timer", "oneshot")
         self.state = "inactive"
         self.stop_evt = threading.Event()
         self._start_thread = None
@@ -213,6 +219,22 @@ class AgentWrapper:
 
         self.state = "starting"
         _notify("starting", id=self.agent_id, type=self.agent_type)
+
+        if self.oneshot:
+            # Synchronous, and no readiness poll: for a one-shot, "ready"
+            # is indistinguishable from "finished". _await_ready looks for
+            # a live start thread, new worker threads or an open port, and
+            # a timer body has none of those, so it would spin to its full
+            # 20-second deadline and then report not-ready.
+            try:
+                self._call_start()
+            except Exception as e:
+                self.state = "failed"
+                _notify("error", error=str(e), id=self.agent_id, type=self.agent_type)
+                raise
+            self.state = "completed"
+            _notify("completed", state=self.state, id=self.agent_id, type=self.agent_type)
+            return
 
         err_holder = {"err": None}
         def runner():
@@ -364,7 +386,10 @@ def main():
     ap.add_argument("--reload", action="store_true")
     ap.add_argument("--restart", action="store_true")
     ap.add_argument("--id")
-    ap.add_argument("--type", default="service")
+    # No default: an omitted --type must fall back to the module's own TYPE,
+    # not to "service". TimerAgent.execute used to omit it, so a timer module
+    # was run as a service and never terminated (GAPI-DIV-039).
+    ap.add_argument("--type", default=None)
     args = ap.parse_args()
 
     try:
@@ -387,7 +412,7 @@ def main():
     agent = AgentWrapper(
         mod,
         agent_id=(args.id or getattr(mod, "ID", None) or getattr(mod, "id", None) or "unknown"),
-        agent_type=args.type,
+        agent_type=(args.type or str(get_meta(mod, "type", "service"))),
     )
 
     # Compute schema hash using native Go implementation
@@ -424,11 +449,15 @@ def main():
     if args.start:
         agent.initialize()
         agent.start()
-        try:
-            while True:
-                time.sleep(0.25)
-        except KeyboardInterrupt:
-            pass
+        # A service must outlive start() so the supervisor has a process to
+        # signal. A one-shot must NOT: its caller waits for this process to
+        # exit before scheduling the next fire.
+        if not agent.oneshot:
+            try:
+                while True:
+                    time.sleep(0.25)
+            except KeyboardInterrupt:
+                pass
     if args.reload:
         agent.reload()
     if args.restart:

@@ -1,3 +1,4 @@
+ID = "tick"
 ENABLED = True
 TYPE = "timer"
 SCHEDULE = "OnUnitActiveSec=5s"
