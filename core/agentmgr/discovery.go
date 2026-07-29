@@ -38,17 +38,23 @@ type Discovered struct {
 	RequiredBy   []string
 	ListenStream string
 	Capabilities []string
+	// Enabled is the RESOLVED value: absent metadata means enabled.
+	Enabled bool
 }
 
 type pyDescribe struct {
 	Describe struct {
-		ID           string   `json:"id"`
-		Type         string   `json:"type"`
-		Requires     []string `json:"requires"`
-		Wants        []string `json:"wants"`
-		WantedBy     []string `json:"wanted_by"`
-		RequiredBy   []string `json:"required_by"`
-		Enabled      bool     `json:"enabled"`
+		ID         string   `json:"id"`
+		Type       string   `json:"type"`
+		Requires   []string `json:"requires"`
+		Wants      []string `json:"wants"`
+		WantedBy   []string `json:"wanted_by"`
+		RequiredBy []string `json:"required_by"`
+		// Pointer so ABSENT is distinguishable from an explicit false.
+		// Go agents do not emit this field at all, and a plain bool
+		// would unmarshal their silence as disabled - turning every
+		// Go agent off the moment the field was honoured.
+		Enabled      *bool    `json:"enabled"`
 		ListenStream string   `json:"listen_stream"`
 		CPULimit     string   `json:"cpu_limit"`
 		MemoryLimit  string   `json:"memory_limit"`
@@ -227,13 +233,15 @@ func (am *AgentManager) discoverFromSinglePath(root string, pathType config.Path
 }
 
 func (am *AgentManager) processDiscovered(path string, d struct {
-	ID           string   `json:"id"`
-	Type         string   `json:"type"`
-	Requires     []string `json:"requires"`
-	Wants        []string `json:"wants"`
-	WantedBy     []string `json:"wanted_by"`
-	RequiredBy   []string `json:"required_by"`
-	Enabled      bool     `json:"enabled"`
+	ID         string   `json:"id"`
+	Type       string   `json:"type"`
+	Requires   []string `json:"requires"`
+	Wants      []string `json:"wants"`
+	WantedBy   []string `json:"wanted_by"`
+	RequiredBy []string `json:"required_by"`
+	// Pointer: absent means "not specified", which defaults to
+	// enabled. See the note on pyDescribe.
+	Enabled      *bool    `json:"enabled"`
 	ListenStream string   `json:"listen_stream"`
 	CPULimit     string   `json:"cpu_limit"`
 	MemoryLimit  string   `json:"memory_limit"`
@@ -259,8 +267,14 @@ func (am *AgentManager) processDiscovered(path string, d struct {
 		return nil
 	}
 
+	// Absent means enabled. Only an explicit "enabled": false disables,
+	// which matches the systemd model the docs describe: a disabled unit
+	// is still known, it is simply not started automatically.
+	enabled := d.Enabled == nil || *d.Enabled
+
 	meta := Discovered{
 		ID: d.ID, Type: strings.ToLower(d.Type),
+		Enabled:      enabled,
 		Path:         path,
 		Requires:     append([]string(nil), d.Requires...),
 		Wants:        append([]string(nil), d.Wants...),
@@ -308,8 +322,33 @@ func (am *AgentManager) processDiscovered(path string, d struct {
 		)
 	}
 
+	// Carry the resolved flag onto the agent. Post-construction rather
+	// than a fourth positional argument on three already-long
+	// constructors, matching the optional-capability idiom used for
+	// RunIDSetter.
+	if es, ok := a.(enabledSetter); ok {
+		es.SetEnabled(enabled)
+	}
+
 	*agents = append(*agents, a)
 	return nil
+}
+
+// enabledSetter is implemented by every runner that can be auto-started.
+// A runner that does not implement it is treated as enabled, so adding a
+// runner cannot accidentally make it un-startable.
+type enabledSetter interface {
+	SetEnabled(bool)
+}
+
+// AgentEnabled reports whether an agent should be started automatically.
+// Anything that does not carry the flag counts as enabled - the safe
+// direction, since the alternative is a silently dead agent.
+func AgentEnabled(a Agent) bool {
+	if e, ok := a.(interface{ Enabled() bool }); ok {
+		return e.Enabled()
+	}
+	return true
 }
 
 // safeToExecute guards the discovery-time `--describe` execution of a candidate

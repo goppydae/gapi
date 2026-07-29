@@ -20,6 +20,11 @@ import (
 
 // TimerAgent executes a Python agent on a schedule
 type TimerAgent struct {
+	// enabled is the resolved ENABLED metadata. Default true:
+	// a runner constructed without discovery (tests, direct use)
+	// must not be silently un-startable.
+	enabled bool
+
 	id       string
 	path     string
 	schedule string // systemd-style: OnBootSec=5s, OnUnitActiveSec=30s, etc.
@@ -40,6 +45,7 @@ type TimerAgent struct {
 func NewTimerAgent(id, path, schedule, pyRunner string, bus *eventbus.EventBus[*anypb.Any], lbus *lifecycle.TypedBus) *TimerAgent {
 	host, _ := os.Hostname()
 	ta := &TimerAgent{
+		enabled:  true,
 		id:       id,
 		path:     path,
 		schedule: schedule,
@@ -214,4 +220,22 @@ func (ta *TimerAgent) execute() {
 	}
 
 	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "timer execution completed", logattr.AgentID(ta.id))
+}
+
+// SetEnabled records whether this agent should be started
+// automatically. Set from discovery metadata; absent metadata
+// means enabled.
+func (a *TimerAgent) SetEnabled(v bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.enabled = v
+}
+
+// Enabled reports whether this agent is started automatically.
+// A disabled agent is still discovered and registered, and can
+// still be started explicitly - the systemd model.
+func (a *TimerAgent) Enabled() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.enabled
 }
