@@ -154,6 +154,8 @@ That writes `signing-key.pem` (private) and `signing-key.pub.hex`
 ./bin/gapictl crypto sign agents/go/foundational/my_service/my_service --key signing-key.pem
 ```
 
+That writes the `.b3` digest and the `.sig` over it. Both are required.
+
 ## Troubleshooting
 
 **The agent does not appear in `agent status`.** Check the discovery

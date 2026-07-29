@@ -31,6 +31,10 @@ Writes `signing-key.pem` (private) and `signing-key.pub.hex` (public).
 gapictl crypto sign path/to/agent --key signing-key.pem
 ```
 
+That writes **both** sidecars: `path/to/agent.b3` and `path/to/agent.sig`.
+Verification needs both, and it reads the digest first - a `.sig` without
+its `.b3` fails before the signature is ever checked.
+
 ```bash
 gapictl agent verify path/to/agent
 ```
@@ -76,9 +80,18 @@ gapictl crypto decrypt < secret.age
 
 ## Timer agents
 
-A timer agent runs in the supervisor's process rather than as a child.
-That is why it is the one runner without `Checkpointer` - there is no
-external process to dump.
+The *scheduler* runs inside the supervisor; each **fire** spawns a fresh
+Python interpreter that runs `start()` to completion and exits. That is
+why `TimerAgent` is the one runner without `Checkpointer`: between fires
+there is no process to dump.
+
+Because the supervisor waits for each fire to exit before scheduling the
+next, a timer body must terminate. The runner enforces this by treating
+`timer` and `oneshot` types as one-shot - no readiness poll, no
+supervision loop. A fire is bounded at 30 seconds.
+
+Timers must be **Python**; a Go binary declaring `TYPE = "timer"` runs
+once and never again (GAPI-DIV-037).
 
 ### Schedule syntax
 

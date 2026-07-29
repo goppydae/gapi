@@ -57,8 +57,9 @@ security:
   verifyKey: /etc/gapi/agent-signing.pub.hex
 
 supervisor:
-  # Refuses to start without TLS, and refuses to start any agent whose
-  # signature does not verify.
+  # Refuses to start any agent BINARY whose signature does not verify,
+  # and makes a missing Python ADK a hard failure. It does NOT enforce
+  # TLS - set transport.insecureSkipVerify to false yourself.
   productionMode: true
 
 logging:

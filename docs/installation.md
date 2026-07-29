@@ -335,8 +335,9 @@ See [configuration.md](configuration.md) for every key, and
   `supervisor.*`, `security.verifyKey` or the TLS paths, and ignores
   them silently (GAPI-DIV-038) - put those in the file.
 - `transport.insecureSkipVerify` defaults to **true**. Set it to
-  `false`, or set `supervisor.productionMode: true`, before exposing a
-  daemon beyond loopback.
+  `false` before exposing a daemon beyond loopback.
+  `supervisor.productionMode` does not do this for you - it gates agent
+  signature verification only.
 
 A self-signed certificate for testing:
 

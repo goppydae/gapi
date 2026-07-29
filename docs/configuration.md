@@ -125,9 +125,10 @@ rather than an error.
 
 > **Warning**: `transport.insecureSkipVerify` defaults to **true**, for
 > every address, not just loopback. GAPI does not verify peer
-> certificates unless you set it to `false`. Set
-> `supervisor.productionMode: true` to refuse to start without real
-> TLS.
+> certificates unless you set it to `false`. Setting
+> `supervisor.productionMode: true` does **not** cover this - production
+> mode gates agent signature verification and nothing else, so the two
+> settings must be made independently.
 
 ### Logging
 
@@ -148,7 +149,12 @@ this one variable works where `RUNTIME_SECURITY_VERIFYKEY` does not.
 Verification is gated on
 **production mode**, not on the key being present: with
 `supervisor.productionMode: true`, an agent binary must carry a valid
-`.b3` digest and `.sig` or it will not start.
+`.b3` digest and `.sig` or it will not start. In production mode with no
+verify key configured, discovery rejects every binary - fail closed.
+
+Production mode does exactly two things: this gate, and setting
+`RUNTIME_REJECT_DUMMY_ADK` for Python agents. It does not touch TLS, the
+listen address, or anything else.
 
 Note that only binary agents are verified. Python agents are described
 by running the interpreter, which does not go through the signature
