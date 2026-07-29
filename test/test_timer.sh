@@ -37,7 +37,64 @@ SCHEDULE = "OnUnitActiveSec=${INTERVAL}s"
 
 
 def start():
-    print("TIMER_FIRED")
+    print("TIMER_FIRED_PY")
+EOF
+
+# A Go timer, to hold the dual-ADK parity claim. Discovery used to route
+# TYPE=timer to the scheduler only for Python paths, so this agent ran
+# once at discovery and never again (GAPI-DIV-037).
+mkdir -p "$WORK/gosrc"
+cat > "$WORK/gosrc/go.mod" <<'EOF'
+module gapitest/gotimer
+
+go 1.26.0
+EOF
+cat > "$WORK/gosrc/main.go" <<EOF
+package main
+
+import (
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+)
+
+func main() {
+	describe := flag.Bool("describe", false, "print metadata")
+	flag.Parse()
+
+	if *describe {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"describe": map[string]any{
+				"id":           "gotick",
+				"type":         "timer",
+				"version":      "1.0.0",
+				"language":     "go",
+				"schedule":     "OnUnitActiveSec=${INTERVAL}s",
+				"capabilities": []string{"start"},
+			},
+		})
+		return
+	}
+
+	fmt.Println("TIMER_FIRED_GO")
+}
+EOF
+( cd "$WORK/gosrc" && GOWORK=off go build -o "$WORK/agents/gotick" . ) \
+  || { echo "[FAIL] could not build the Go timer fixture"; exit 1; }
+
+# A one-shot. OnStartupSec used to be an alias for OnUnitActiveSec - the
+# prefix was stripped and the duration became a repeating interval, so
+# this would have fired every 3 seconds forever (GAPI-DIV-036).
+cat > "$WORK/agents/oneshot.py.timer" <<'EOF'
+ID = "oneshot"
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnStartupSec=3s"
+
+
+def start():
+    print("TIMER_FIRED_ONCE")
 EOF
 
 PORT=$((10000 + RANDOM % 10000))
@@ -72,13 +129,15 @@ echo "[OK] Timer agent started"
 
 TRIGGERS=$(grep -c "timer triggered" "$WORK/gapid.log" || true)
 COMPLETED=$(grep -c "timer execution completed" "$WORK/gapid.log" || true)
-FIRED=$(grep -c "TIMER_FIRED" "$WORK/gapid.log" || true)
+FIRED_PY=$(grep -c "TIMER_FIRED_PY" "$WORK/gapid.log" || true)
+FIRED_GO=$(grep -c "TIMER_FIRED_GO" "$WORK/gapid.log" || true)
 
-echo "[TEST] triggered=$TRIGGERS completed=$COMPLETED agent-output=$FIRED"
+echo "[TEST] triggered=$TRIGGERS completed=$COMPLETED python=$FIRED_PY go=$FIRED_GO"
 
-[ "$TRIGGERS" -ge "$EXPECT_MIN" ] \
-  || fail "expected at least $EXPECT_MIN triggers in ${WINDOW}s, got $TRIGGERS"
-echo "[OK] Timer fired $TRIGGERS times"
+# Two timers, so the trigger floor doubles.
+[ "$TRIGGERS" -ge "$((EXPECT_MIN * 2))" ] \
+  || fail "expected at least $((EXPECT_MIN * 2)) triggers in ${WINDOW}s across two timers, got $TRIGGERS"
+echo "[OK] Timers fired $TRIGGERS times"
 
 # Every fire must terminate. A trigger without a matching completion is a
 # fire that blocked until the execution deadline.
@@ -86,8 +145,24 @@ echo "[OK] Timer fired $TRIGGERS times"
   || fail "$TRIGGERS triggers but only $COMPLETED completed; a fire is not terminating"
 echo "[OK] Every fire completed"
 
-[ "$FIRED" -ge "$EXPECT_MIN" ] \
-  || fail "agent body ran $FIRED times, expected at least $EXPECT_MIN"
-echo "[OK] Agent body ran $FIRED times"
+[ "$FIRED_PY" -ge "$EXPECT_MIN" ] \
+  || fail "Python timer body ran $FIRED_PY times, expected at least $EXPECT_MIN"
+echo "[OK] Python timer body ran $FIRED_PY times"
+
+# Parity: a Go timer must be scheduled, not run once at discovery.
+[ "$FIRED_GO" -ge "$EXPECT_MIN" ] \
+  || fail "Go timer body ran $FIRED_GO times, expected at least $EXPECT_MIN (a Go timer must be scheduled, not run once)"
+echo "[OK] Go timer body ran $FIRED_GO times"
+
+# OnStartupSec is a one-shot: EXACTLY one fire in a window three times its
+# duration. An alias for OnUnitActiveSec would have fired three times.
+FIRED_ONCE=$(grep -c "TIMER_FIRED_ONCE" "$WORK/gapid.log" || true)
+[ "$FIRED_ONCE" -eq 1 ] \
+  || fail "OnStartupSec=3s fired $FIRED_ONCE times in ${WINDOW}s, want exactly 1"
+echo "[OK] OnStartupSec fired exactly once"
+
+grep -q "timer schedule exhausted" "$WORK/gapid.log" \
+  || fail "a one-shot schedule did not report itself exhausted; the run loop is still cycling"
+echo "[OK] One-shot schedule reported exhausted"
 
 echo "[TEST] Timer agents test PASSED"

@@ -285,18 +285,26 @@ func (am *AgentManager) processDiscovered(path string, d struct {
 	}
 
 	var a Agent
-	// Python timers ship as either "<name>.py" (with TYPE=timer metadata) or
-	// "<name>.py.timer"; matching only the ".py" suffix routed .py.timer
-	// files into the Python-SERVICE branch, where the runner awaits a
-	// readiness signal a timer module never sends (GAPI-DIV-021).
-	isPythonTimer := strings.HasSuffix(path, ".py") || strings.HasSuffix(path, ".py.timer")
-	if meta.Type == "timer" && isPythonTimer { // Python Timer
+	// Python agents ship as either "<name>.py" or "<name>.<unit-type>"
+	// carrying the ".py." infix; matching only the ".py" suffix routed
+	// .py.timer files into the Python-SERVICE branch, where the runner
+	// awaits a readiness signal a timer module never sends (GAPI-DIV-021).
+	isPython := strings.HasSuffix(path, ".py") || strings.Contains(filepath.Base(path), ".py.")
+	if meta.Type == "timer" {
+		// TYPE=timer is honoured for BOTH ADKs. It used to be Python-only:
+		// a Go binary declaring it fell through to NewGoAgent, which has no
+		// scheduling code, so it ran once at discovery and its SCHEDULE was
+		// discarded (GAPI-DIV-037).
 		schedule := d.Schedule
 		if schedule == "" {
 			schedule = "OnUnitActiveSec=60s"
 		}
-		a = NewTimerAgent(meta.ID, meta.Path, schedule, am.pyRun, am.bus, am.lbus)
-	} else if strings.HasSuffix(path, ".py") || strings.Contains(filepath.Base(path), ".py.") { // Python Service
+		if isPython {
+			a = NewTimerAgent(meta.ID, meta.Path, schedule, am.pyRun, am.bus, am.lbus)
+		} else {
+			a = NewBinaryTimerAgent(meta.ID, meta.Path, schedule, am.bus, am.lbus)
+		}
+	} else if isPython { // Python Service
 		a = NewPythonAgent(
 			meta.ID, meta.Type, meta.Path, am.pyRun,
 			meta.Requires, meta.Wants, meta.WantedBy, meta.RequiredBy,
