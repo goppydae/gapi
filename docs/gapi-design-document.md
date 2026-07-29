@@ -298,10 +298,10 @@ The `dae` suffix designates GoPPydae descendants.
 
 ## Appendix B - roadmap
 
-- Schedule prefix semantics: `OnBootSec` and `OnStartupSec` currently
-  behave as intervals (GAPI-DIV-036).
-- Timer parity: only Python timers are scheduled (GAPI-DIV-037).
 - Schema validation and describe consistency across the two ADKs.
+- Persistent timers: a one-shot that elapsed while the supervisor was
+  down fires on next start, but nothing is recorded across restarts, so
+  a repeating schedule has no catch-up.
 - Native gopy channel support - needs upstream work or an architecture
   shift.
 

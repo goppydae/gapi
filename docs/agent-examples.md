@@ -86,19 +86,22 @@ no ordering guarantee - a silent failure, not an error.
 
 ## Timer agents
 
-A timer must be a **Python** agent. A Go binary declaring
-`TYPE = "timer"` is constructed as an ordinary agent, runs once at
-discovery, and never fires again; its `SCHEDULE` is discarded
-(GAPI-DIV-037). `gapictl agent new --type timer` defaults to Go, so ask
-for Python explicitly:
+Timers work in either language. `gapictl agent new --type timer`
+defaults to Go:
+
+```bash
+gapictl agent new backup --type timer
+```
 
 ```bash
 gapictl agent new backup --lang python --type timer
 ```
 
-Each fire spawns a fresh interpreter and runs `start()` to completion,
-so a timer agent is a one-shot script, not a loop. **Each fire is
-bounded at 30 seconds**; longer work is killed mid-run.
+Each fire runs the agent to completion and exits - a Python fire spawns
+a fresh interpreter, a Go fire executes the binary. A timer body is a
+one-shot script, not a loop. **Each fire is bounded at 30 seconds**;
+longer work is killed mid-run, and stopping the agent cancels a fire
+already in flight.
 
 ### Intervals
 
@@ -115,11 +118,18 @@ def start():
 
 The first fire happens one interval after start, not immediately.
 
-> `OnBootSec` and `OnStartupSec` parse, but currently behave exactly
-> like `OnUnitActiveSec` - the prefix is discarded and the duration
-> becomes a repeating interval (GAPI-DIV-036). `SCHEDULE = "OnBootSec=30s"`
-> runs every thirty seconds forever, not once after boot. Prefer
-> `OnUnitActiveSec` until that is fixed.
+`OnBootSec` and `OnStartupSec` are **one-shots**, and differ only in
+their anchor - the system's boot, or the moment the timer started:
+
+```python
+SCHEDULE = "OnBootSec=30s"      # once, 30s after boot
+```
+
+```python
+SCHEDULE = "OnStartupSec=10s"   # once, 10s after this timer started
+```
+
+A missed elapse point still fires, once, immediately.
 
 ### Cron
 

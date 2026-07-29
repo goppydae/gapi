@@ -122,28 +122,23 @@ that SIGKILLs the child at exactly that instant.
 
 **Ref**: GAPI-DIV-028, `core/lifecycle/interface.go`.
 
-### Only Python timers are actually scheduled
+### A timer fire is bounded at 30 seconds
 
-**Symptom**: a Go timer agent runs once at startup and never again,
-despite declaring a `SCHEDULE`.
+Each fire runs the agent to completion; the next is not scheduled until
+this one returns. `TimerFireTimeout` caps it at 30 seconds, and stopping
+the agent cancels a fire in flight. Work that needs longer belongs in a
+service, not a timer.
 
-**Cause**: discovery constructs a `TimerAgent` only for `.py` and
-`.py.timer` paths; everything else becomes a `GoAgent`, which contains no
-scheduling code at all. `gapictl agent new --type timer` defaults to Go
-and scaffolds precisely this.
+### The systemd prefixes are not interchangeable
 
-**Fix**: write timers in Python until this is resolved. Note also the
-hardcoded 30-second bound on each fire.
+`OnUnitActiveSec=D` repeats. `OnStartupSec=D` and `OnBootSec=D` fire
+**once**, anchored to the timer's start and the system's boot
+respectively. They were aliases until GAPI-DIV-036 - all three collapsed
+to a repeating interval - so any schedule written against the old
+behaviour now means something different.
 
-**Ref**: GAPI-DIV-037.
-
-### The systemd schedule prefixes are all aliases
-
-`OnBootSec=1m` and `OnStartupSec=1m` currently mean exactly what
-`OnUnitActiveSec=1m` means: every minute, forever. The prefix is parsed
-and then discarded.
-
-**Ref**: GAPI-DIV-036.
+A one-shot whose elapse point has already passed fires immediately,
+once, rather than being cancelled.
 
 ## Build system
 

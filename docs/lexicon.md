@@ -70,7 +70,7 @@ A structured data or message flow. In GoPPydae, streams may refer to IPC channel
 The process responsible for managing agent lifecycles on one machine - `gapid` standalone, or the kernel embedded in `goblind`. Cluster coordination is the orchestrator's job, not the supervisor's.
 
 **Timer Agent**\
-An agent type that executes on a schedule rather than running continuously. Supports systemd-style intervals (`OnUnitActiveSec=5s`), raw durations, cron expressions (`*/5 * * * *`) and descriptors (`@daily`). Only Python timers are actually scheduled today (GAPI-DIV-037).
+An agent type that executes on a schedule rather than running continuously. Supports systemd-style intervals (`OnUnitActiveSec=5s`), one-shots (`OnBootSec=`, `OnStartupSec=`), raw durations, cron expressions (`*/5 * * * *`) and descriptors (`@daily`). Both ADKs are scheduled identically.
 
 **TUI** *(Terminal User Interface)*\
 The interactive monitoring interface provided by `gapictl tui`. Built with Bubble Tea, it offers real-time agent status, log streaming, and lifecycle control via keyboard shortcuts.

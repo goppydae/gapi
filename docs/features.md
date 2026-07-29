@@ -81,39 +81,51 @@ gapictl crypto decrypt < secret.age
 ## Timer agents
 
 The *scheduler* runs inside the supervisor; each **fire** spawns a fresh
-Python interpreter that runs `start()` to completion and exits. That is
-why `TimerAgent` is the one runner without `Checkpointer`: between fires
+process that runs the agent to completion and exits - a Python
+interpreter through the ADK runner, or the binary directly. That is why
+`TimerAgent` is the one runner without `Checkpointer`: between fires
 there is no process to dump.
 
 Because the supervisor waits for each fire to exit before scheduling the
-next, a timer body must terminate. The runner enforces this by treating
-`timer` and `oneshot` types as one-shot - no readiness poll, no
-supervision loop. A fire is bounded at 30 seconds.
+next, a timer body must terminate. The Python runner enforces this by
+treating `timer` and `oneshot` types as one-shot - no readiness poll, no
+supervision loop. A fire is bounded at 30 seconds, and stopping the agent
+cancels a fire already in flight.
 
-Timers must be **Python**; a Go binary declaring `TYPE = "timer"` runs
-once and never again (GAPI-DIV-037).
+Timers work in both ADKs. A Go agent declaring `TYPE = "timer"` in its
+`--describe` output is scheduled exactly as a Python one is; a fire runs
+the binary directly, which is what its `main` does when not asked to
+describe itself. That parity is recent - discovery used to route
+`TYPE=timer` to the scheduler only for Python paths, so a Go timer ran
+once at discovery and its `SCHEDULE` was discarded (GAPI-DIV-037).
 
 ### Schedule syntax
 
 `ParseSchedule` (`core/agentmgr/schedule.go`) tries four forms, in this
 order:
 
-| Form | Example |
-| ---- | ------- |
-| systemd-style | `OnUnitActiveSec=30s`, `OnBootSec=1m`, `OnStartupSec=5s` |
-| raw Go duration | `5s`, `1m30s`, `24h` |
-| cron, five fields | `*/5 * * * *`, `0 9 * * 1-5` |
-| cron descriptor | `@hourly`, `@daily`, `@weekly`, `@monthly` |
+| Form | Fires | Example |
+| ---- | ----- | ------- |
+| `OnUnitActiveSec=D` | repeatedly, every D | `OnUnitActiveSec=30s` |
+| `OnStartupSec=D` | **once**, D after the timer starts | `OnStartupSec=5s` |
+| `OnBootSec=D` | **once**, D after the system booted | `OnBootSec=1m` |
+| raw Go duration | repeatedly | `5s`, `1m30s`, `24h` |
+| cron, five fields | repeatedly | `*/5 * * * *`, `0 9 * * 1-5` |
+| cron descriptor | repeatedly | `@hourly`, `@daily`, `@weekly`, `@monthly` |
 
 Durations are parsed by `time.ParseDuration`, so `24h` works and `1d`
 does not.
 
-> **All three systemd prefixes currently mean the same thing.**
-> `parseSystemdSchedule` extracts the duration and returns an interval
-> schedule regardless of which prefix carried it, so `OnBootSec=1m` runs
-> every minute rather than once, one minute after boot.
-> `OnStartupSec` likewise. Tracked as GAPI-DIV-036; until it is fixed,
-> `OnUnitActiveSec` is the only prefix whose name matches its behaviour.
+The two one-shot forms differ in their anchor, and that is the whole
+point of having both: `OnStartupSec` measures from the moment the timer
+starts, `OnBootSec` from the system's boot. On a host that has been up
+longer than the declared duration, an `OnBootSec` timer has missed its
+elapse point and fires immediately, once - late rather than cancelled,
+which is what systemd does.
+
+The three prefixes used to be aliases: whichever one matched was
+stripped and the duration became a repeating interval, so `OnBootSec=1m`
+ran every minute forever (GAPI-DIV-036).
 
 A timer with no `SCHEDULE` gets `OnUnitActiveSec=60s`.
 
