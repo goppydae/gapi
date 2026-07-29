@@ -53,9 +53,14 @@ jobs:
           sudo sysctl -w net.core.rmem_max=7500000
           sudo sysctl -w net.core.wmem_max=7500000
 
+      # Was 'go test -v ./...', which silently dropped the -race flag the
+      # mage target carries (GAPI-DIV-041). The field guide's rule is that
+      # targets carry invariants raw tools do not; CI was the caller
+      # breaking it. GOBLIN-DIV-002 records -race finding a real data race
+      # the moment it was enabled.
       - name: Execute System Tests
-        run: nix develop -c go test -v ./...
-      
+        run: nix develop -c mage test
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
@@ -136,3 +141,85 @@ jobs:
           git config --global url."https://x-access-token:${{ secrets.GOPPYDAE_READ_TOKEN }}@github.com/goppydae/".insteadOf "https://github.com/goppydae/"
           rm -rf vendor
           nix develop -c go build ./...
+
+  ecosystem-gates:
+    # GAPI-DIV-041. The gates existed and no job invoked them, so lint,
+    # gosec and schema regressions merged green. This job is the caller.
+    #
+    # Sibling checkouts are here for the gates, not for module
+    # resolution: GOWORK stays off, so the build still resolves through
+    # vendor/ exactly as the lone-clone contract requires. 'mage doctor'
+    # and 'mage envcheck' read the sibling trees directly.
+    name: Ecosystem Gates
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+    steps:
+      - name: Checkout Workspace (Gapi)
+        uses: actions/checkout@v4
+        with:
+          path: gapi
+          # buf breaking needs a baseline commit to exist locally; the
+          # default depth-1 clone has only the tip.
+          fetch-depth: 0
+
+      - name: Checkout Workspace (Goblin)
+        uses: actions/checkout@v4
+        with:
+          repository: goppydae/goblin
+          path: goblin
+          token: ${{ secrets.CI_PAT }}
+
+      - name: Checkout Workspace (Magelib)
+        uses: actions/checkout@v4
+        with:
+          repository: goppydae/magelib
+          path: magelib
+          token: ${{ secrets.CI_PAT }}
+
+      - name: Synchronize Environment (Nix)
+        uses: cachix/install-nix-action@v24
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      # Six checks; five are real in CI (hermetic resolution, toolchain
+      # pin agreement, codegen reachability, gopy binding pin, required
+      # environment). The sixth, workspace-shape, only stats the sibling
+      # directories this job just created, so it proves nothing here -
+      # see the note filed against it in the divergence ledger.
+      - name: Validate Dev Shell Against Ecosystem Pins
+        working-directory: gapi
+        run: nix develop -c mage doctor
+
+      - name: Detect Tool Skew Across Sibling Shells
+        working-directory: gapi
+        run: nix develop -c mage envcheck
+
+      - name: Lint Gate (gofmt, golangci-lint, gosec)
+        working-directory: gapi
+        run: nix develop -c mage lint
+
+      # The Proto target's own baseline is ".git#ref=HEAD", which is
+      # correct for a developer comparing an edited tree against the last
+      # commit and inert here: a fresh checkout IS HEAD, so the schema
+      # would be compared against itself and could never fail. Name a
+      # baseline this tree does not equal.
+      - name: Schema Gate (buf lint, buf breaking)
+        working-directory: gapi
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            export PROTO_BREAKING_AGAINST=".git#ref=$BASE_SHA"
+          else
+            export PROTO_BREAKING_AGAINST=".git#ref=HEAD~1"
+          fi
+          nix develop -c mage proto
+
+      # 'mage proto' regenerates into pkg/proto. If the committed output
+      # differs from what the pinned plugins produce, the tree is stale
+      # and the generated code under review is not the code the schema
+      # describes.
+      - name: Assert Committed Codegen Is Current
+        working-directory: gapi
+        run: git diff --exit-code
