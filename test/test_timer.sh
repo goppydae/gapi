@@ -1,59 +1,93 @@
 #!/usr/bin/env bash
-set -e
+#
+# Timer agent end-to-end check.
+#
+# Asserts a FIRE COUNT within a bounded window, not the presence of a log
+# substring. The previous version accepted "fired at least once", which is
+# what a timer that fires once and then blocks forever looks like -
+# exactly the defect this test failed to catch (GAPI-DIV-039).
+set -euo pipefail
 
-echo "[TEST] Testing Timer Agents..."
-export PATH=/nix/store/vr15iyyykg9zai6fpgvhcgyw7gckl78w-gcc-wrapper-14.3.0/bin:/nix/store/0a3dyfq09dnkw28ap2i450wjimvdmv6s-go-1.25.4/bin:$HOME/go/bin:$PATH
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
 
-# Use existing config
+INTERVAL=2          # the fixture's schedule, in seconds
+WINDOW=11           # observation window
+EXPECT_MIN=4        # floor(WINDOW / INTERVAL) - 1, allowing one slipped fire
+
+WORK="$(mktemp -d)"
+trap 'kill "${GAPID_PID:-}" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+
+echo "[TEST] Testing timer agents..."
+
+# The dev shell owns the toolchain. Hardcoding /nix/store paths here pinned
+# a Go version that the flake had since moved past, which is precisely what
+# 'mage doctor' exists to prevent.
+command -v python3 >/dev/null || { echo "[FAIL] python3 not on PATH; run inside 'nix develop'"; exit 1; }
+[ -x ./bin/gapid ] || { echo "[FAIL] ./bin/gapid missing; run 'mage build' first"; exit 1; }
+
+# A fixture directory this test owns, so the result does not depend on
+# whatever else happens to be under agents/.
+mkdir -p "$WORK/agents"
+cat > "$WORK/agents/ticktest.py.timer" <<EOF
+ID = "ticktest"
+ENABLED = True
+TYPE = "timer"
+SCHEDULE = "OnUnitActiveSec=${INTERVAL}s"
+
+
+def start():
+    print("TIMER_FIRED")
+EOF
+
 PORT=$((10000 + RANDOM % 10000))
-cat > test_timer_config.yaml <<EOF
+cat > "$WORK/config.yaml" <<EOF
 transport:
   type: quic
   address: 127.0.0.1:$PORT
-  certFile: config/certs/server.crt
-  keyFile: config/certs/server.key
 EOF
 
-export RUNTIME_CONFIG=$(pwd)/test_timer_config.yaml
-export RUNTIME_AGENTS_DIR=agents
-export RUNTIME_PY_RUNNER=$(pwd)/adk/python/agent/runner.py
+# tlsCert/tlsKey are the names the loader reads; certFile/keyFile are
+# dropped silently by viper and configure nothing.
+export RUNTIME_CONFIG="$WORK/config.yaml"
+export RUNTIME_AGENT_PATH="$WORK/agents"
+export RUNTIME_SKIP_SYSTEM_AGENTS=1
+export RUNTIME_PY_RUNNER="$ROOT/adk/python/agent/runner.py"
 
-echo "[TEST] Starting gapid..."
-./bin/gapid > test_timer.log 2>&1 &
+echo "[TEST] Starting gapid on 127.0.0.1:$PORT..."
+./bin/gapid > "$WORK/gapid.log" 2>&1 &
 GAPID_PID=$!
-echo "[TEST] gapid PID: $GAPID_PID"
 
-echo "[TEST] Waiting 15 seconds for timer ticks..."
-sleep 15
+echo "[TEST] Observing for ${WINDOW}s (schedule ${INTERVAL}s, expecting at least $EXPECT_MIN fires)..."
+sleep "$WINDOW"
 
-echo "[TEST] Checking logs..."
-kill $GAPID_PID 2>/dev/null || true
+kill "$GAPID_PID" 2>/dev/null || true
+wait "$GAPID_PID" 2>/dev/null || true
+GAPID_PID=""
 
-if grep -q "timer agent started" test_timer.log; then
-    echo "[OK] Timer agent started"
-else
-    echo "[FAIL] Timer agent did not start"
-    cat test_timer.log
-    exit 1
-fi
+fail() { echo "[FAIL] $1"; echo "--- gapid.log ---"; cat "$WORK/gapid.log"; exit 1; }
 
-if grep -q "timer triggered" test_timer.log; then
-    echo "[OK] Timer triggered"
-    TICK_COUNT=$(grep -c "timer triggered" test_timer.log)
-    echo "   Timer ticked $TICK_COUNT times"
-else
-    echo "[FAIL] Timer did not trigger"
-    cat test_timer.log
-    exit 1
-fi
+grep -q "timer agent started" "$WORK/gapid.log" || fail "timer agent never started"
+echo "[OK] Timer agent started"
 
-if grep -q "Timer tick!" test_timer.log; then
-    echo "[OK] Timer agent executed successfully"
-else
-    echo "[WARN] Timer triggered but agent may not have executed"
-fi
+TRIGGERS=$(grep -c "timer triggered" "$WORK/gapid.log" || true)
+COMPLETED=$(grep -c "timer execution completed" "$WORK/gapid.log" || true)
+FIRED=$(grep -c "TIMER_FIRED" "$WORK/gapid.log" || true)
 
-echo "[TEST] Cleaning up..."
-rm -f test_timer_config.yaml test_timer.log
+echo "[TEST] triggered=$TRIGGERS completed=$COMPLETED agent-output=$FIRED"
 
-echo "[TEST] Timer agents test PASSED!"
+[ "$TRIGGERS" -ge "$EXPECT_MIN" ] \
+  || fail "expected at least $EXPECT_MIN triggers in ${WINDOW}s, got $TRIGGERS"
+echo "[OK] Timer fired $TRIGGERS times"
+
+# Every fire must terminate. A trigger without a matching completion is a
+# fire that blocked until the execution deadline.
+[ "$COMPLETED" -eq "$TRIGGERS" ] \
+  || fail "$TRIGGERS triggers but only $COMPLETED completed; a fire is not terminating"
+echo "[OK] Every fire completed"
+
+[ "$FIRED" -ge "$EXPECT_MIN" ] \
+  || fail "agent body ran $FIRED times, expected at least $EXPECT_MIN"
+echo "[OK] Agent body ran $FIRED times"
+
+echo "[TEST] Timer agents test PASSED"
