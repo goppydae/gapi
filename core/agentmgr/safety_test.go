@@ -25,19 +25,32 @@ func writeExecutable(t *testing.T, dir, name string, perm os.FileMode) string {
 }
 
 // signBinary writes the .b3 hash file and a .sig over its bytes, matching
-// the gapictl agent verify convention (hex ed25519 signature over the .b3
-// file content).
+// the real signing convention: a hex ed25519 signature over the canonical
+// BLAKE3 digest, with the .b3 sidecar written the way the build writes it.
 func signBinary(t *testing.T, kp *crypto.KeyPair, binPath string) {
 	t.Helper()
 	hash, err := crypto.HashFile(binPath)
 	if err != nil {
 		t.Fatalf("hash %s: %v", binPath, err)
 	}
-	hashBytes := []byte(hash + "\n")
-	if err := os.WriteFile(binPath+".b3", hashBytes, 0o644); err != nil {
+
+	// The sidecar carries a trailing newline, because that is what
+	// Magefile.go writes.
+	if err := os.WriteFile(binPath+".b3", []byte(hash+"\n"), 0o644); err != nil {
 		t.Fatalf("write .b3: %v", err)
 	}
-	sig := kp.Sign(hashBytes)
+
+	// The signature covers the CANONICAL digest - no newline - because
+	// that is what 'gapictl crypto sign' covers (pkg/cli/security.go).
+	//
+	// This helper previously signed the sidecar bytes INCLUDING the
+	// newline, which is what the verifier happened to check. That made
+	// this test mirror the implementation rather than the contract: it
+	// stayed green while no signature the real CLI produced could ever
+	// verify, and production mode could not start any signed agent
+	// (GAPI-DIV-032). Signing what the CLI signs is the whole point of
+	// the helper.
+	sig := kp.Sign([]byte(hash))
 	if err := os.WriteFile(binPath+".sig", []byte(hex.EncodeToString(sig)), 0o644); err != nil {
 		t.Fatalf("write .sig: %v", err)
 	}
