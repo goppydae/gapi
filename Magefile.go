@@ -42,7 +42,7 @@ func Build() error {
 		}
 	}
 
-	fmt.Println("✅ Build complete: bin/gapid, bin/gapictl (with .b3 checksums)")
+	fmt.Println("Build complete: bin/gapid, bin/gapictl (with .b3 checksums)")
 	return nil
 }
 
@@ -76,7 +76,7 @@ func Install() error {
 		return err
 	}
 
-	fmt.Println("✅ Installed to $GOPATH/bin")
+	fmt.Println("Installed to $GOPATH/bin")
 	return nil
 }
 
@@ -191,7 +191,7 @@ func Clean() error {
 		}
 	}
 
-	fmt.Println("✅ Clean complete")
+	fmt.Println("Clean complete")
 	return nil
 }
 
@@ -242,7 +242,7 @@ func Dev() error {
 // All runs fmt, tidy, build, and test
 func All() error {
 	mg.Deps(Fmt, Tidy, Build, Test)
-	fmt.Println("✅ All tasks complete")
+	fmt.Println("All tasks complete")
 	return nil
 }
 
@@ -289,7 +289,7 @@ func (Docs) Man() error {
 		}
 	}
 
-	fmt.Println("✅ Man pages generated in ./man/man1")
+	fmt.Println("Man pages generated in ./man/man1")
 	return nil
 }
 
@@ -401,6 +401,6 @@ func (Python) Build() error {
 		return fmt.Errorf("gcc link failed: %w", err)
 	}
 
-	fmt.Println("✅ Python bindings built successfully")
+	fmt.Println("Python bindings built successfully")
 	return nil
 }
