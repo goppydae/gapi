@@ -4,17 +4,17 @@
 
 > **Note**: This repository contains the GAPI **library**. For the production daemon, see [Goblin](https://github.com/goppydae/goblin).
 
-## ✨ Key Features
+## Key Features
 
-- 🔒 **Security**: Ed25519 signing + BLAKE3 hashing + source-to-binary verification
-- ⏰ **Timer Agents**: Systemd-style scheduling, cron expressions, named schedules
-- 📊 **Resource Limits**: CPU and memory constraints via cgroups v2 (rootless supported)
-- 🔌 **Socket Activation**: On-demand agent startup for TCP/UDP services
-- 🐍 **Dual ADK**: Write agents in Python or Go with identical behavior
-- 🛠️ **Developer Tools**: Agent templates, watch mode, verification chain
-- 🔄 **CI/CD Ready**: Automated cross-ADK testing in GitHub Actions
+- **Security**: Ed25519 signing + BLAKE3 hashing + source-to-binary verification
+- **Timer Agents**: Systemd-style scheduling, cron expressions, named schedules
+- **Resource Limits**: CPU and memory constraints via cgroups v2 (rootless supported)
+- **Socket Activation**: On-demand agent startup for TCP/UDP services
+- **Dual ADK**: Write agents in Python or Go with identical behavior
+- **Developer Tools**: Agent templates, watch mode, verification chain
+- **CI/CD Ready**: Automated cross-ADK testing in GitHub Actions
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Install Reference Tools
@@ -28,7 +28,7 @@ gapictl agent new my_service
 ./bin/gapid
 ```
 
-## 📝 Simple Example
+## Simple Example
 
 ```python
 # agents/python/services/hello.py.service
@@ -43,7 +43,7 @@ def start():
 
 That's it! No classes, no inheritance, no boilerplate.
 
-## 📚 Documentation
+## Documentation
 
 - **[Getting Started](docs/getting-started.md)** - Installation and first agent
 - **[Agent Development](agents/README.md)** - Complete guide to writing agents
@@ -53,7 +53,7 @@ That's it! No classes, no inheritance, no boilerplate.
 - **[Configuration](docs/configuration.md)** - YAML config, transport options
 - **[Design Document](docs/gapi-design-document.md)** - Architecture and philosophy
 
-## 🛠️ Development
+## Development
 
 ```bash
 # Run tests
@@ -65,6 +65,6 @@ nix develop -c go test ./test/adk/
 
 See [agents/README.md](agents/README.md) for agent development guide.
 
-## 📄 License
+## License
 
 Mozilla Public License 2.0 (MPL-2.0)
