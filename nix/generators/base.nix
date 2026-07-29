@@ -49,13 +49,19 @@
   # Example test agents
   environment.etc = {
     "gapi/agents/heartbeat.py.timer" = {
+      # Real module-level assignments, not comments. Agent metadata is
+      # read with getattr on the imported module, so a commented
+      # "# TYPE = timer" is silently dropped and the agent never
+      # registers as a timer.
       text = ''
-        # ENABLED = True
-        # TYPE = timer
-        # SCHEDULE = OnUnitActiveSec=30s
-        
+        ENABLED = True
+        TYPE = "timer"
+        SCHEDULE = "OnUnitActiveSec=30s"
+
+        import time
+
+
         def start():
-            import time
             print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Heartbeat from GAPI test system")
       '';
       mode = "0644";
@@ -63,12 +69,14 @@
     
     "gapi/agents/sysinfo.py.service" = {
       text = ''
-        # ENABLED = True
-        # TYPE = service
-        
+        ENABLED = True
+        TYPE = "service"
+
+        import platform
+        import time
+
+
         def start():
-            import time
-            import platform
             print(f"System: {platform.system()} {platform.release()}")
             print(f"Python: {platform.python_version()}")
             print("GAPI test service running...")

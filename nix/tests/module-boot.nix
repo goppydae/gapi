@@ -1,0 +1,73 @@
+# Proves the flake's nixosModules output is importable and evaluates
+# into a bootable system carrying a real gapi package.
+#
+# This is also the regression test for GAPI-DIV-033, where the module
+# could not work at all: ExecStart passed a -config flag gapid does not
+# define, so the unit failed to start whenever configFile was set, and
+# the unit environment set GAPI_AGENTS_DIR, which nothing reads.
+#
+# Deliberately does NOT assert that gapid reaches an active state under
+# every configuration: that depends on runtime setup this test does not
+# supply. What it asserts is that the unit is wired to real things - a
+# buildable binary, an argument list the binary accepts, and the
+# environment variables the loader actually reads.
+{ pkgs, self }:
+
+pkgs.testers.runNixOSTest {
+  name = "gapi-module-boot";
+
+  nodes.node = { ... }: {
+    imports = [ self.nixosModules.default ];
+    services.gapi.enable = true;
+    services.gapi.agentsDir = "/var/lib/gapi/agents";
+  };
+
+  testScript = ''
+    node.wait_for_unit("multi-user.target")
+
+    # The unit exists and runs the packaged binary.
+    node.succeed("systemctl cat gapi.service")
+    exec_start = node.succeed(
+        "systemctl show gapi.service -p ExecStart --value"
+    )
+    assert "gapid" in exec_start, (
+        "gapi.service ExecStart does not run gapid: " + exec_start
+    )
+
+    # No -config flag. gapid defines only --runtime-addr, --log-level,
+    # --pid1 and --no-early-mounts; cobra rejects anything else, so a
+    # stray -config here means the unit can never start.
+    assert "-config" not in exec_start, (
+        "ExecStart passes -config, which gapid does not accept: " + exec_start
+    )
+
+    # The agents directory reaches the loader through the variable it
+    # actually reads. GAPI_AGENTS_DIR was set here for a long time and
+    # consumed by nothing.
+    unit_env = node.succeed("systemctl show gapi.service -p Environment --value")
+    assert "RUNTIME_AGENT_PATH" in unit_env, (
+        "RUNTIME_AGENT_PATH is not set on the unit, so agentsDir does nothing: "
+        + unit_env
+    )
+    assert "GAPI_AGENTS_DIR" not in unit_env, (
+        "GAPI_AGENTS_DIR is set but read by no code: " + unit_env
+    )
+
+    # The binary is real and reports a stamped version rather than the
+    # 'dev' placeholder (GAPI-DIV-007).
+    version = node.succeed("gapid version")
+    print(version)
+    assert "Runtime Core: dev" not in version, (
+        "the packaged binary carries no version stamp:\n" + version
+    )
+
+    # The generated config uses the keys the loader reads. certFile and
+    # keyFile were silently ignored by viper, which downgraded the
+    # daemon to a throwaway self-signed certificate.
+    cfg = node.succeed("cat /etc/gapi/config.yaml")
+    assert "tlsCert" in cfg, "generated config does not use tlsCert:\n" + cfg
+    assert "certFile" not in cfg, (
+        "generated config still uses certFile, which viper drops:\n" + cfg
+    )
+  '';
+}

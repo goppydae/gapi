@@ -22,6 +22,12 @@ pkgs.mkShell {
     protoc-gen-go-grpc
     buf
 
+    # Checkpoint/restore (see flake.nix for the rationale). Kept in step
+    # with flake.nix and with goblin's shell; 'mage envcheck' compares
+    # the sibling inventories and skew is red.
+    criu
+    libseccomp
+
     # Lint and security gate
     golangci-lint
     gosec
