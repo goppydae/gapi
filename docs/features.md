@@ -1,292 +1,335 @@
-# GAPI Features
+# Features
 
-This document provides detailed information about GAPI's core features and capabilities.
+What the kernel actually does, checked against source.
 
-## Security & Integrity
+## Provenance and integrity
 
-GAPI provides cryptographic signing and verification to ensure agent code integrity.
+### The chain
 
-### Ed25519 Signing
+A built binary carries two sidecars: `<binary>.b3`, a BLAKE3 digest in
+hex, and `<binary>.sig`, an Ed25519 signature. Verification is two
+independent checks - the binary must hash to the digest, and the
+signature must verify over that digest.
 
-GAPI uses Ed25519 public-key cryptography for signing agents. This provides:
+Both are signed and verified over the **canonical hex digest**, not over
+the sidecar file's bytes. The sidecar is written with a trailing
+newline; treating those bytes as the signed message is what made
+verification impossible before GAPI-DIV-032.
 
-- **Fast signing and verification**: Ed25519 is one of the fastest signature schemes
-- **Small signatures**: Only 64 bytes per signature
-- **Strong security**: 128-bit security level
+Ed25519 gives 64-byte signatures and constant-time verification.
+BLAKE3 is used for the digest.
 
-### BLAKE3 Hashing
+### Signing an agent
 
-Content verification uses BLAKE3, a cryptographic hash function that is:
-
-- **Extremely fast**: Faster than MD5 while being cryptographically secure
-- **Parallelizable**: Takes advantage of multi-core processors
-- **Secure**: Resistant to length extension attacks
-
-### Signature Enforcement
-
-Agents can be cryptographically signed to ensure authenticity:
-
-1. **Generate a keypair**:
-
-   ```bash
-   gapictl keygen mykey
-   # Creates mykey.key (private) and mykey.pub (public)
-   ```
-
-1. **Sign an agent**:
-
-   ```bash
-   gapictl sign agents/myagent.py.service mykey.key
-   # Creates agents/myagent.py.service.sig
-   ```
-
-1. **Enable verification** in `config.yaml`:
-
-   ```yaml
-   security:
-     verifyKey: mykey.pub
-   ```
-
-When verification is enabled, `gapid` will only load agents with valid signatures.
-
-## Timer Agents
-
-Timer agents execute on a schedule, similar to systemd timers or cron jobs.
-
-### Systemd-Style Scheduling
-
-GAPI supports systemd-compatible timer syntax:
-
-- **`OnUnitActiveSec=DURATION`**: Run DURATION after the last execution completes
-- **`OnBootSec=DURATION`**: Run DURATION after system boot
-- **`OnStartupSec=DURATION`**: Run DURATION after supervisor startup
-
-Examples:
-
-```python
-# SCHEDULE = OnUnitActiveSec=5s   # Every 5 seconds
-# SCHEDULE = OnBootSec=1m         # 1 minute after boot
-# SCHEDULE = OnStartupSec=30s     # 30 seconds after startup
+```bash
+gapictl crypto keygen --out signing-key
 ```
 
-### Cron Expressions
+Writes `signing-key.pem` (private) and `signing-key.pub.hex` (public).
 
-Standard cron syntax is supported:
-
-```python
-# SCHEDULE = */5 * * * *    # Every 5 minutes
-# SCHEDULE = 0 */2 * * *    # Every 2 hours
-# SCHEDULE = 0 9 * * 1-5    # 9 AM on weekdays
-# SCHEDULE = 0 0 * * 0      # Midnight on Sundays
+```bash
+gapictl crypto sign path/to/agent --key signing-key.pem
 ```
 
-### Named Schedules
-
-Convenient aliases for common intervals:
-
-```python
-# SCHEDULE = @hourly    # Once per hour (0 * * * *)
-# SCHEDULE = @daily     # Once per day at midnight (0 0 * * *)
-# SCHEDULE = @weekly    # Once per week on Sunday (0 0 * * 0)
-# SCHEDULE = @monthly   # Once per month on the 1st (0 0 1 * *)
+```bash
+gapictl agent verify path/to/agent
 ```
 
-### Raw Durations
+`agent verify` reports the digest check and the signature check
+separately. An unsigned agent reports a missing signature rather than
+failing outright.
 
-Simple duration strings:
+### Enforcement
 
-```python
-# SCHEDULE = 5s    # Every 5 seconds
-# SCHEDULE = 1m    # Every minute
-# SCHEDULE = 1h    # Every hour
-# SCHEDULE = 24h   # Every day
+```yaml
+security:
+  verifyKey: /etc/gapi/agent-signing.pub.hex
+
+supervisor:
+  productionMode: true
 ```
 
-### Auto-Start Behavior
+Enforcement is gated on **production mode**, not on the key being
+present. Without `productionMode: true` an unverifiable agent still
+starts; with it, an agent binary must carry a valid digest and
+signature or the supervisor refuses to start it.
 
-Timer agents automatically start when discovered by the supervisor. They do not need to be manually started.
+Only binary agents go through this path. A Python agent is described by
+running the interpreter over the module, which is not a signed artifact.
 
-## Resource Limits (Cgroups v2)
+### AGE encryption
 
-GAPI can enforce CPU and memory limits using Linux cgroups v2.
+`gapictl crypto` also carries an AGE identity and stream cipher, for
+material an agent needs at rest:
 
-### CPU Limits
-
-Restrict the CPU usage of an agent:
-
-```python
-# CPU_LIMIT = 0.5    # 50% of one CPU core
-# CPU_LIMIT = 1.0    # 100% of one CPU core
-# CPU_LIMIT = 2.0    # 200% (2 cores)
+```bash
+gapictl crypto age-keygen
 ```
 
-The limit is enforced via the `cpu.max` cgroup controller.
-
-### Memory Limits
-
-Enforce hard memory caps:
-
-```python
-# MEMORY_LIMIT = 100MB    # 100 megabytes
-# MEMORY_LIMIT = 1GB      # 1 gigabyte
-# MEMORY_LIMIT = 512MB    # 512 megabytes
+```bash
+gapictl crypto encrypt < secret.txt > secret.age
 ```
 
-When an agent exceeds its memory limit, it will be OOM-killed by the kernel.
-
-### Rootless Support
-
-GAPI works in rootless environments with proper cgroup delegation:
-
-1. **Enable cgroup delegation** for your user:
-
-   ```bash
-   sudo mkdir -p /etc/systemd/system/user@.service.d/
-   echo -e "[Service]\nDelegate=yes" | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
-   sudo systemctl daemon-reload
-   ```
-
-1. **Verify delegation**:
-
-   ```bash
-   cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
-   # Should show: cpuset cpu io memory pids
-   ```
-
-1. **Run gapid** as your user (no root required)
-
-## Socket Activation
-
-Socket activation allows agents to start on-demand when a connection is received.
-
-### Lazy Loading
-
-Agents with `TYPE = socket` do not start immediately. Instead:
-
-1. The supervisor listens on the configured address/port
-1. When a connection arrives, the supervisor starts the agent
-1. The file descriptor is passed to the agent
-1. The agent handles the connection
-
-This reduces resource usage for infrequently-used services.
-
-### TCP/UDP Support
-
-Both TCP and UDP sockets are supported:
-
-```python
-# TCP socket
-# LISTEN_STREAM = 0.0.0.0:8080
-
-# UDP socket
-# LISTEN_DATAGRAM = 0.0.0.0:5353
+```bash
+gapictl crypto decrypt < secret.age
 ```
 
-### Zero Downtime Handoff
+## Timer agents
 
-The supervisor holds the listening socket, so:
+A timer agent runs in the supervisor's process rather than as a child.
+That is why it is the one runner without `Checkpointer` - there is no
+external process to dump.
 
-- The agent can crash and restart without losing the port
-- No "address already in use" errors
-- Seamless upgrades and restarts
+### Schedule syntax
 
-### Accessing the Socket
+`ParseSchedule` (`core/agentmgr/schedule.go`) tries four forms, in this
+order:
 
-In Python agents, the socket file descriptor is available via environment variable:
+| Form | Example |
+| ---- | ------- |
+| systemd-style | `OnUnitActiveSec=30s`, `OnBootSec=1m`, `OnStartupSec=5s` |
+| raw Go duration | `5s`, `1m30s`, `24h` |
+| cron, five fields | `*/5 * * * *`, `0 9 * * 1-5` |
+| cron descriptor | `@hourly`, `@daily`, `@weekly`, `@monthly` |
+
+Durations are parsed by `time.ParseDuration`, so `24h` works and `1d`
+does not.
+
+> **All three systemd prefixes currently mean the same thing.**
+> `parseSystemdSchedule` extracts the duration and returns an interval
+> schedule regardless of which prefix carried it, so `OnBootSec=1m` runs
+> every minute rather than once, one minute after boot.
+> `OnStartupSec` likewise. Tracked as GAPI-DIV-036; until it is fixed,
+> `OnUnitActiveSec` is the only prefix whose name matches its behaviour.
+
+A timer with no `SCHEDULE` gets `OnUnitActiveSec=60s`.
+
+### Declaring one
+
+```python
+ID = "heartbeat"
+TYPE = "timer"
+SCHEDULE = "OnUnitActiveSec=30s"
+
+
+def start():
+    print("tick")
+```
+
+Real assignments, not comments. Metadata is read with `getattr` on the
+imported module, so `# SCHEDULE = "@hourly"` is read by nothing and the
+agent silently falls back to the 60-second default.
+
+Timer agents are auto-started at discovery. `ENABLED = False` suppresses
+that, as it does for every runner type.
+
+## Resource limits
+
+cgroups v2, applied when the child process starts and torn down when it
+stops.
+
+### CPU
+
+```python
+CPU_LIMIT = "0.5"
+```
+
+A fraction of one core, written to `cpu.max`. Millicores also parse:
+`"500m"` is the same as `"0.5"`.
+
+### Memory
+
+```python
+MEMORY_LIMIT = "100MB"
+```
+
+Written to `memory.max`; exceeding it means an OOM kill by the kernel.
+Accepted suffixes are `K`/`KB`, `M`/`MB`, `G`/`GB`, base 1024. A bare
+number is bytes.
+
+Both values are **strings**. `MEMORY_LIMIT = 100MB` is a Python syntax
+error, and `CPU_LIMIT = 0.5` is a float where a string is expected.
+
+### Rootless
+
+Works without root given cgroup delegation:
+
+```bash
+sudo mkdir -p /etc/systemd/system/user@.service.d
+```
+
+```bash
+printf '[Service]\nDelegate=yes\n' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf
+```
+
+```bash
+sudo systemctl daemon-reload
+```
+
+```bash
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
+```
+
+`cpu` and `memory` must appear in that list. Without delegation the
+supervisor logs the failure and runs the agent unconstrained rather than
+refusing to start it.
+
+## Socket activation
+
+### Lazy start
+
+An agent that declares `LISTEN_STREAM` is **armed** rather than started:
+the supervisor binds the socket, holds it, and starts the agent on the
+first connection. The trigger is a non-empty `listen_stream`, not
+`TYPE = "socket"` - a service that declares a listen address is armed
+too.
+
+Because the supervisor owns the listener, the agent can crash and
+restart without losing the port, and without `EADDRINUSE`.
+
+### Stream sockets only
+
+The bind goes through `net.Listen`, which yields TCP or UNIX sockets.
+**There is no UDP socket activation**, and no `LISTEN_DATAGRAM`
+metadata key.
+
+```python
+LISTEN_STREAM = "0.0.0.0:8080"   # TCP
+```
+
+```python
+LISTEN_STREAM = "/run/myagent.sock"   # UNIX, path starts with /
+```
+
+```python
+LISTEN_STREAM = "8080"   # bare port, becomes :8080 TCP
+```
+
+`SOCKET` and `PORT` are accepted aliases for `LISTEN_STREAM`.
+
+### Receiving the descriptor
+
+The supervisor passes descriptors as `ExtraFiles` and sets `LISTEN_FDS`
+to the **count**, plus `LISTEN_PID=self`. Passed descriptors begin at
+**file descriptor 3**.
 
 ```python
 import os
 import socket
 
+
 def start():
-    fd = int(os.environ.get("LISTEN_FDS", "0"))
-    if fd > 0:
-        sock = socket.fromfd(fd + 3, socket.AF_INET, socket.SOCK_STREAM)
-        # Handle connections on sock
+    n = int(os.environ.get("LISTEN_FDS", "0"))
+    if n < 1:
+        raise RuntimeError("not socket-activated")
+    sock = socket.socket(fileno=3)
+    conn, _ = sock.accept()
 ```
+
+`fd + 3` is wrong for any `LISTEN_FDS` other than the accidental case.
+With one socket passed, `LISTEN_FDS` is `1` and the socket is fd `3`.
 
 ## Python ADK
 
-The Python Agent Development Kit (ADK) provides native Go ↔ Python communication.
-
-### Native Bindings
-
-GAPI uses `gopy` to generate Python bindings for Go packages. This provides:
-
-- **Direct function calls**: No JSON serialization or subprocess overhead
-- **Type safety**: Go types are exposed as Python types
-- **Bidirectional communication**: Python can call Go, Go can call Python
-
-### Zero Boilerplate
-
-Agents are simple Python scripts with minimal structure:
+### Zero boilerplate
 
 ```python
-# agents/example.py.service
-ENABLED = True
+ID = "example"
 TYPE = "service"
-
-def start():
-    print("Agent started!")
-    # Your code here
-```
-
-No classes, no inheritance, no framework-specific decorators.
-
-### Self-Describing Metadata
-
-Agent metadata is defined as constants at the top of the file:
-
-```python
 ENABLED = True
-TYPE = "service"
-DEPENDENCIES = ["database", "cache"]
-CPU_LIMIT = 0.5
-MEMORY_LIMIT = "512MB"
-```
 
-The supervisor parses these directives automatically. No separate configuration files needed.
-
-### Lifecycle Hooks
-
-Agents can define lifecycle functions:
-
-- **`start()`**: Called when the agent starts
-- **`stop()`**: Called when the agent is stopping (optional)
-- **`reload()`**: Called when the agent receives a reload signal (optional)
-
-Example:
-
-```python
-def start():
-    print("Starting...")
-    # Initialization code
-
-def stop():
-    print("Stopping...")
-    # Cleanup code
-
-def reload():
-    print("Reloading configuration...")
-    # Reload logic
-```
-
-### Event Bus Access
-
-Agents can publish and subscribe to events via the GAPI event bus:
-
-```python
-from gapi import eventbus
 
 def start():
-    # Subscribe to events
-    eventbus.subscribe("system", "agent.status", on_status)
-    
-    # Publish events
-    eventbus.publish("custom", "my.event", {"data": "value"})
-
-def on_status(event):
-    print(f"Received status: {event}")
+    print("started")
 ```
 
-This enables inter-agent communication and coordination.
+No classes, no inheritance, no decorators required.
+
+### Entry point aliases
+
+The runner resolves each hook against a list of names, first match
+wins:
+
+| Hook | Accepted names |
+| ---- | -------------- |
+| init | `initialize`, `init`, `setup` |
+| start | `start`, `run` |
+| stop | `stop`, `shutdown`, `teardown` |
+| reload | `reload`, `rehash`, `reconfigure` |
+| restart | `restart` |
+
+Only `start` is required. If `start` accepts one parameter, the runner
+passes a `threading.Event` that is set on shutdown - the cooperative way
+to exit a loop:
+
+```python
+def start(stop_evt):
+    while not stop_evt.wait(1.0):
+        do_work()
+```
+
+### Metadata
+
+See [configuration.md](configuration.md) for the full alias table. The
+one trap worth repeating: `DEPENDENCIES` is **not** an accepted alias.
+The spelling is `REQUIRES` (or `DEPS`, or `Dependencies`); declaring
+`DEPENDENCIES` yields an agent with no dependencies and therefore no
+ordering guarantee.
+
+### Native bindings
+
+The Python ADK talks to the kernel through gopy-generated bindings under
+`adk/python/gapi/native/`. They are **generated, not committed**:
+
+```bash
+mage python:build
+```
+
+Without them the runner falls back to `DummyAdk`, which writes events to
+stdout instead of the bus, and warns on stderr. Set
+`RUNTIME_REJECT_DUMMY_ADK=1` to make that a hard failure instead -
+`productionMode` sets it for you.
+
+### What the ADK exposes
+
+```python
+from gapi import Agent, AgentMetadata, AgentDescribe, capability
+```
+
+`gapi` exports the protocol types (`Agent`, `InitializeFn`, `StartFn`,
+`StopFn`, `ReloadFn`, `RestartFn`), the metadata schemas, and the
+`capability` decorator. **There is no `gapi.eventbus`** - agents do not
+publish to the bus directly; the runner emits lifecycle events on their
+behalf.
+
+## Checkpoint and restore
+
+`core/checkpoint` dumps and restores a running process with CRIU,
+preserving memory. It is the mechanism Goblin's live migration moves
+between nodes; the kernel supplies no policy of its own.
+
+- Linux only. The non-Linux build returns unsupported.
+- The `criu` binary is resolved with `exec.LookPath`; without it,
+  `Available()` reports `ErrNoCriu`. It is in the dev shell.
+- Requires `CAP_CHECKPOINT_RESTORE` or `CAP_SYS_ADMIN`, so an
+  unprivileged process gets a capability error even with criu present.
+  Real coverage lives in NixOS VM tests.
+- A runner opts in by implementing the optional
+  `lifecycle.Checkpointer` interface. `GoAgent` and `PythonAgent` do;
+  `TimerAgent` does not, because it has no child process.
+
+## PID 1
+
+Opt-in, with `--pid1` or `supervisor.pid1Mode: true`. There is no
+autodetection - `gapid` does not check its own pid. In PID 1 mode it
+takes on subreaper duty, the early mount table, watchdog petting and
+ordered shutdown. See [pid1-testing.md](pid1-testing.md).
+
+## Transport
+
+QUIC on one listener, routed by TLS ALPN, with a registry that Goblin
+extends with its own protocols. The only two transport types are `quic`
+and `local`; anything else is a startup error.
+
+`transport.insecureSkipVerify` defaults to **true** for every address.
+See [configuration.md](configuration.md).

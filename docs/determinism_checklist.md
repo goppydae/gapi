@@ -28,5 +28,5 @@ Applies to: scheduling, lifecycle, reconciliation, event emission, hashing.
 
 ## Tests
 
-- [ ] replay test exists for the feature (same inputs ⇒ same outputs hash)
+- [ ] replay test exists for the feature (same inputs produce the same outputs hash)
 - [ ] deterministic "golden trace" comparison updated if needed

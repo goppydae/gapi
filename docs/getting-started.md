@@ -1,121 +1,182 @@
 # Getting Started with GAPI
 
-This guide will help you create, build, and run your first GAPI agent.
+Create, build and run your first agent.
 
-## Installation
+## Setup
 
-### Using Nix (Recommended)
+GAPI builds inside a Nix dev shell, which pins the whole toolchain.
 
 ```bash
 cd gapi
-nix develop -c mage build
 ```
-
-### Using Go Directly
 
 ```bash
-go build -o bin/gapid ./cmd/gapid
-go build -o bin/gapictl ./cmd/gapictl
+nix develop
 ```
-
-## Your First Agent
-
-### Create a Go Service Agent
 
 ```bash
-gapictl agent new my_first_service
+mage build
 ```
 
-This creates `agents/go/foundational/my_first_service/main.go` with a complete template.
+This produces `bin/gapid` (the supervisor) and `bin/gapictl` (the CLI).
+`mage build` does not install them, so invoke them by path, or run
+`mage install` to place them in `$GOPATH/bin`.
 
-### Build the Agent
+Verify the toolchain matches the pins before anything else:
 
 ```bash
-gapictl agent build agents/go/foundational/my_first_service
+mage doctor
 ```
 
-The build process:
+## Your first agent
 
-- Computes source hash (BLAKE3)
-- Embeds hash in binary via `-ldflags`
-- Generates binary hash (`.b3` file)
-- Creates `agents/build/go/my_first_service`
-
-### Verify the Agent
+`gapictl agent new` scaffolds one. The default language is **Go**:
 
 ```bash
-gapictl agent verify agents/build/go/my_first_service
+./bin/gapictl agent new my_service
 ```
 
-Output:
+That writes `agents/go/foundational/my_service/`. For Python, ask for
+it explicitly:
 
-```
-✅ Binary hash: VERIFIED
-⚠️  No .sig file found (not signed)
+```bash
+./bin/gapictl agent new my_service --lang python
 ```
 
-### Run the Supervisor
+Python agents land in a type-specific directory instead -
+`agents/python/services/` for a service, `timers/` for a timer,
+`sockets/` for a socket.
+
+The supported types are `service`, `timer` and `socket`:
+
+```bash
+./bin/gapictl agent new my_timer --lang python --type timer
+```
+
+## What an agent looks like
+
+Metadata is declared as **module-level assignments**. It is read with
+`getattr` on the imported module, so a commented directive is silently
+ignored and the agent falls back to defaults.
+
+```python
+ID = "my_service"
+TYPE = "service"
+VERSION = "1.0.0"
+DESCRIPTION = "My first agent"
+
+import time
+
+
+def start():
+    print("my_service starting")
+    while True:
+        time.sleep(60)
+
+
+def stop():
+    print("my_service stopping")
+```
+
+## Running the supervisor
 
 ```bash
 ./bin/gapid
 ```
 
-## Next Steps
-
-- **[Agent Development](../agents/README.md)** - Learn to write custom agents
-- **[Python ADK](../agents/python/README.md)** - Write Python agents
-- **[Go ADK](../agents/go/README.md)** - Write Go agents
-- **[Security](features.md#security)** - Sign and verify binaries
-- **[Watch Mode](../agents/go/README.md#watch-mode)** - Auto-rebuild on changes
-
-## Common Commands
+`gapid` binds `127.0.0.1:14242` and discovers agents from its search
+paths. To point it at a specific directory:
 
 ```bash
-# Create agents
-gapictl agent new my_service                    # Go service
-gapictl agent new --type=timer my_timer         # Go timer
-gapictl agent new --lang=python my_py_service   # Python service
+RUNTIME_AGENT_PATH=./agents ./bin/gapid
+```
 
-# Build
-gapictl agent build agents/go/my_service        # Single build
-gapictl agent build --watch agents/go/my_service # Watch mode
+In another shell:
 
-# Verify
-gapictl agent verify agents/build/go/my_service
+```bash
+./bin/gapictl agent status
+```
 
-# Sign and verify
-gapictl agent build --sign --key=key.pem agents/go/my_service
-gapictl agent verify agents/build/go/my_service --pubkey=key.pub
+Note the path: `status` is a subcommand of `agent`. A bare
+`gapictl status` is not a command.
+
+## Controlling an agent
+
+```bash
+./bin/gapictl lifecycle start my_service
+```
+
+```bash
+./bin/gapictl lifecycle status my_service
+```
+
+```bash
+./bin/gapictl lifecycle stop my_service
+```
+
+`lifecycle status` requires at least one agent name; `agent status`
+lists everything.
+
+## Common commands
+
+| Task | Command |
+| ---- | ------- |
+| List registered agents | `gapictl agent status` |
+| Start / stop / restart | `gapictl lifecycle start\|stop\|restart <agent>` |
+| Rebuild Go agents | `gapictl agent build` |
+| Verify an agent binary | `gapictl agent verify <path>` |
+| Interactive monitor | `gapictl tui` |
+| Check the daemon is up | `gapictl ping` |
+| Version | `gapictl version` |
+
+## Verifying an agent
+
+```bash
+./bin/gapictl agent verify agents/go/foundational/my_service/my_service
+```
+
+The command reports two things: whether the binary matches its `.b3`
+digest, and whether a `.sig` verifies against a signing key. An unsigned
+agent reports the missing signature rather than failing outright -
+unless the supervisor runs with `supervisor.productionMode: true`, which
+refuses to start anything unverified.
+
+To sign one:
+
+```bash
+./bin/gapictl crypto keygen --out signing-key
+```
+
+That writes `signing-key.pem` (private) and `signing-key.pub.hex`
+(public).
+
+```bash
+./bin/gapictl crypto sign agents/go/foundational/my_service/my_service --key signing-key.pem
 ```
 
 ## Troubleshooting
 
-### Build Fails
+**The agent does not appear in `agent status`.** Check the discovery
+root. GAPI searches several paths; `RUNTIME_AGENT_PATH` overrides them
+with one directory of your choosing.
 
-Make sure you're in the correct directory:
+**The agent is listed but never starts.** Check `ENABLED`. An agent with
+`ENABLED = False` is registered and visible but not started
+automatically; `gapictl lifecycle start` still works on it.
+
+**Metadata seems to be ignored.** Check that it is a real assignment and
+not a comment. `# TYPE = "timer"` is read by nothing.
+
+**Python metadata is ignored on a fresh clone.** The Python ADK needs
+its native bindings built:
 
 ```bash
-cd agents/go/foundational/my_service
-go build .  # Test build directly
+mage python:build
 ```
 
-### Verification Fails
+## Next steps
 
-Check that the binary hasn't been modified:
-
-```bash
-# Rebuild
-gapictl agent build agents/go/my_service
-
-# Verify again
-gapictl agent verify agents/build/go/my_service
-```
-
-## What's Next?
-
-Now that you have a working agent, explore:
-
-- **Timer agents** for scheduled tasks
-- **Socket agents** for network services
-- **Resource limits** with cgroups
-- **Cross-ADK testing** for parity verification
+- [Configuration](configuration.md) - every config key and metadata field
+- [Agent examples](agent-examples.md) - services, timers, sockets
+- [Development](development.md) - working on GAPI itself
+- [Installation](installation.md) - deploying beyond a dev shell

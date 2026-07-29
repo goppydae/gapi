@@ -1,212 +1,314 @@
 # GAPI Design Document
 
-**Version**: 1.2
-**Date**: Dec 14, 2025
+**Version**: 1.3
 **Author**: Enqack
 
-______________________________________________________________________
-
-## 🧭 Project Overview
-
-**GAPI** is a lightweight, event-driven supervision framework designed for managing distributed daemon (agent) lifecycles in both local and clustered environments. It supports Go and Python natively and is built around principles of clarity, zero-config startup, and scalable coordination.
+This describes the design as built. Where the design and the code
+disagree, `divergence.jsonl` is the record, and it wins over this
+document.
 
 ______________________________________________________________________
 
-## 🏛 Architecture Philosophy: GAPI vs. Goblin
+## Overview
 
-The core architectural principle of the ecosystem is **Mechanism vs. Policy**, distinguishing between the local runtime and the distributed orchestrator.
-
-### The Golden Rule: "Single Node vs. Multi-Node"
-
-#### 1. GAPI (The Runtime / Keyword: "Local")
-
-- **Scope**: STRICTLY single-machine.
-- **Responsibility**: "I know how to start a process, capture its logs, restart it if it crashes, and verify its signature."
-- **Ignorance**: GAPI knows **nothing** about clusters, other nodes, leader election, or consensus. It treats the world as if it is the only computer in existence.
-- **Role**: GAPI is the **library** or **framework** that Goblin imports to perform local work. It is **embedded** directly into the `goblind` process.
-
-#### 2. Goblin (The Orchestrator / Keyword: "Cluster")
-
-- **Scope**: Coordination **across machines**.
-- **Responsibility**: "I know that Agent X should be running on Node 3."
-- **Policy**: Raft consensus, Serf discovery, scheduling algorithms, and global failover logic.
-- **Role**: Goblin wraps GAPI. It listens to the cluster, makes decisions (Policy), and uses GAPI methods (Mechanism) to drive local state.
-
-### Feature Separation Matrix
-
-| Feature                 | Component  | Reasoning                                                |
-| :---------------------- | :--------- | :------------------------------------------------------- |
-| **Process Supervision** | **GAPI**   | Controlling a PID is a local kernel operation.           |
-| **Log Capture**         | **GAPI**   | Capturing stdout/stderr happens at the process boundary. |
-| **Encryption (AGE)**    | **GAPI**   | Decrypting secrets is a local runtime concern.           |
-| **Consensus (Raft)**    | **Goblin** | Coordinated state requires network awareness.            |
-| **Discovery (Serf)**    | **Goblin** | Finding peers is a cluster concern.                      |
-| **"Start Agent"**       | **GAPI**   | The *act* of starting it.                                |
-| **"Schedule Agent"**    | **Goblin** | The *decision* of where to start it.                     |
-| **Agent Capabilities**  | **GAPI**   | Local code introspection.                                |
-| **Global Event Bus**    | **Goblin** | Routing messages between nodes.                          |
-| **Local Event Bus**     | **GAPI**   | Routing messages between local agents (IPC).             |
+GAPI is a single-node agent supervision kernel: an event-driven runtime
+that starts, supervises, verifies and checkpoints agent processes. It
+ships as a library first and a daemon second. Go and Python agents are
+first-class and are meant to behave identically.
 
 ______________________________________________________________________
 
-## 🧱 Core Architecture
+## Mechanism versus policy
 
-- **Language Targets**: Go (compiled) and Python (via native bindings)
-- **Transport**: TCP/QUIC (implemented) and UNIX sockets
-- **Messaging**: Protobuf-encoded control and telemetry messages
-- **Lifecycle Model**: Lifecycle-aware agents with structured phases and optional hooks
-- **Agent Development Kits (ADKs)**: Provide a zero-boilerplate experience
+The ecosystem splits on one line, and every allocation of
+responsibility follows from it.
 
-______________________________________________________________________
+### GAPI - mechanism, strictly single-machine
 
-## 🔒 Identity, Security, and Integrity
+"I know how to start a process, capture its output, restart it when it
+dies, verify its signature, and dump its memory."
 
-> [!NOTE]
-> **Implementation Status**: Security features are being rolled out incrementally. Current focus is on functional lifecycle parity.
+GAPI knows nothing about clusters, peers, leaders or consensus. It
+treats the world as though it is the only computer that exists. It is
+the library Goblin imports and runs **in process**; a Goblin deployment
+is one binary, not two daemons.
 
-- **BLAKE3** for schema and identity hashing (Planned).
-- **ED25519** keys for signing manifests and agent identities (Planned).
-- **AGE** for encrypting sealed configuration and message payloads (Planned).
-- Unified cryptographic workflow via `gapi-crypto`, ensuring deterministic and verifiable builds.
-- `--describe` includes version, hash, and signer fingerprints.
-- Manifests and schema hashes verified at runtime for integrity.
+### Goblin - policy, across machines
 
-______________________________________________________________________
+"I know that agent X should be running on node 3, and I know how to move
+it to node 4."
 
-## 📦 Logging and IPC
+Raft consensus, Serf membership, placement, failover, capability token
+issuance, migration coordination.
 
-- Structured logging via **Zerolog**
-- IPC separated from logs for clarity
-- Stream multiplexing over **QUIC** (Active)
+### Separation matrix
 
-______________________________________________________________________
+| Concern | Owner | Why |
+| ------- | ----- | --- |
+| Process supervision | GAPI | controlling a pid is a local operation |
+| Output capture | GAPI | happens at the process boundary |
+| Signal delivery (pidfd + epoch) | GAPI | a pid is local |
+| Checkpoint/restore mechanism | GAPI | CRIU acts on a local process |
+| AGE encryption | GAPI | decrypting a secret is a local concern |
+| Local event bus | GAPI | routing between local agents |
+| cgroups v2 limits | GAPI | a kernel-local control |
+| PID 1 duties | GAPI | init is per-machine by definition |
+| Consensus (Raft) | Goblin | coordinated state needs the network |
+| Membership (Serf) | Goblin | finding peers is a cluster concern |
+| Placement and failover | Goblin | *where* to start it |
+| Live migration policy | Goblin | *when* and *whither* to move it |
+| Capability token issuance | Goblin | authority is cluster-scoped |
+| Distributed event bus | Goblin | routing between nodes |
 
-## 🔁 Lifecycle Model
-
-### Core Methods
-
-- `Initialize()`
-- `Start()`
-- `Stop()`
-- `Reload()`
-
-### Optional Methods
-
-- `Restart()`
-
-### Optional Hooks
-
-- `BeforeStart()`
-- `AfterStop()`
-- `OnSignal(sig)`
-
-Lifecycle methods enable flexible agent control while preserving a minimal interface contract.
+Note the pairing: GAPI owns "the act of starting it", Goblin owns "the
+decision of where". The same pairing holds for migration - GAPI dumps
+and restores, Goblin decides and transports.
 
 ______________________________________________________________________
 
-## 🧩 SDK Design
+## Core architecture
 
-### Functional Layout
-
-- Agents are defined via **flat function files**—no classes or heavy struct requirements.
-- Each function maps directly to a lifecycle phase.
-
-### Zero-Config Self-Description
-
-- **Python ADK**: Uses `gopy` generated bindings to interface directly with Go core logic.
-  - **IPC via QUIC**: Control flow and status updates are transmitted over multiplexed QUIC streams (Protobuf-encoded) instead of stdout.
-  - Native function calls (`Initialize`, `StartQUIC`, `SendEvent`, `StartHeartbeat`) bridge the runtime gap.
-- **Go ADK**: Introspects registered functions and exposes `--describe` metadata.
-
-This design eliminates manifest files and supports fully self-describing agents.
+- **Languages**: Go compiled, Python through gopy-generated native
+  bindings.
+- **Transport**: QUIC, or an in-process local transport. Those are the
+  only two - `core/transport/factory.go` accepts `quic` and `local` and
+  errors on anything else. There is no TCP transport and no UNIX-socket
+  transport.
+- **Wire format**: Protocol Buffers, for control and telemetry both.
+- **Logging**: the standard library's `log/slog`, JSON or text. Zerolog
+  is not used; one config value (`trace`) survives from the zerolog era
+  and maps to debug.
+- **Lifecycle**: a controller driving a state machine, with runners
+  behind a narrow interface.
 
 ______________________________________________________________________
 
-## 🧾 Describe Schema
+## Identity, security and integrity
 
-Defines standardized metadata exposed by all agents:
+Shipped, not planned:
 
-```yaml
-describe:
-  id: "agent-uuid"
-  version: "1.0.0"
-  type: "service"
-  language: "go"
-  hash: "b3f2a4..."
-  signer: "ed25519:aa44..."
-  state: "running"
-  capabilities: ["reload", "restart"]
+- **BLAKE3** digests over agent binaries, written as a `.b3` sidecar.
+- **Ed25519** signatures over that digest, written as a `.sig` sidecar.
+  Sign and verify operate on the canonical hex digest, not on the
+  sidecar's bytes - conflating the two is GAPI-DIV-032, and it made
+  verification impossible for every signature the CLI produced.
+- **AGE** for encrypting material at rest.
+- **Capability tokens** verified here, issued by the orchestrator.
+  Rights are partitioned: GAPI owns bits 0-7 (signal delivery), Goblin
+  owns bits 8 and up.
+
+There is no `gapi-crypto` binary. The crypto surface is
+`core/crypto` as a library and `gapictl crypto` as a CLI.
+
+Enforcement is gated on `supervisor.productionMode`, not on a key being
+configured. In production mode with no verify key, discovery rejects
+every binary loudly - fail closed, never open.
+
+Python agents are not signed artifacts; they are described by running
+the interpreter over the module.
+
+______________________________________________________________________
+
+## Lifecycle model
+
+### The agent interface
+
+`core/lifecycle.Agent` - what a supervised thing must answer:
+
+```go
+Initialize() error
+Start() error
+Stop() error
+Restart() error
+Reload() error
+Describe() *meta.AgentInfo
+ID() string
+Type() string
+Scope() string
 ```
 
-Future iterations will formalize schema validation and introspection contracts for consistent behavior across ADKs.
+`Restart()` is **required**, not optional. Every method above is part of
+the contract.
+
+### The runner interface
+
+`core/lifecycle.Runner` - what actually owns a process:
+
+```go
+Start(ctx context.Context) error
+Stop(ctx context.Context) error
+Reload(ctx context.Context) error
+Reset()
+```
+
+The context bounds the **start operation**, not the process's lifetime.
+Binding a child to it hands `os/exec` a watchdog that kills the agent
+the moment the start call returns; that was GAPI-DIV-028, and the
+interface comment now records it.
+
+### Optional capabilities
+
+Extensions are advertised by implementing an interface, and asserted
+once at admission rather than discovered at failure time:
+
+- `RunIDSetter` - accepts a per-start correlation id.
+- `Checkpointer` - can be dumped and restored with CRIU. `GoAgent` and
+  `PythonAgent` implement it; `TimerAgent` does not, because it has no
+  child process to dump.
+
+`Checkpoint` leaves the process **stopped** on success. That is
+deliberate: the image is the rollback artifact for a migration, and a
+source that keeps executing past the point its image captured has
+already diverged from it.
+
+There are no `BeforeStart`, `AfterStop` or `OnSignal` hooks anywhere in
+the codebase.
 
 ______________________________________________________________________
 
-## 🔗 Interface Contracts
+## SDK design
 
-- Interface contracts defined in Protobuf for lifecycle and IPC.
-- `LifecycleControl`, `LifecycleStatus`, and `Envelope` schemas form the core message types.
-- **Python ADK Implementation**:
-  - Uses `gopy` to bind `adk/go`.
-  - Limitations: No direct `chan` support; strictly uses blocking methods and simple types for the API surface.
-- Versioning and schema compatibility will be enforced across SDKs.
+### Flat functions
 
-______________________________________________________________________
+An agent is a file of functions, not a class hierarchy. Each function
+maps to a lifecycle phase, and the Python runner resolves each phase
+against a list of accepted names - `start` or `run`; `stop`, `shutdown`
+or `teardown`; `reload`, `rehash` or `reconfigure`.
 
-## 🪸 Ecosystem Relationship and Context
+Only `start` is required. If it takes one parameter, the runner passes a
+`threading.Event` set on shutdown, which is the cooperative exit path.
 
-**GAPI** forms the foundational layer of the **GoPPydae ecosystem**, serving as the core runtime and SDK for supervised daemon management. Within this hierarchy:
+### Self-description
 
-- **GAPI** — Core runtime and SDK responsible for lifecycle management, structured logging, cryptographic integrity, and process introspection.
-- **Goblin** — Distributed supervisor extending GAPI into multi-node systems with gossip-based discovery, Raft coordination, and cluster event routing.
-- **GoPPydae** — The broader ecosystem encompassing GAPI, Goblin, and downstream systems (e.g., *TactStratX0.d*).
+- **Go ADK**: the agent answers `--describe` on stdout with a JSON
+  metadata block. Discovery runs it.
+- **Python ADK**: the runner imports the module and reads
+  module-level assignments with `getattr`, against an alias table. That
+  is why comment-style directives are silently dropped - a comment is
+  not an attribute.
 
-### Division of Responsibilities
+No manifest files, in either language.
 
-- **Go (GAPI Core):** Lifecycle, logging, secure IPC.
-- **Python (Logic Layer):** High-level behaviors and algorithms communicating via Protobuf.
-- **Protobuf:** Unified protocol for command and telemetry exchange.
+### The bindings are generated
 
-______________________________________________________________________
+The Python ADK reaches the kernel through gopy bindings under
+`adk/python/gapi/native/`, which are built (`mage python:build`), not
+committed. Absent them the runner falls back to a stub that writes
+events to stdout. `RUNTIME_REJECT_DUMMY_ADK` turns that into a hard
+failure, and production mode sets it.
 
-## 🌐 Network-Aware Supervision (Goblin)
-
-Goblin extends GAPI into multi-node systems with:
-
-- **Serf** for node discovery
-- **Raft** for leader election
-- **Event Bus** for cluster-wide messaging with topic filtering
-- **Namespacing & Tagging** for daemon grouping and ACL control
-
-______________________________________________________________________
-
-## 🧠 Developer Experience Philosophy
-
-- **Zero boilerplate** — just write functions
-- **Optional features auto-detected**
-- **Flat files, no manifests**
-- **SDK handles wiring and introspection**
-- **CLI tools (`gapictl`) manage full lifecycle and cluster control**
+gopy cannot bind Go channels, so the bridge is blocking calls over
+simple types: `Initialize`, `StartQUIC`, `SendEvent`, `StartHeartbeat`,
+`SetSchemaHash`, `ComputeSchemaHash`.
 
 ______________________________________________________________________
 
-## 📘 Appendices
+## Describe schema
 
-### Appendix A — Naming and Taxonomy
+Two shapes exist, deliberately.
 
-- Agents follow `<name>.<language>.<unit-type>` format (e.g., `heartbeat.py.service`).
-- Unit types include `.service`, `.timer`, `.pipe`, `.event`, `.init`.
-- `dae` suffix designates GoPPydae descendants.
+`lifecycle.Agent.Describe()` returns a typed `*meta.AgentInfo`:
 
-### Appendix B — Roadmap and Future Work
+```go
+type AgentInfo struct {
+    ID          string
+    Name        string
+    Version     string
+    Type        string
+    Description string
+    Interval    int
+    Enabled     bool
+    Implements  []string
+}
+```
 
-- Schema validation and describe consistency
-- Native `gopy` channel support (requires upstreams improvements or significant architecture shift)
-- Cross-ADK testing framework
-- Goblin: HA clusters and automatic agent failover
+`agentmgr.Agent.Describe()` returns `map[string]string`, which is what
+the supervisor consults for `type` and `listen_stream` when deciding how
+to auto-start. Being stringly typed is why the enabled flag could not
+live there and became a typed accessor instead (GAPI-DIV-034).
 
-### Appendix C — Build Metadata
+A Go agent's `--describe` output nests under a `describe` key:
 
-- Version stamping via `go build -ldflags`.
-- Schema hash integration from `.schema_hash`.
-- Magefile tasks for build, hash, and describe automation.
+```json
+{
+  "describe": {
+    "id": "my_service",
+    "type": "service",
+    "version": "1.0.0",
+    "language": "go",
+    "capabilities": ["initialize", "start", "stop"]
+  }
+}
+```
+
+______________________________________________________________________
+
+## Interface contracts
+
+Protobuf defines the lifecycle and IPC surface: `LifecycleControl`,
+`LifecycleStatus` and `Envelope` are the core messages. Schema evolution
+is gated by `buf breaking` - see
+[protobuf_compatibility.md](protobuf_compatibility.md), including what
+that gate does *not* catch.
+
+______________________________________________________________________
+
+## Ecosystem
+
+- **GAPI** - the kernel: lifecycle, logging, crypto, checkpoint,
+  transport.
+- **Goblin** - the orchestrator: membership, consensus, placement,
+  migration. Embeds GAPI.
+- **magelib** - the shared build library both repos use for their gates.
+- **GoPPydae** - the ecosystem containing all of the above.
+
+Division of labour inside a deployment: Go carries lifecycle, logging
+and IPC; Python carries agent behaviour; Protobuf carries everything
+crossing a boundary.
+
+______________________________________________________________________
+
+## Developer experience
+
+- Zero boilerplate - write functions.
+- Optional capabilities detected by interface assertion, not
+  configuration.
+- Flat files, no manifests.
+- `gapictl` for the full local lifecycle. Cluster verbs live in
+  `goblinctl`, not here.
+
+______________________________________________________________________
+
+## Appendix A - naming and taxonomy
+
+Python agents are `<name>.py.<unit-type>`, for example
+`heartbeat.py.timer`. Discovery matches on the `.py.` infix plus one of
+exactly **three** suffixes: `.service`, `.timer`, `.socket`. There is no
+`.pipe`, `.event` or `.init` unit type.
+
+`TYPE` values the supervisor acts on are `service`, `oneshot`, `timer`
+and `socket`. A `service` or `oneshot` with no listen address is started
+immediately; a timer is scheduled; anything declaring `LISTEN_STREAM` is
+armed for lazy activation instead.
+
+A Go agent is any executable that answers `--describe`; its filename
+carries no meaning.
+
+The `dae` suffix designates GoPPydae descendants.
+
+## Appendix B - roadmap
+
+- Schedule prefix semantics: `OnBootSec` and `OnStartupSec` currently
+  behave as intervals (GAPI-DIV-036).
+- Timer parity: only Python timers are scheduled (GAPI-DIV-037).
+- Schema validation and describe consistency across the two ADKs.
+- Native gopy channel support - needs upstream work or an architecture
+  shift.
+
+## Appendix C - build metadata
+
+Version is stamped at link time into `core/version.GAPIVersion`,
+resolved env-over-tag-over-file from the root `VERSION`. Editing
+`core/version/version.go` achieves nothing; the linker overwrites it.
+Build, hash and release automation live in `Magefile.go` on top of
+`magelib`.

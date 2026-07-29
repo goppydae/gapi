@@ -1,215 +1,80 @@
-# GAPI Installation Guide
+# Installation Guide
 
-This guide covers multiple installation methods for GAPI, including NixOS deployment, systemd integration, and PID1 testing for container environments.
+Deploying GAPI beyond a dev shell.
 
-## Table of Contents
+## Contents
 
-- [Quick Start](#quick-start)
-- [NixOS Installation](#nixos-installation)
-- [Systemd Service](#systemd-service)
-- [Container Deployment](#container-deployment)
-- [PID1 Testing on NixOS](#pid1-testing-on-nixos)
-- [Development Installation](#development-installation)
+- [Quick start](#quick-start)
+- [NixOS module](#nixos-module)
+- [Flake outputs](#flake-outputs)
+- [Systemd unit by hand](#systemd-unit-by-hand)
+- [Machine images](#machine-images)
+- [Containers](#containers)
+- [PID 1](#pid-1)
+- [Configuration](#configuration)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
 
-______________________________________________________________________
+## Quick start
 
-## Quick Start
-
-### From Source (Nix)
+### From source, with Nix
 
 ```bash
-# Clone the repository
 git clone https://github.com/goppydae/gapi.git
+```
+
+```bash
 cd gapi
+```
 
-# Build with Nix
+```bash
 nix develop -c mage build
-
-# Install binaries
-sudo install -m 755 bin/gapid /usr/local/bin/
-sudo install -m 755 bin/gapictl /usr/local/bin/
 ```
 
-### From Source (Go)
+Binaries land in `bin/`. `mage build` does not put them on `PATH`;
+`mage install` places them in `$GOPATH/bin`.
 
 ```bash
-# Prerequisites: Go 1.23+, GCC, Python 3
-go build -o bin/gapid ./cmd/gapid
-go build -o bin/gapictl ./cmd/gapictl
-
-sudo install -m 755 bin/gapid /usr/local/bin/
-sudo install -m 755 bin/gapictl /usr/local/bin/
+nix develop -c mage install
 ```
 
-______________________________________________________________________
+### From source, without Nix
 
-## NixOS Installation
-
-### Method 1: NixOS Module (Recommended)
-
-Create a NixOS module for GAPI:
-
-**`/etc/nixos/modules/gapi.nix`:**
-
-```nix
-{ config, lib, pkgs, ... }:
-
-with lib;
-
-let
-  cfg = config.services.gapi;
-  
-  # Build GAPI from source
-  gapi = pkgs.buildGoModule rec {
-    pname = "gapi";
-    version = "0.1.0";
-    
-    src = /path/to/gapi/source;  # Update this path
-    
-    vendorHash = null;  # Update after first build
-    
-    buildInputs = with pkgs; [ gcc python3 ];
-    
-    buildPhase = ''
-      export HOME=$TMPDIR
-      go build -o gapid ./cmd/gapid
-      go build -o gapictl ./cmd/gapictl
-    '';
-    
-    installPhase = ''
-      mkdir -p $out/bin
-      install -m 755 gapid $out/bin/
-      install -m 755 gapictl $out/bin/
-    '';
-  };
-
-in {
-  options.services.gapi = {
-    enable = mkEnableOption "GAPI agent supervision framework";
-    
-    package = mkOption {
-      type = types.package;
-      default = gapi;
-      description = "GAPI package to use";
-    };
-    
-    agentsDir = mkOption {
-      type = types.path;
-      default = "/var/lib/gapi/agents";
-      description = "Directory containing agent definitions";
-    };
-    
-    configFile = mkOption {
-      type = types.nullOr types.path;
-      default = null;
-      description = "Path to config.yaml";
-    };
-    
-    user = mkOption {
-      type = types.str;
-      default = "gapi";
-      description = "User to run GAPI as";
-    };
-    
-    group = mkOption {
-      type = types.str;
-      default = "gapi";
-      description = "Group to run GAPI as";
-    };
-  };
-
-  config = mkIf cfg.enable {
-    users.users.${cfg.user} = {
-      isSystemUser = true;
-      group = cfg.group;
-      description = "GAPI service user";
-      home = "/var/lib/gapi";
-      createHome = true;
-    };
-    
-    users.groups.${cfg.group} = {};
-    
-    systemd.services.gapi = {
-      description = "GAPI Agent Supervision Framework";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" ];
-      
-      serviceConfig = {
-        Type = "simple";
-        User = cfg.user;
-        Group = cfg.group;
-        ExecStart = "${cfg.package}/bin/gapid ${optionalString (cfg.configFile != null) "-config ${cfg.configFile}"}";
-        Restart = "on-failure";
-        RestartSec = "5s";
-        
-        # Security hardening
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        ReadWritePaths = [ "/var/lib/gapi" ];
-        
-        # Resource limits
-        LimitNOFILE = 65536;
-        LimitNPROC = 512;
-      };
-      
-      environment = {
-        GAPI_AGENTS_DIR = cfg.agentsDir;
-      };
-    };
-    
-    # Create agents directory
-    systemd.tmpfiles.rules = [
-      "d /var/lib/gapi 0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.agentsDir} 0750 ${cfg.user} ${cfg.group} -"
-    ];
-  };
-}
-```
-
-**Enable in `/etc/nixos/configuration.nix`:**
-
-```nix
-{ config, pkgs, ... }:
-
-{
-  imports = [
-    ./modules/gapi.nix
-  ];
-  
-  services.gapi = {
-    enable = true;
-    agentsDir = "/var/lib/gapi/agents";
-  };
-}
-```
-
-**Rebuild and activate:**
+Go **1.26.0** or newer (the `go` directive in `go.mod`), plus gcc and
+Python 3 if you want the Python ADK. The repo commits a `go.work`
+listing `../magelib`, so a lone clone must disable the workspace:
 
 ```bash
-sudo nixos-rebuild switch
-sudo systemctl status gapi
+GOWORK=off go build -o bin/gapid ./cmd/gapid
 ```
 
-### Method 2: Flake-based Installation
+```bash
+GOWORK=off go build -o bin/gapictl ./cmd/gapictl
+```
 
-Add to your `flake.nix`:
+Built this way the binaries report version `dev` - the real version is
+injected at link time from `VERSION`, which `mage build` does for you.
+
+## NixOS module
+
+The flake exposes `nixosModules.default` (aliased `nixosModules.gapi`)
+at the top level, not per-system, so it imports directly:
 
 ```nix
 {
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    gapi.url = "github:goppydae/gapi";  # Update when published
-  };
-  
+  inputs.gapi.url = "github:goppydae/gapi";
+
   outputs = { self, nixpkgs, gapi }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
         gapi.nixosModules.default
         {
-          services.gapi.enable = true;
+          services.gapi = {
+            enable = true;
+            agentsDir = "/var/lib/gapi/agents";
+            logLevel = "info";
+          };
         }
       ];
     };
@@ -217,18 +82,72 @@ Add to your `flake.nix`:
 }
 ```
 
-______________________________________________________________________
+### Options
 
-## Systemd Service
+| Option | Type | Default |
+| ------ | ---- | ------- |
+| `enable` | bool | `false` |
+| `package` | package | `pkgs.callPackage ./package.nix {}` |
+| `agentsDir` | path | `/var/lib/gapi/agents` |
+| `configFile` | null or path | `null` |
+| `listenAddress` | str | `127.0.0.1:14242` |
+| `certFile` | path | `/var/lib/gapi/certs/server.crt` |
+| `keyFile` | path | `/var/lib/gapi/certs/server.key` |
+| `verifyKey` | null or path | `null` |
+| `logLevel` | `debug`/`info`/`warn`/`error` | `info` |
+| `user` | str | `gapi` |
+| `group` | str | `gapi` |
+| `openFirewall` | bool | `false` |
 
-For non-NixOS systems, create a systemd service manually:
+`certFile` and `keyFile` are module options; they are written into the
+generated config as `transport.tlsCert` and `transport.tlsKey`, which
+are the key names the loader actually reads.
 
-**`/etc/systemd/system/gapi.service`:**
+The module puts `cfg.package` on `environment.systemPackages`, so
+`gapictl` is available once the service is enabled.
+
+With `configFile = null` the module writes `/etc/gapi/config.yaml`,
+which is the one search root a release build consults. Setting
+`configFile` instead exports `RUNTIME_CONFIG` to the unit - there is no
+`-config` flag on `gapid`.
+
+`openFirewall` opens both the TCP and the UDP port parsed from
+`listenAddress`. QUIC is UDP; opening TCP alone achieves nothing.
+
+## Flake outputs
+
+```bash
+nix flake show github:goppydae/gapi
+```
+
+| Output | What it is |
+| ------ | ---------- |
+| `nixosModules.default`, `nixosModules.gapi` | the module above |
+| `packages.<system>.default`, `.gapi` | the two binaries |
+| `packages.<system>.{iso,vm,qcow,raw,docker,lxc,lxc-metadata,virtualbox,vmware}` | machine images |
+| `checks.<system>.module-boot` | a NixOS VM test that boots the module |
+| `devShells.<system>.default` | the pinned development toolchain |
+
+Systems are `x86_64-linux`, `aarch64-linux` and `aarch64-darwin`. The
+image outputs and the checks are Linux-only - on darwin they are absent
+rather than broken, so `nix flake check` on a Mac finds nothing to do
+instead of failing.
+
+```bash
+nix build github:goppydae/gapi
+```
+
+```bash
+nix flake check
+```
+
+## Systemd unit by hand
+
+For non-NixOS hosts. The module above is preferable where it applies.
 
 ```ini
 [Unit]
 Description=GAPI Agent Supervision Framework
-Documentation=https://github.com/goppydae/gapi
 After=network.target
 
 [Service]
@@ -238,563 +157,268 @@ Group=gapi
 ExecStart=/usr/local/bin/gapid
 Restart=on-failure
 RestartSec=5s
-
-# Environment
-Environment="GAPI_AGENTS_DIR=/var/lib/gapi/agents"
-
-# Working directory
 WorkingDirectory=/var/lib/gapi
 
-# Security
+Environment=RUNTIME_AGENT_PATH=/var/lib/gapi/agents
+Environment=RUNTIME_CONFIG=/etc/gapi/config.yaml
+
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/gapi
+ProtectKernelTunables=true
+ProtectKernelModules=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service ~@privileged ~@resources
+SystemCallErrorNumber=EPERM
 
-# Resource limits
 LimitNOFILE=65536
-LimitNPROC=512
+MemoryMax=2G
+TasksMax=256
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-**Setup and enable:**
+The variables are `RUNTIME_`-prefixed. `GAPI_AGENTS_DIR` is read by
+nothing.
 
 ```bash
-# Create user and directories
-sudo useradd -r -s /bin/false -d /var/lib/gapi gapi
-sudo mkdir -p /var/lib/gapi/agents
-sudo chown -R gapi:gapi /var/lib/gapi
-
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable --now gapi.service
-sudo systemctl status gapi
+sudo useradd --system --home /var/lib/gapi --create-home gapi
 ```
-
-______________________________________________________________________
-
-## Container Deployment
-
-### Docker
-
-**`Dockerfile`:**
-
-```dockerfile
-FROM nixos/nix:latest AS builder
-
-WORKDIR /build
-COPY . .
-
-RUN nix develop -c mage build
-
-FROM debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    python3 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY --from=builder /build/bin/gapid /usr/local/bin/
-COPY --from=builder /build/bin/gapictl /usr/local/bin/
-
-RUN useradd -r -s /bin/false gapi && \
-    mkdir -p /var/lib/gapi/agents && \
-    chown -R gapi:gapi /var/lib/gapi
-
-USER gapi
-WORKDIR /var/lib/gapi
-
-EXPOSE 4242
-
-CMD ["/usr/local/bin/gapid"]
-```
-
-**Build and run:**
 
 ```bash
-docker build -t gapi:latest .
-docker run -d \
-  --name gapi \
-  -v /path/to/agents:/var/lib/gapi/agents \
-  -p 4242:4242 \
-  gapi:latest
+sudo systemctl enable --now gapi
 ```
 
-### NixOS Container
+Note that this hardening is incompatible with PID 1 mode, which needs
+mount and reboot privileges the sandbox removes.
 
-```nix
-containers.gapi = {
-  autoStart = true;
-  privateNetwork = false;
-  
-  config = { config, pkgs, ... }: {
-    services.gapi = {
-      enable = true;
-      agentsDir = "/var/lib/gapi/agents";
-    };
-  };
-};
-```
+## Machine images
 
-______________________________________________________________________
+`nix/generators/base.nix` is a NixOS configuration that imports the
+module, enables the service, and installs two example agents. Every
+image format builds from it.
 
-## nixos-generators - Multi-Format Image Builder
-
-[nixos-generators](https://github.com/nix-community/nixos-generators) allows creating bootable images in multiple formats from a single NixOS configuration. This is perfect for testing GAPI across different deployment scenarios.
-
-### Quick Start
-
-The GAPI flake includes pre-configured nixos-generators outputs:
+| Format | Command |
+| ------ | ------- |
+| ISO | `nix build .#iso` |
+| QEMU VM | `nix build .#vm` |
+| QCOW2 | `nix build .#qcow` |
+| Raw disk | `nix build .#raw` |
+| Docker | `nix build .#docker` |
+| LXC | `nix build .#lxc` and `nix build .#lxc-metadata` |
+| VirtualBox | `nix build .#virtualbox` |
+| VMware | `nix build .#vmware` |
 
 ```bash
-# Build bootable ISO
-nix build .#iso
-
-# Build QEMU VM
 nix build .#vm
+```
+
+```bash
 ./result/bin/run-*-vm
-
-# Build QCOW2 image
-nix build .#qcow
-
-# Build Docker container
-nix build .#docker
-
-# Build LXC container
-nix build .#lxc
 ```
 
-### Available Formats
-
-| Format         | Command                  | Use Case                  |
-| -------------- | ------------------------ | ------------------------- |
-| **iso**        | `nix build .#iso`        | Bootable USB/CD installer |
-| **vm**         | `nix build .#vm`         | QEMU VM with GUI          |
-| **vm-nogui**   | `nix build .#vm-nogui`   | Headless QEMU VM          |
-| **qcow**       | `nix build .#qcow`       | QCOW2 for QEMU/KVM        |
-| **raw**        | `nix build .#raw`        | Raw disk image            |
-| **raw-efi**    | `nix build .#raw-efi`    | EFI-bootable raw image    |
-| **virtualbox** | `nix build .#virtualbox` | VirtualBox OVA            |
-| **vmware**     | `nix build .#vmware`     | VMware VMDK               |
-| **lxc**        | `nix build .#lxc`        | LXC container             |
-| **docker**     | `nix build .#docker`     | Docker image              |
-
-### Testing Workflow
-
-#### 1. ISO Testing
+Inside the guest:
 
 ```bash
-# Build ISO
-nix build .#iso
-
-# Test in QEMU
-qemu-system-x86_64 \
-  -cdrom ./result/iso/*.iso \
-  -m 4G \
-  -enable-kvm
-
-# Or write to USB
-sudo dd if=./result/iso/*.iso of=/dev/sdX bs=4M status=progress
-```
-
-#### 2. VM Testing
-
-```bash
-# Build and run
-nix build .#vm
-./result/bin/run-*-vm
-
-# Inside VM
 systemctl status gapi
-gapictl status
-
-# Test agents are pre-configured:
-# - heartbeat.py.timer (runs every 30s)
-# - sysinfo.py.service (long-running service)
 ```
-
-#### 3. Container Testing (LXC)
 
 ```bash
-# Build container and metadata
-nix build .#lxc
-nix build .#lxc-metadata
-
-# Import into LXC
-lxc image import \
-  ./result-metadata/tarball/*.tar.xz \
-  ./result/tarball/*.tar.xz \
-  --alias gapi-test
-
-# Launch and test
-lxc launch gapi-test test-instance
-lxc exec test-instance -- systemctl status gapi
-lxc exec test-instance -- gapictl status
+gapictl agent status
 ```
 
-#### 4. Docker Testing
+The example agents are `heartbeat.py.timer` and `sysinfo.py.service`.
+Their metadata is written as real module-level assignments - commented
+directives are read by nothing.
+
+### LXC
 
 ```bash
-# Build Docker image
-nix build .#docker
-
-# Load and run
-docker load < ./result
-docker run -it nixos:latest
-
-# Inside container
-systemctl status gapi
-gapictl status
+nix build .#lxc -o result-rootfs
 ```
 
-### Customization
-
-Edit `nix/generators/base.nix` to customize the configuration:
-
-```nix
-{
-  services.gapi = {
-    enable = true;
-    logLevel = "debug";  # Change log level
-  };
-  
-  # Add custom agents
-  environment.etc."gapi/agents/myagent.py.service".text = ''
-    # ENABLED = True
-    # TYPE = service
-    def start():
-        print("Custom agent")
-  '';
-}
+```bash
+nix build .#lxc-metadata -o result-metadata
 ```
 
-### CI/CD Integration
-
-```yaml
-# .github/workflows/test-images.yml
-name: Test Images
-on: [push, pull_request]
-
-jobs:
-  build-images:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        format: [iso, vm, qcow, docker]
-    steps:
-      - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-      - name: Build ${{ matrix.format }}
-        run: nix build .#${{ matrix.format }}
+```bash
+lxc image import ./result-metadata/tarball/*.tar.xz ./result-rootfs/tarball/*.tar.xz --alias gapi-test
 ```
 
-### Advanced: Custom Formats
+### Customizing
 
-Create custom image formats by adding to `flake.nix`:
+Edit `nix/generators/base.nix`, or compose a new output in `flake.nix`:
 
 ```nix
 packages.custom = nixos-generators.nixosGenerate {
   inherit system;
+  format = "qcow";
   modules = [
     ./nix/generators/base.nix
-    {
-      # Custom configuration
-      services.gapi.logLevel = "debug";
-      virtualisation.diskSize = 20 * 1024;  # 20GB
-    }
+    { services.gapi.logLevel = "debug"; }
   ];
-  format = "qcow";
 };
 ```
 
-______________________________________________________________________
+## Containers
 
-## PID1 Testing on NixOS
+A plain OCI image, if you do not want the NixOS-generated one:
 
-Testing GAPI as PID1 is useful for understanding its behavior as a system supervisor, similar to systemd or runit.
+```dockerfile
+FROM golang:1.26 AS build
+WORKDIR /src
+COPY . .
+ENV GOWORK=off
+RUN go build -o /out/gapid ./cmd/gapid && go build -o /out/gapictl ./cmd/gapictl
 
-### Method 1: NixOS VM with Custom Init
-
-Create a minimal NixOS configuration that uses GAPI as PID1:
-
-**`gapi-pid1-test.nix`:**
-
-```nix
-{ config, pkgs, lib, ... }:
-
-let
-  gapi = pkgs.buildGoModule {
-    pname = "gapi";
-    version = "0.1.0";
-    src = /path/to/gapi/source;
-    vendorHash = null;
-    buildInputs = [ pkgs.gcc pkgs.python3 ];
-    buildPhase = ''
-      go build -o gapid ./cmd/gapid
-      go build -o gapictl ./cmd/gapictl
-    '';
-    installPhase = ''
-      mkdir -p $out/bin
-      install -m 755 gapid $out/bin/
-      install -m 755 gapictl $out/bin/
-    '';
-  };
-
-in {
-  # Use GAPI as PID1
-  boot.isContainer = true;
-  boot.initrd.enable = false;
-  
-  # Override init to use gapid
-  system.build.toplevel = lib.mkForce (
-    pkgs.runCommand "gapi-pid1-system" {} ''
-      mkdir -p $out/bin
-      ln -s ${gapi}/bin/gapid $out/init
-    ''
-  );
-  
-  # Minimal environment
-  environment.systemPackages = [ gapi pkgs.coreutils ];
-  
-  # Disable systemd
-  systemd.package = lib.mkForce pkgs.emptyDirectory;
-}
+FROM debian:stable-slim
+RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/gapid /usr/local/bin/gapid
+COPY --from=build /out/gapictl /usr/local/bin/gapictl
+ENV RUNTIME_AGENT_PATH=/var/lib/gapi/agents
+EXPOSE 14242/udp
+ENTRYPOINT ["/usr/local/bin/gapid"]
 ```
 
-**Build and run VM:**
+QUIC is UDP. Publishing `14242/tcp` publishes nothing useful.
 
 ```bash
-# Build the configuration
-nixos-rebuild build-vm -I nixos-config=./gapi-pid1-test.nix
-
-# Run the VM
-./result/bin/run-nixos-vm
+docker run -p 14242:14242/udp -v ./agents:/var/lib/gapi/agents gapi
 ```
 
-### Method 2: systemd-nspawn Container
+Running `gapid` as the container's init:
 
 ```bash
-# Create a minimal NixOS container
-sudo nixos-container create gapi-test --config-file /etc/nixos/containers/gapi-test.nix
-
-# Start container
-sudo nixos-container start gapi-test
-
-# Enter container
-sudo nixos-container root-login gapi-test
-
-# Inside container, replace init
-sudo systemctl stop gapi
-sudo ln -sf /usr/local/bin/gapid /sbin/init
-sudo reboot
+docker run --init=false gapi gapid --pid1 --no-early-mounts
 ```
 
-### Method 3: QEMU with Direct Kernel Boot
+`--no-early-mounts` matters inside a container: the runtime already owns
+`/proc` and `/sys`, and trying to mount them again fails.
+
+## PID 1
+
+PID 1 behaviour is opt-in. `gapid` does not check whether its own pid is
+1 - without `--pid1` (or `supervisor.pid1Mode: true`) it is an ordinary
+supervisor no matter where it runs.
+
+The only automated path is:
 
 ```bash
-# Build a minimal initrd with gapid
-nix-build -E '
-  with import <nixpkgs> {};
-  makeInitrd {
-    contents = [
-      { object = gapi;
-        symlink = "/init";
-      }
-    ];
-  }
-'
-
-# Boot with QEMU
-qemu-system-x86_64 \
-  -kernel /path/to/kernel \
-  -initrd ./result \
-  -append "init=/init console=ttyS0" \
-  -nographic
+mage testPid1
 ```
 
-### Method 4: NixOS Test Framework
+which runs `gapid` as pid 1 of a rootless podman container. See
+[pid1-testing.md](pid1-testing.md) for what it asserts and how to
+reproduce it by hand.
 
-Create a NixOS test for PID1 behavior:
-
-**`test-gapi-pid1.nix`:**
-
-```nix
-import <nixpkgs/nixos/tests/make-test-python.nix> ({ pkgs, ... }: {
-  name = "gapi-pid1-test";
-  
-  nodes.machine = { config, pkgs, ... }: {
-    services.gapi.enable = true;
-    
-    # Add test agents
-    environment.etc."gapi/agents/test.py.service".text = ''
-      # ENABLED = True
-      # TYPE = service
-      
-      def start():
-          print("Test agent running")
-          import time
-          while True:
-              time.sleep(60)
-    '';
-  };
-  
-  testScript = ''
-    machine.wait_for_unit("gapi.service")
-    machine.succeed("gapictl status")
-    machine.succeed("gapictl status | grep -q test")
-  '';
-})
-```
-
-**Run the test:**
+For a NixOS guest, the flake's VM checks are the supported route:
 
 ```bash
-nix-build test-gapi-pid1.nix
-./result/bin/nixos-test-driver
+nix build .#checks.x86_64-linux.module-boot
 ```
-
-______________________________________________________________________
-
-## Development Installation
-
-For development and testing:
-
-```bash
-# Clone repository
-git clone https://github.com/goppydae/gapi.git
-cd gapi
-
-# Enter Nix development shell
-nix develop
-
-# Build
-mage build
-
-# Run locally (foreground)
-./bin/gapid
-
-# In another terminal
-./bin/gapictl status
-```
-
-### Hot Reload with Air
-
-```bash
-# Install air
-go install github.com/cosmtrek/air@latest
-
-# Run with hot reload
-air
-```
-
-______________________________________________________________________
 
 ## Configuration
 
-After installation, create `/var/lib/gapi/config.yaml`:
+See [configuration.md](configuration.md) for every key, and
+[config-example.md](config-example.md) for worked examples. In brief:
 
-```yaml
-transport:
-  type: quic
-  address: 127.0.0.1:4242
-  certFile: /var/lib/gapi/certs/server.crt
-  keyFile: /var/lib/gapi/certs/server.key
+- A release build reads `/etc/gapi/config.yaml` and nothing else.
+- `RUNTIME_CONFIG` points it elsewhere. There is no `--config` flag.
+- The `RUNTIME_` environment override covers the `transport` (non-TLS),
+  `metrics`, `logging` and `timeouts` sections. It does **not** cover
+  `supervisor.*`, `security.verifyKey` or the TLS paths, and ignores
+  them silently (GAPI-DIV-038) - put those in the file.
+- `transport.insecureSkipVerify` defaults to **true**. Set it to
+  `false`, or set `supervisor.productionMode: true`, before exposing a
+  daemon beyond loopback.
 
-security:
-  verifyKey: /var/lib/gapi/keys/verify.pub  # Optional
-
-logging:
-  level: info
-  format: json
-```
-
-Generate certificates:
+A self-signed certificate for testing:
 
 ```bash
-# Self-signed for testing
-openssl req -x509 -newkey rsa:4096 \
-  -keyout /var/lib/gapi/certs/server.key \
-  -out /var/lib/gapi/certs/server.crt \
-  -days 365 -nodes \
-  -subj "/CN=localhost"
+openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.crt -days 365 -nodes -subj "/CN=gapi"
 ```
-
-______________________________________________________________________
 
 ## Verification
 
-Test your installation:
+```bash
+systemctl status gapi
+```
 
 ```bash
-# Check service status
-sudo systemctl status gapi
+gapictl ping
+```
 
-# List agents
-gapictl status
+```bash
+gapictl agent status
+```
 
-# View logs
-sudo journalctl -u gapi -f
+```bash
+journalctl -u gapi -f
+```
 
-# Test agent deployment
-cat > /var/lib/gapi/agents/test.py.service <<EOF
-# ENABLED = True
-# TYPE = service
+Deploy a test agent:
+
+```bash
+sudo tee /var/lib/gapi/agents/hello.py.service <<'EOF'
+ID = "hello"
+TYPE = "service"
+ENABLED = True
+
+import time
+
 
 def start():
-    print("Hello from GAPI!")
-    import time
     while True:
         time.sleep(60)
 EOF
-
-# Verify agent is discovered
-gapictl status | grep test
 ```
 
-______________________________________________________________________
+```bash
+sudo systemctl restart gapi
+```
+
+```bash
+gapictl agent status
+```
 
 ## Troubleshooting
 
-### Service won't start
+**The unit will not start.** `journalctl -u gapi -n 50`. A cobra usage
+error means a flag that does not exist - `gapid` accepts only
+`--runtime-addr`, `--log-level`, `--pid1` and `--no-early-mounts`.
 
-```bash
-# Check logs
-sudo journalctl -u gapi -n 50
+**`gapictl` cannot reach the daemon.** Check the address. The default is
+`127.0.0.1:14242`, and the transport is QUIC over UDP - a TCP-only
+firewall rule silently blackholes it.
 
-# Verify binary
-which gapid
-gapid --version
+**Agents are not discovered.** Confirm `RUNTIME_AGENT_PATH` points at
+the directory you populated. A Python agent must be named
+`<name>.py.service`, `.py.timer` or `.py.socket` - the `.py.` infix is
+part of the match, so `hello.service` is not a Python agent. A Go agent
+must be an executable file that answers `--describe`.
 
-# Check permissions
-ls -la /var/lib/gapi
-```
+**An agent is listed but never starts.** Check `ENABLED`. An agent with
+`ENABLED = False` is registered and visible but not auto-started;
+`gapictl lifecycle start` still works on it.
 
-### Agents not discovered
+**Configured TLS is ignored.** Check the key spelling. It is `tlsCert`,
+`tlsKey` and `tlsCa`; viper drops unknown keys silently, so
+`certFile`/`keyFile` produce a throwaway self-signed certificate rather
+than an error.
 
-```bash
-# Verify agents directory
-ls -la /var/lib/gapi/agents
+**Checkpoint operations fail.** `core/checkpoint` shells out to `criu`
+and needs `CAP_CHECKPOINT_RESTORE` or `CAP_SYS_ADMIN`. An unprivileged
+process gets a capability error even with the binary present.
 
-# Check agent syntax
-gapictl validate /var/lib/gapi/agents/myagent.py.service
-```
+## Next steps
 
-### PID1 testing issues
-
-- Ensure kernel supports necessary features (cgroups v2, namespaces)
-- Check for missing dependencies in minimal environments
-- Verify GAPI handles signals correctly (SIGTERM, SIGCHLD)
-
-______________________________________________________________________
-
-## Next Steps
-
-- [Agent Development Guide](./AGENTS.md)
-- [Security Best Practices](./SECURITY.md)
-- [Production Deployment](./DEPLOYMENT.md)
+- [Getting started](getting-started.md) - build and run your first agent
+- [Configuration](configuration.md) - every config key and metadata field
+- [Development](development.md) - working on GAPI itself
+- [PID 1 testing](pid1-testing.md) - running as init

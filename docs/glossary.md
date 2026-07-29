@@ -1,4 +1,4 @@
-# GoPPydae Glossary & Invariants
+# GoPPydae Glossary and Invariants
 
 This glossary defines normative meanings for core terms used across GoPPydae.
 If code or docs disagree with this file, the disagreement must be resolved.
@@ -27,7 +27,7 @@ If code or docs disagree with this file, the disagreement must be resolved.
 
 **Evidence hooks:**
 
-- replay test: same inputs ⇒ same outputs hash
+- replay test: same inputs produce the same outputs hash
 - golden trace comparison with stable ordering
 
 ## Agent
@@ -91,7 +91,12 @@ If code or docs disagree with this file, the disagreement must be resolved.
 
 ## Lifecycle Hook
 
-**Definition:** A named phase in the Agent's execution loop (Initialize, Start, Stop).
+**Definition:** A named phase in the Agent's execution loop (Initialize, Start, Stop, Reload, Restart).
+
+Note: these are the lifecycle METHODS on `core/lifecycle.Agent`, all of
+which are required. There are no `BeforeStart`, `AfterStop` or
+`OnSignal` hooks; optional behaviour is advertised by implementing an
+optional interface (`RunIDSetter`, `Checkpointer`) instead.
 
 **Invariants:**
 

@@ -1,246 +1,163 @@
-# GAPI Configuration Example
+# GAPI Configuration Examples
 
-## Complete Configuration with Logging
+Worked examples. For the full key reference see
+[configuration.md](configuration.md).
 
-```yaml
-# Transport Configuration
-transport:
-  type: quic
-  address: ":4242"
-  certFile: "/path/to/cert.pem"  # Optional
-  keyFile: "/path/to/key.pem"    # Optional
+GAPI needs no config file: every setting has a default. These examples
+change specific behaviour.
 
-# Security Configuration
-security:
-  verifyKey: "/path/to/public.key"  # Optional: Enable integrity verification
+## Minimal
 
-# Metrics Configuration
-metrics:
-  enabled: true
-  addr: "127.0.0.1:9090"
-
-# Logging Configuration
-logging:
-  level: "info"      # trace, debug, info, warn, error
-  format: "json"     # json or console
-  
-  # File Output (Optional)
-  file:
-    enabled: true
-    path: "/var/log/gapi/gapi.log"
-    maxSize: 100      # MB
-    maxBackups: 3     # Number of old files to keep
-    maxAge: 28        # Days
-    compress: true    # Compress rotated files
-  
-  # Loki Output (Optional)
-  loki:
-    enabled: false
-    url: "http://loki:3100/loki/api/v1/push"
-    labels:
-      app: "gapi"
-      env: "production"
-      host: "server1"
-```
-
-______________________________________________________________________
-
-## Minimal Configuration (Defaults)
-
-```yaml
-# Everything uses defaults
-# Logs to stdout in JSON format at Info level
-```
-
-______________________________________________________________________
-
-## Development Configuration
-
-```yaml
-logging:
-  level: "debug"
-  format: "console"  # Human-readable output
-```
-
-______________________________________________________________________
-
-## Production Configuration
-
-```yaml
-logging:
-  level: "info"
-  format: "json"
-  
-  file:
-    enabled: true
-    path: "/var/log/gapi/gapi.log"
-    maxSize: 100
-    maxBackups: 5
-    maxAge: 30
-    compress: true
-
-metrics:
-  enabled: true
-  addr: "127.0.0.1:9090"
-```
-
-______________________________________________________________________
-
-## Kubernetes Configuration
-
-```yaml
-# Let K8s handle log collection
-logging:
-  level: "info"
-  format: "json"
-  # No file output - logs go to stdout
-  # K8s log drivers collect from stdout
-```
-
-______________________________________________________________________
-
-## Grafana Stack Configuration
-
-```yaml
-logging:
-  level: "info"
-  format: "json"
-  
-  loki:
-    enabled: true
-    url: "http://loki:3100/loki/api/v1/push"
-    labels:
-      app: "gapi"
-      env: "production"
-
-metrics:
-  enabled: true
-  addr: "127.0.0.1:9090"
-```
-
-______________________________________________________________________
-
-## Environment Variable Overrides
+Nothing at all. `gapid` binds `:14242`, logs JSON at info, and generates
+an ephemeral self-signed certificate.
 
 ```bash
-# Override log level
-export GAPI_LOGGING_LEVEL=debug
-
-# Override log format
-export GAPI_LOGGING_FORMAT=console
-
-# Enable file logging
-export GAPI_LOGGING_FILE_ENABLED=true
-export GAPI_LOGGING_FILE_PATH=/custom/path/gapi.log
-
-# Enable metrics
-export GAPI_METRICS_ENABLED=true
+gapid
 ```
 
-______________________________________________________________________
+## Development: console logs, debug level
 
-## Log Levels
+```yaml
+logging:
+  level: debug
+  format: console
+```
 
-- **trace**: Very detailed, function entry/exit (future)
-- **debug**: Operational details, event flow, configuration
-- **info**: Key events, startup, shutdown, state changes (default)
-- **warn**: Recoverable errors, performance issues
-- **error**: Failures, unrecoverable errors
+Or without a file at all:
 
-______________________________________________________________________
+```bash
+RUNTIME_LOGGING_LEVEL=debug RUNTIME_LOGGING_FORMAT=console gapid
+```
 
-## Log Formats
+Console output comes from the stdlib `slog` text handler:
 
-### JSON (Default)
+```
+time=2026-07-29T10:14:03.221Z level=INFO msg="supervisor running"
+```
+
+JSON output carries `time`, `level` (uppercase) and `msg`:
 
 ```json
-{"level":"info","stream":"runtime","time":"2024-01-15 10:30:45","message":"supervisor running","host":"server1"}
+{"time":"2026-07-29T10:14:03.221Z","level":"INFO","msg":"supervisor running"}
 ```
 
-### Console (Development)
-
-```
-10:30:45 INF supervisor running host=server1 stream=runtime
-```
-
-______________________________________________________________________
-
-## File Rotation
-
-When file logging is enabled:
-
-- **maxSize**: Rotate when file reaches this size (MB)
-- **maxBackups**: Keep this many old log files
-- **maxAge**: Delete files older than this (days)
-- **compress**: Compress rotated files with gzip
-
-Example rotation:
-
-```
-/var/log/gapi/
-├── gapi.log           # Current log
-├── gapi-2024-01-14.log.gz
-├── gapi-2024-01-13.log.gz
-└── gapi-2024-01-12.log.gz
-```
-
-______________________________________________________________________
-
-## Multi-Output Behavior
-
-GAPI supports multiple simultaneous outputs:
-
-1. **stdout** (always enabled)
-1. **file** (optional, with rotation)
-1. **loki** (optional, for Grafana)
-
-All enabled outputs receive the same log messages.
-
-______________________________________________________________________
-
-## Best Practices
-
-### Development
+## Production: real TLS, verified agents
 
 ```yaml
-logging:
-  level: "debug"
-  format: "console"
-```
+transport:
+  type: quic
+  address: "0.0.0.0:14242"
+  tlsCert: /etc/gapi/server.crt
+  tlsKey: /etc/gapi/server.key
+  tlsCa: /etc/gapi/ca.crt
+  # Without this, GAPI does not verify peers - the default is true.
+  insecureSkipVerify: false
 
-### Production (Bare Metal)
+security:
+  verifyKey: /etc/gapi/agent-signing.pub.hex
 
-```yaml
+supervisor:
+  # Refuses to start without TLS, and refuses to start any agent whose
+  # signature does not verify.
+  productionMode: true
+
 logging:
-  level: "info"
-  format: "json"
+  level: info
+  format: json
   file:
     enabled: true
-    path: "/var/log/gapi/gapi.log"
+    path: /var/log/gapi/gapi.log
     maxSize: 100
-    maxBackups: 5
+    maxBackups: 3
+    maxAge: 28
     compress: true
 ```
 
-### Production (Docker/K8s)
+## Metrics
+
+Disabled by default.
 
 ```yaml
-logging:
-  level: "info"
-  format: "json"
-  # stdout only - let container runtime handle collection
+metrics:
+  enabled: true
+  addr: 127.0.0.1:19090
 ```
 
-### Production (Grafana Stack)
+## Timeouts
+
+All strings, parsed as Go durations.
 
 ```yaml
-logging:
-  level: "info"
-  format: "json"
-  loki:
+timeouts:
+  quicStream: "10s"
+  quicIdle: "60s"
+  clientPending: "2s"
+  clientTerminal: "20s"
+  supervisorStart: "20s"
+  supervisorShutdown: "5s"
+```
+
+## PID 1 (running as init)
+
+Off by default; `gapid` behaves as an ordinary supervisor unless told
+otherwise. There is no autodetection of `getpid() == 1`.
+
+```yaml
+supervisor:
+  pid1Mode: true
+  noEarlyMounts: false      # true inside a container: the runtime owns mounts
+  watchdog:
     enabled: true
-    url: "http://loki:3100"
-    labels:
-      app: "gapi"
-      env: "prod"
+    device: /dev/watchdog
+    interval: "10s"
+  shutdown:
+    gracePeriod: "10s"
 ```
+
+Equivalently, by flag:
+
+```bash
+gapid --pid1
+```
+
+```bash
+gapid --pid1 --no-early-mounts
+```
+
+## Loki
+
+Not implemented. The keys exist in the schema, but enabling them is a
+**hard startup failure**, by design - the alternative would be silently
+dropping logs an operator believes are being shipped:
+
+```
+loki output is enabled but not implemented; disable logging.loki.enabled
+or remove the loki configuration
+```
+
+Use the file sink and ship the file, until this is built.
+
+## Environment-only configuration
+
+Many keys can be set without a file. Prefix `RUNTIME_`, uppercase, dots
+to underscores:
+
+```bash
+RUNTIME_TRANSPORT_ADDRESS=:15000 RUNTIME_LOGGING_LEVEL=warn RUNTIME_METRICS_ENABLED=true gapid
+```
+
+The prefix is `RUNTIME`, not `GAPI`.
+
+This does **not** cover the `supervisor` section, `security.verifyKey`
+or the `transport` TLS paths - those are silently ignored from the
+environment (GAPI-DIV-038) and must go in the file. The one exception is
+`RUNTIME_VERIFY_KEY`, which the supervisor reads directly.
+
+## Pointing at a specific file
+
+```bash
+RUNTIME_CONFIG=/opt/gapi/prod.yaml gapid
+```
+
+A release build otherwise reads `/etc/gapi/config.yaml` and nothing
+else. There is no `--config` flag.

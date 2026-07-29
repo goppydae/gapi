@@ -1,378 +1,232 @@
 # Development Guide
 
-This document explains how to build, test, and contribute to GAPI.
+Working on GAPI itself.
 
 ## Prerequisites
 
-### Recommended: Nix
-
-The easiest way to get started is with [Nix](https://nixos.org/):
+Everything comes from the Nix dev shell, which pins the whole toolchain.
+Do not satisfy a missing tool with a host install: `mage doctor` fails
+closed on anything resolving outside `/nix/store`.
 
 ```bash
 nix develop
 ```
 
-This provides all dependencies including:
+```bash
+mage doctor
+```
 
-- Go 1.25+
-- Python 3.11+
-- GCC (for CGO)
-- Mage build tool
-- Development tools (linters, formatters)
+The shell pins Go **1.26** (matching the `go` and `toolchain` directives
+in `go.mod`), gcc, protobuf and buf, golangci-lint, gosec, govulncheck,
+criu and libseccomp, and a Python carrying `pytest`, `jsonschema` and
+`pybindgen`.
 
-### Alternative: Manual Setup
-
-If not using Nix, install:
-
-- **Go 1.25+**: [golang.org/dl](https://golang.org/dl/)
-- **Python 3.11+**: [python.org](https://www.python.org/)
-- **GCC**: For CGO compilation
-- **Mage**: `go install github.com/magefile/mage@latest`
-- **Gopy**: `go build -mod=vendor -o $GOBIN/gopy github.com/go-python/gopy` (Must use vendored dependencies)
+`gopy` is built on first shell entry from the in-repo `tools/gopy`
+module, pinned at v0.4.10, into `$GOBIN` - so a stray host `gopy` cannot
+shadow the pin.
 
 ## Building
 
-### Using Nix + Mage (Recommended)
-
 ```bash
-nix develop -c mage build
+mage build
 ```
 
-This builds both `bin/gapid` and `bin/gapictl`.
+Produces `bin/gapid` and `bin/gapictl`, each with a `.b3` digest
+sidecar, stamped with the version resolved from `VERSION`.
 
-### Using Go Directly
+### Building outside the workspace
 
-```bash
-go build -o bin/gapid ./cmd/gapid
-go build -o bin/gapictl ./cmd/gapictl
-```
-
-### Development Build
-
-For faster iteration with debug symbols:
+The repo commits a `go.work` listing `../magelib`. A lone clone without
+that sibling must disable the workspace:
 
 ```bash
-nix develop -c mage dev
+GOWORK=off go build ./cmd/gapid
 ```
 
-## Running
+This is the contract CI uses - it has no sibling checkouts and sets
+`GOWORK=off` for every job.
 
-### Start the Supervisor
+### Python bindings
+
+The gopy-generated bindings under `adk/python/gapi/native/` are
+generated, not committed, so a fresh clone has none:
 
 ```bash
-./bin/gapid
+mage python:build
 ```
 
-By default, `gapid`:
-
-- Scans `./agents/` for agent files
-- Listens on `127.0.0.1:4242` (QUIC)
-- Loads `config.yaml` from the current directory
-
-### Use the CLI
-
-```bash
-# Check status
-./bin/gapictl agent status
-
-# Lifecycle control
-./bin/gapictl lifecycle start myagent
-./bin/gapictl lifecycle stop myagent
-./bin/gapictl lifecycle restart myagent
-
-# Interactive TUI
-./bin/gapictl tui
-```
+Without this the Python ADK degrades to a stub (`DummyAdk`), and the
+Python half of the cross-ADK suite tests the fallback rather than the
+ADK. CI runs it before every test job for exactly that reason.
 
 ## Testing
 
-### Run All Tests
+| Target | What it runs |
+| ------ | ------------ |
+| `mage test` | `go test -race ./...` - Go tests only |
+| `mage testShort` | the fast inner-loop subset |
+| `mage testUnit` | `./internal/...` only |
+| `mage testADK` | cross-ADK integration; builds the Python bindings first |
+| `mage testE2E` | the end-to-end script |
+| `mage testPid1` | gapid as PID 1 of a rootless podman container |
+| `mage testTimer` | timer agent behaviour |
+| `mage testIntegrity` | provenance and signature verification |
+| `mage fuzz` | every `Fuzz*` target, bounded |
+
+`mage test` runs **Go tests only** and does not build the Python
+bindings, so on a fresh clone it does not exercise the Python ADK. Run
+`mage python:build` first, or use `mage testADK`, which depends on it.
+
+A single package:
 
 ```bash
-nix develop -c mage test
+go test -race ./core/lifecycle/
 ```
 
-This runs:
-
-- Unit tests
-- Integration tests
-- Python ADK tests
-
-### Run E2E Tests
+## Running it
 
 ```bash
-nix develop -c mage testE2E
+mage dev
 ```
 
-End-to-end tests start a real supervisor and test full workflows.
+Builds the binaries **and** the Python bindings, then runs `./bin/gapid`
+in the foreground with output attached. It is not a watch mode and does
+not reload on change - stop it and re-run.
 
-### Run Specific Tests
+## Gates
 
 ```bash
-# Go tests
-go test ./internal/lifecycle/...
-
-# Python tests
-cd adk/python
-python -m pytest
+mage lint
 ```
 
-### Test Coverage
+Three things, in order: a `gofmt -l` check that fails on any unformatted
+file, `golangci-lint` with the pinned config from
+`../magelib/.golangci.yml`, and **gosec**. The gosec step is the one
+most likely to fail a first contribution. Two rules are carved out
+repo-wide, with the reasons recorded at `Magefile.go`'s `Lint`:
+
+- **G204** - launching operator-registered agent binaries with
+  discovered paths is the product. Roots are fenced by
+  `RUNTIME_AGENT_PATH` and binaries are signature-verified before start.
+- **G304** - every variable-path open routes through `internal/safeio`,
+  so the rule fires only inside that package.
+
+Adding a third carve-out needs a ledger entry, not a `#nosec` comment.
+There is no Python linting in this target.
 
 ```bash
-go test -cover ./...
+mage vuln
 ```
 
-## Code Quality
-
-### Format Code
+`govulncheck`, and a required CI gate. It skips loudly when offline
+rather than passing quietly.
 
 ```bash
-nix develop -c mage fmt
+mage fmt
 ```
 
-This runs:
-
-- `gofmt` on Go code
-- `black` on Python code
-
-### Lint Code
+`goimports -w` over the Go sources. It does not touch Python.
 
 ```bash
-nix develop -c mage lint
+mage envcheck
 ```
 
-This runs:
+Compares the sibling dev shells' tool inventories. Skew between gapi,
+goblin and magelib is red.
 
-- `golangci-lint` for Go
-- `pylint` for Python
-
-### Tidy Dependencies
-
-```bash
-nix develop -c mage tidy
-```
-
-Runs `go mod tidy` to clean up dependencies.
-
-### All-in-One
-
-```bash
-nix develop -c mage all
-```
-
-Runs: format → tidy → build → test
-
-## Project Structure
+## Repository layout
 
 ```
 gapi/
-├── cmd/
-│   ├── gapid/          # Supervisor daemon
-│   │   ├── main.go
-│   │   └── config/
-│   └── gapictl/        # CLI tool
-│       ├── gapictl.go
-│       ├── lifecycle.go
-│       ├── security.go
-│       └── tui/        # Terminal UI
-│
-├── core/
-│   ├── config/         # Configuration loading
-│   ├── crypto/         # Ed25519 + BLAKE3
-│   └── version/        # Version info
-│
-├── internal/
-│   ├── agentmgr/       # Agent lifecycle management
-│   ├── agentreg/       # Agent discovery and registry
-│   ├── cgroups/        # Cgroups v2 resource limits
-│   ├── eventbus/       # Event-driven communication
-│   ├── lifecycle/      # State machine
-│   ├── proto/          # Protobuf definitions
-│   ├── scheduler/      # Timer scheduling
-│   ├── socket/         # Socket activation
-│   └── transport/      # QUIC/TCP transport
-│
-├── adk/
-│   ├── go/             # Go ADK
-│   │   └── agent/
-│   └── python/         # Python ADK (gopy bindings)
-│       ├── gapi/
-│       └── tests/
-│
-├── agents/             # Example agents
-│   ├── hello.py.service
-│   ├── timer.py.timer
-│   └── echo.py.socket
-│
-├── test/
-│   ├── adk/            # ADK test framework
-│   └── e2e/            # End-to-end tests
-│
-├── docs/               # Documentation
-├── nix/                # Nix build configuration
-├── Magefile.go         # Build tasks
-├── flake.nix           # Nix flake
-└── config.yaml         # Example configuration
+|-- cmd/
+|   |-- gapid/            # supervisor daemon (gapid.go)
+|   `-- gapictl/          # CLI shim; the commands live in pkg/cli
+|-- core/                 # the kernel - public API, embedded by goblin
+|   |-- agentmgr/         # runners (go, python, timer) and discovery
+|   |-- lifecycle/        # Agent/Runner interfaces, controller, state machine
+|   |-- supervisor/       # boot, wiring, PID 1 sequencing
+|   |-- checkpoint/       # CRIU dump/restore (Linux only)
+|   |-- procsig/          # pidfd signal delivery guarded by start epoch
+|   |-- crypto/           # Ed25519, BLAKE3, AGE, capability tokens
+|   |-- transport/        # QUIC and the ALPN registry
+|   |-- eventbus/         # in-process bus and topic constants
+|   |-- cgroups/          # cgroups v2 resource limits
+|   |-- config/           # viper loading and agent search paths
+|   |-- pid1/ subreaper/ mounts/ watchdog/ shutdown/
+|   `-- schema/ state/ store/ clock/ logging/ metrics/ tui/ version/ client/ adk/
+|-- internal/             # not importable by consumers
+|   |-- agentreg/ agents/ db/ ident/ logattr/
+|   `-- proto/ safeio/ statewatch/ toposort/
+|-- pkg/
+|   |-- cli/              # every gapictl command, plus templates/
+|   `-- proto/            # generated protobuf
+|-- adk/
+|   |-- go/               # Go ADK
+|   `-- python/           # Python ADK (native/ is generated)
+|-- proto/gapi/v1/        # schema sources
+|-- nix/                  # NixOS module, package, VM tests, generators
+|-- tools/gopy/           # pinned gopy toolchain module
+|-- test/                 # adk/, e2e, pid1/
+|-- config/config.yaml    # example configuration
+`-- divergence.jsonl      # where design and code currently disagree
 ```
 
-## Architecture Overview
+`agentmgr`, `lifecycle`, `eventbus`, `cgroups` and `transport` live
+under `core/`, not `internal/` - they are the API goblin embeds. There
+is no `internal/scheduler` and no `internal/socket`.
 
-### Control Plane
+## Key components
 
-- **`gapid`**: Supervisor daemon that manages agent lifecycles
-- **`gapictl`**: CLI for controlling the supervisor
-- **Event Bus**: Asynchronous communication between components
-
-### Data Plane
-
-- **Agents**: Python or Go programs managed by the supervisor
-- **Transport**: QUIC or TCP for event bus communication
-- **Cgroups**: Resource isolation and limits
-
-### Key Components
-
-1. **Agent Registry** (`agentreg`): Discovers and tracks agents
-1. **Agent Manager** (`agentmgr`): Starts, stops, and monitors agents
-1. **Lifecycle** (`lifecycle`): State machine for agent states
-1. **Scheduler** (`scheduler`): Timer-based execution
-1. **Socket Activation** (`socket`): On-demand agent startup
-1. **Cgroups** (`cgroups`): Resource limits enforcement
+- **Agent manager** (`core/agentmgr`) - discovery and the three runners.
+  `GoAgent` and `PythonAgent` own external processes; `TimerAgent` runs
+  in process, which is why it does not implement `Checkpointer`.
+- **Lifecycle** (`core/lifecycle`) - the `Agent` and `Runner` interfaces
+  plus the optional capabilities `RunIDSetter` and `Checkpointer`.
+- **Supervisor** (`core/supervisor`) - boot ordering, dependency-aware
+  start, subreaper and PID 1 wiring.
+- **Timers** - `core/agentmgr.NewTimerAgent`, dispatched by the
+  supervisor. There is no separate scheduler package.
+- **Socket activation** - the `LISTEN_FDS`/`LISTEN_PID` path in the two
+  process runners. There is no separate socket package.
 
 ## Debugging
 
-### Enable Debug Logging
-
 ```bash
-GAPI_LOG_LEVEL=debug ./bin/gapid
+./bin/gapid --log-level debug
 ```
 
-### Inspect Cgroups
-
 ```bash
-# Find agent cgroup
-systemd-cgls | grep gapi
-
-# Check resource usage
-cat /sys/fs/cgroup/user.slice/.../gapi-myagent/cpu.stat
-cat /sys/fs/cgroup/user.slice/.../gapi-myagent/memory.current
+RUNTIME_LOGGING_LEVEL=debug ./bin/gapid
 ```
 
-### Event Bus Tracing
+`GAPI_LOG_LEVEL` and `GAPI_TRACE_EVENTS` are read by nothing. The
+environment prefix is `RUNTIME`.
 
-Enable event tracing:
+## Versioning
 
-```bash
-GAPI_TRACE_EVENTS=true ./bin/gapid
-```
+`VERSION` at the repo root is the single source of truth. The build
+resolves it env-over-tag-over-file and stamps `core/version.GAPIVersion`
+at link time. Editing `core/version/version.go` achieves nothing - the
+linker overwrites it.
 
-This logs all events published and received.
-
-### Attach Debugger
-
-Using Delve:
+## Before opening a pull request
 
 ```bash
-dlv debug ./cmd/gapid
+mage fmt
 ```
-
-## Contributing
-
-### Workflow
-
-1. **Fork the repository**
-1. **Create a feature branch**: `git checkout -b feature/my-feature`
-1. **Make changes**
-1. **Run tests**: `nix develop -c mage test`
-1. **Format code**: `nix develop -c mage fmt`
-1. **Commit**: `git commit -m "Add my feature"`
-1. **Push**: `git push origin feature/my-feature`
-1. **Open a pull request**
-
-### Commit Messages
-
-Follow conventional commits:
-
-- `feat: Add socket activation support`
-- `fix: Resolve memory leak in agent manager`
-- `docs: Update configuration guide`
-- `test: Add E2E tests for timers`
-- `refactor: Simplify lifecycle state machine`
-
-### Code Style
-
-- **Go**: Follow [Effective Go](https://golang.org/doc/effective_go)
-- **Python**: Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/)
-- **Comments**: Document public APIs and complex logic
-- **Tests**: Write tests for new features and bug fixes
-
-### Pull Request Checklist
-
-- [ ] Tests pass (`mage test`)
-- [ ] Code is formatted (`mage fmt`)
-- [ ] Documentation updated (if applicable)
-- [ ] Commit messages follow conventional commits
-- [ ] No breaking changes (or documented in PR)
-
-## Release Process
-
-1. **Update version** in `core/version/version.go`
-1. **Update CHANGELOG.md**
-1. **Tag release**: `git tag v0.x.0`
-1. **Push tag**: `git push origin v0.x.0`
-1. **Build release binaries**: `nix develop -c mage release`
-1. **Create GitHub release** with binaries
-
-## Troubleshooting
-
-### Build Failures
-
-**CGO errors**:
 
 ```bash
-# Ensure GCC is installed
-gcc --version
+mage lint
 ```
-
-**Nix errors**:
 
 ```bash
-# Update flake
-nix flake update
-
-# Rebuild environment
-nix develop --rebuild
+mage vuln
 ```
 
-### Test Failures
+```bash
+mage test
+```
 
-**E2E tests fail**:
-
-- Ensure no other `gapid` instance is running
-- Check port 4242 is available
-- Verify cgroup delegation (for resource limit tests)
-
-**Python tests fail**:
-
-- Ensure Python 3.11+ is installed
-- Install Python dependencies: `pip install -r adk/python/requirements.txt`
-
-### Runtime Issues
-
-**Agents not starting**:
-
-- Check `ENABLED = True` in agent metadata
-- Verify agent syntax: `python agents/myagent.py.service`
-- Check supervisor logs for errors
-
-**Cgroup errors**:
-
-- Verify cgroup v2 is enabled: `mount | grep cgroup2`
-- Check delegation: `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`
-- See [Features - Resource Limits](features.md#rootless-support)
-
-**Transport errors**:
-
-- Verify certificates exist (for QUIC remote connections) or enable anonymous localhost support
-- Check firewall rules
-- Ensure address is not already in use
+If a change alters behaviour a design doc describes, update the doc or
+record the divergence in `divergence.jsonl`. The ledger is the honesty
+layer, and entries close on artifacts rather than assertions.

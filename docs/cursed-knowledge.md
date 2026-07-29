@@ -1,74 +1,235 @@
-# Cursed Knowledge: Gapi
+# Cursed Knowledge
 
-This file contains lessons learned the hard way. Read this before debugging "impossible" issues.
+Lessons learned the hard way. Read this before debugging an
+"impossible" issue.
 
-## EventBus & Protobuf
+## Signing
 
-### The "Prefix Subscription" Trap
+### Signing the sidecar instead of the digest
 
-**Symptom:** `proto: mismatched message type` errors in logs, even when you verify you are sending the correct message.
-**Cause:** Using `SubscribePrefix("agent/lifecycle")` subscribes to *everything* starting with that string, including `agent/lifecycle.action` AND `agent/lifecycle.status`. If these topics carry different Protobuf message types (e.g., `LifecycleControl` vs `LifecycleStatus`), the subscriber will try to unmarshal `Status` as `Control` and fail.
-**Fix:** Be specific. Subscription topics should match exactly (e.g., `agent/lifecycle.action`) unless you are certain all sub-topics share a message schema.
-**Ref:** `core/supervisor/supervisor.go`
+**Symptom**: every signature `gapictl crypto sign` produced failed
+verification, so `productionMode` could not start any agent - while the
+test suite stayed green.
 
-## Configuration & ADK
+**Cause**: `sign` signed the bare hex digest; the verifier checked the
+signature against the raw bytes of the `.b3` file, which the Magefile
+writes with a trailing newline. The same function trimmed for the digest
+comparison and did not trim for the signature check.
 
-### Agent Discovery Precedence
+**Why the tests missed it**: the safety test signed the sidecar's bytes
+- it mirrored the verifier rather than the CLI, so it validated the
+implementation against itself.
 
-**Symptom:** Test harness or custom config ignores `GAPI_AGENTS_DIR`.
-**Cause:** The config loader prioritizes `GAPI_AGENT_PATH` (singular) over `GAPI_AGENTS_DIR` or XDG paths. `GAPI_AGENT_PATH` is intended to *replace* the search path entirely.
-**Fix:** When testing, use `GAPI_AGENT_PATH` if you want to force a specific directory and ignore system/user paths.
+**Fix**: sign and verify the canonical hex digest. If you write a test
+for a two-sided protocol, drive each side from its real entry point.
 
-### Cross-ADK Constants
+**Ref**: GAPI-DIV-032, `core/crypto/verifybinary_test.go`.
 
-**Symptom:** Agents fail to start or behavior differs between Go/Python agents.
-**Cause:** Implicit constants (like default schedule `OnUnitActiveSec=60s` for timers) duplicated across ADKs.
-**Fix:** When changing behavior in one ADK (e.g., `adk/go`), you MUST verify parity in `adk/python`. Use `test/adk/cross_adk_test.go` to enforce this.
+## Configuration
 
-## Build System
+### Half the environment overrides do nothing
 
-### Gopy & Vendor Directories
+**Symptom**: `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid` starts a
+daemon that is *not* in production mode, silently.
 
-**Symptom:** `gopy gen` fails to locate packages or `go build` fails during binding compilation when a `vendor/` directory is present.
-**Cause:** `gopy` (and the underlying `go/packages` loader) can get confused by `vendor` directories when generating bindings for modules, sometimes failing to resolve dependencies correctly.
-**Fix:** Force module mode by passing `-mod=mod` to `go build` commands when compiling the C-shared library for Python bindings.
-**Ref:** `Magefile.go` (see `Python:Build` task).
+**Cause**: `config.Load` uses viper's `AutomaticEnv` plus `Unmarshal`.
+`Unmarshal` will not consult the environment for a key viper has never
+seen, and only the `transport` (non-TLS), `metrics`, `logging` and
+`timeouts` sections have registered defaults. Every `supervisor.*` key,
+`security.verifyKey` and the TLS paths are unreachable from the
+environment.
 
-## Testing
+**Fix**: put those keys in the config file. `security.verifyKey` has a
+back door - the supervisor reads `RUNTIME_VERIFY_KEY` directly with
+`os.Getenv`, which is why that one variable works.
 
-### Go Fixtures in Integration Tests
+**Ref**: GAPI-DIV-038.
 
-**Symptom:** `go build` fails in tests with "no Go files in ..."
-**Cause:** `cross_adk_test.go` pointing to the directory (package) rather than `main.go` when the fixture is a `main` package.
-**Fix:** Point to `fixtures/go/my_agent/main.go`, not just the directory.
+### Unknown config keys vanish
 
-## quic-go API: The Type Confusion Chronicles (Dec 2024)
+**Symptom**: a configured TLS certificate is ignored and the daemon
+serves an auto-generated self-signed one.
 
-**TL;DR**: `quic.Connection` doesn't exist. Use `*quic.Conn`. Streams are already pointers.
+**Cause**: viper drops keys that do not match a `mapstructure` tag,
+without complaint. `certFile`/`keyFile` are not the key names;
+`tlsCert`/`tlsKey`/`tlsCa` are.
 
-**Why it's cursed**: Documentation shows `Connection`, but only `*quic.Conn` exists in the API.
+**Fix**: check the spelling against `core/config/config.go`. A silent
+downgrade is the failure mode here, not an error.
+
+### Agent metadata written as comments
+
+**Symptom**: a `.py.timer` agent registers, but with default metadata -
+no schedule, wrong type, no dependencies.
+
+**Cause**: the Python runner reads metadata with `getattr` on the
+imported module. A comment is not an attribute.
+
+```python
+# WRONG - read by nothing
+# TYPE = "timer"
+# SCHEDULE = "@hourly"
+```
+
+```python
+# RIGHT
+TYPE = "timer"
+SCHEDULE = "@hourly"
+```
+
+### Agent discovery precedence
+
+**Symptom**: a test harness or custom directory is ignored.
+
+**Cause**: the variable is `RUNTIME_AGENT_PATH`, and it *replaces* the
+search path rather than adding to it. There is no `GAPI_AGENTS_DIR` or
+`GAPI_AGENT_PATH` - both names appear in older docs and are read by
+nothing.
+
+**Fix**: `RUNTIME_AGENT_PATH` to force one directory,
+`RUNTIME_SKIP_SYSTEM_AGENTS=1` to drop the system roots,
+`RUNTIME_DEV_AGENTS` to add development ones.
+
+## Event bus
+
+### The prefix-subscription trap
+
+**Symptom**: `proto: mismatched message type` in the logs, even though
+the sender is demonstrably publishing the right message.
+
+**Cause**: `SubscribePrefix(scope, namespace, "agent/lifecycle", fn)`
+matches *every* topic under that prefix - `agent/lifecycle.action`,
+`.control`, `.status` and `.transition`. Those carry different message
+types, so the handler tries to unmarshal a `LifecycleStatus` as a
+`LifecycleControl` and fails.
+
+**Fix**: subscribe to the exact topic constant unless every sub-topic
+shares a schema. The constants live in `core/eventbus/topics.go`.
+
+## Lifecycle
+
+### `exec.CommandContext` kills the agent instantly
+
+**Symptom**: an agent starts and dies immediately, with no error from
+the agent itself.
+
+**Cause**: the context passed to `Runner.Start` bounds the **start
+operation**, not the process lifetime. It is cancelled the moment the
+start call returns, and `exec.CommandContext` hands `os/exec` a watchdog
+that SIGKILLs the child at exactly that instant.
+
+**Fix**: `exec.Command`, and let `Stop` own the process.
+
+**Ref**: GAPI-DIV-028, `core/lifecycle/interface.go`.
+
+### Only Python timers are actually scheduled
+
+**Symptom**: a Go timer agent runs once at startup and never again,
+despite declaring a `SCHEDULE`.
+
+**Cause**: discovery constructs a `TimerAgent` only for `.py` and
+`.py.timer` paths; everything else becomes a `GoAgent`, which contains no
+scheduling code at all. `gapictl agent new --type timer` defaults to Go
+and scaffolds precisely this.
+
+**Fix**: write timers in Python until this is resolved. Note also the
+hardcoded 30-second bound on each fire.
+
+**Ref**: GAPI-DIV-037.
+
+### The systemd schedule prefixes are all aliases
+
+`OnBootSec=1m` and `OnStartupSec=1m` currently mean exactly what
+`OnUnitActiveSec=1m` means: every minute, forever. The prefix is parsed
+and then discarded.
+
+**Ref**: GAPI-DIV-036.
+
+## Build system
+
+### `-mod=mod` is not the answer
+
+**Symptom**: `gopy gen` or the binding build fails to resolve packages
+with a `vendor/` directory present.
+
+**Cause**: `go/packages` gets confused by vendoring.
+
+**Do not** reach for `-mod=mod`, which an earlier revision of this file
+recommended. It is **illegal in workspace mode**, and this repo commits a
+`go.work`. It is also what made `nix/package.nix` unbuildable for its
+entire existence.
+
+**Fix**: `GOWORK=off`. The gopy toolchain lives in its own `tools/gopy`
+module for the same reason.
+
+**Ref**: GAPI-DIV-033.
+
+### The version you edit is not the version you get
+
+`core/version.GAPIVersion` is overwritten at link time from the root
+`VERSION` file. Editing the Go source changes nothing in a built binary.
+
+### Go fixtures in integration tests
+
+**Symptom**: `go build` fails with "no Go files in ...".
+
+**Cause**: pointing at the directory rather than the file when the
+fixture is a `main` package.
+
+**Fix**: `fixtures/go/my_agent/main.go`, not the directory.
+
+## Nix
+
+### `eachDefaultSystem` now throws
+
+**Symptom**: `nix flake show` fails after an input update, with an error
+about `x86_64-darwin`.
+
+**Cause**: nixpkgs 26.11 dropped `x86_64-darwin`, and
+`flake-utils.lib.eachDefaultSystem` still enumerates it - merely
+instantiating `pkgs` for that platform throws.
+
+**Fix**: an explicit system list. gapi uses `x86_64-linux`,
+`aarch64-linux` and `aarch64-darwin`.
+
+### A NixOS module must not be keyed by system
+
+Defining `nixosModules` inside `eachSystem` produces
+`nixosModules.<system>.default`, which no consumer can import - the
+module is evaluated by the *consuming* system's module system, not ours.
+Keep it outside.
+
+## quic-go API
+
+`quic.Connection` does not exist. The type is `*quic.Conn`, and streams
+are already pointers.
 
 ```go
-// ❌ WRONG
-var conn quic.Connection  // undefined!
+// WRONG - undefined
+var conn quic.Connection
+```
 
-// ✅ CORRECT  
+```go
+// CORRECT
 var conn *quic.Conn
-stream, err := conn.AcceptStream(ctx)  // stream is *quic.Stream
-io.ReadFull(stream, buf)  // Use directly, already implements io.Reader
+stream, err := conn.AcceptStream(ctx)  // *quic.Stream
+io.ReadFull(stream, buf)               // already an io.Reader
 ```
 
-**Discovery Time**: 30+ iterations, 45+ tool calls.
+## Protobuf
 
-## Protobuf Package Organization
+### Same directory, same package
 
-**The Problem**: Multiple `.proto` files in same directory MUST use identical package names.
+Every `.proto` in one directory must declare identical `package` and
+`go_package`, or generation produces two Go packages in one directory:
 
-```protobuf
-// Both files must match:
-package goblin.v1.proto;
-option go_package = "github.com/org/project/internal/proto;goblinv1";
+```
+found packages goblinv1 (file1.pb.go) and proto (file2.pb.go)
 ```
 
-**The Error**: `found packages goblinv1 (file1.pb.go) and proto (file2.pb.go)`\
-**The Fix**: Align both `package` and `go_package` declarations across all `.proto` files.
+### `buf breaking` does not catch renames
+
+The gate is configured with `FILE`, which detects renumbering and
+incompatible type changes but not a field *rename* at a stable number.
+A rename is wire-compatible and source-breaking - see
+[protobuf_compatibility.md](protobuf_compatibility.md).

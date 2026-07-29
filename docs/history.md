@@ -26,7 +26,7 @@ On May 3, the project scope expanded decisively. What began as a specialized tra
 - V1: a functional but scoped supervisor
 - V2: a hardened, general-purpose supervisor with stronger security and extensibility
 
-This is also when the daemon SDK concept sharpened: daemons would be declaratively described, versioned, and lifecycle-aware, with SDKs for both Go and Python. Around this time, the name “Goblin” began to circulate as the eventual distributed supervisor built atop the core runtime.
+This is also when the daemon SDK concept sharpened: daemons would be declaratively described, versioned, and lifecycle-aware, with SDKs for both Go and Python. Around this time, the name "Goblin" began to circulate as the eventual distributed supervisor built atop the core runtime.
 
 ## Birth of GAPI as a Layer (May 4, 2025)
 
@@ -41,7 +41,7 @@ Key structural decisions landed:
 
 From this point forward, GAPI was treated as a platform primitive rather than an application.
 
-## Cryptography and Canonical Core Doctrine (May 5–7, 2025)
+## Cryptography and Canonical Core Doctrine (May 5-7, 2025)
 
 In early May, deterministic security primitives were locked in:
 
@@ -60,7 +60,7 @@ At this stage, GAPI had a skeleton and organs, but not yet full musculature.
 
 ## Design Crystallization (November 11, 2025)
 
-The GAPI design document finalized the project’s constitution:
+The GAPI design document finalized the project's constitution:
 
 - Event-driven supervision framework
 - Local-first with cluster extensibility
@@ -73,7 +73,7 @@ GAPI was now clearly defined as the foundation, Goblin as the distributed superv
 
 ## One-Sentence Arc
 
-GAPI began as an implied kernel for a Go–Python trading daemon, became a distinct runtime boundary in May 2025, hardened around deterministic identity and canonical Go control, and emerged by late 2025 as a formally specified supervision framework.
+GAPI began as an implied kernel for a Go-Python trading daemon, became a distinct runtime boundary in May 2025, hardened around deterministic identity and canonical Go control, and emerged by late 2025 as a formally specified supervision framework.
 
 ## Key Dates
 
