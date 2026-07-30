@@ -5,4 +5,4 @@ package transport
 // contract (append-only, tombstoned): a collision is a review failure,
 // not a runtime discovery. Consumers (the orchestrator's ALPN router)
 // import this constant and never redefine the literal (GAPI-DIV-011).
-const ALPNGapiQUIC = "gapi-quic"
+  const ALPNGapiQUIC = "gapi-quic"
