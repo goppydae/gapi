@@ -49,7 +49,7 @@ buildGoModule rec {
   '';
   
   meta = with lib; {
-    description = "GoPPydae Agent Programming Interface (GAPI) - Agent supervision framework with event-driven daemon management";
+    description = "GoPPydae Agent Process Infrastructure (GAPI) - Agent supervision framework with event-driven daemon management";
     homepage = "https://github.com/goppydae/gapi";
     # MPL-2.0, per the root LICENSE file and the README. This said mit,
     # which is not the licence this code ships under.

@@ -243,7 +243,7 @@ func Fmt() error {
 //     audited chokepoint (clean + absolute, root-confined where a root
 //     exists); the rule now only fires inside that package.
 func Lint() error {
-	mg.Deps(checkHermetic)
+	mg.Deps(checkHermetic, checkTerminology)
 	return magelib.Lint("G204", "G304")
 }
 
@@ -316,6 +316,19 @@ func (Docs) Man() error {
 // checkHermetic ensures tools are running from Nix store
 func checkHermetic() error {
 	return magelib.CheckHermetic()
+}
+
+// checkTerminology enforces the silo's naming rules through magelib.
+// The rules themselves live there, not here: a Magefile sits at the
+// repo root and is walked, so declaring the phrases inline would trip
+// the gate on its own declaration.
+//
+// divergence.jsonl and deprecation.jsonl are skipped because
+// GAPI-DIV-044 quotes both phrases, being about them, and would
+// otherwise fail the gate it asked for.
+func checkTerminology() error {
+	return magelib.CheckTerminology(magelib.GoppydaeTerminologyRules,
+		"divergence.jsonl", "deprecation.jsonl")
 }
 
 // Python namespace for python-related tasks

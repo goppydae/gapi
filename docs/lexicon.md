@@ -37,11 +37,11 @@ ______________________________________________________________________
 **Goblin**\
 The mascot and supervisory entity of GoPPydae. Embodies structured orchestration, event clarity, and quiet precision. Also the name of the multi-node cluster daemon.
 
-**Goppy**\
+**GoPPy**\
 Pronounced like *copy*. A coined term for the Go + Protobuf + Python stack used throughout the ecosystem. The foundation of GoPPydae's architectural design.
 
-**Goppydae**\
-The full ecosystem built on the Goppy stack. Includes Goblin, agents, control tools, and supporting infrastructure. Modeled after the Gobiidae fish family, reflecting adaptability and cluster behavior.
+**GoPPydae**\
+The full ecosystem built on the GoPPy stack. Includes Goblin, agents, control tools, and supporting infrastructure. Modeled after the Gobiidae fish family, reflecting adaptability and cluster behavior.
 
 **Lounge**\
 A conceptual space for idea exchange, lore-building, and system philosophy. Work does not get implemented in the lounge - but it often gets defined there.

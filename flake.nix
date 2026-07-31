@@ -1,5 +1,5 @@
 {
-  description = "GAPI (GoPPydae Agent Programming Interface) - Agent supervision framework with event-driven daemon management";
+  description = "GAPI (GoPPydae Agent Process Infrastructure) - Agent supervision framework with event-driven daemon management";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -118,7 +118,7 @@
               (cd tools/gopy && GOWORK=off go build -o "$GOBIN/gopy" github.com/go-python/gopy)
             fi
 
-            echo "GAPI (GoPPydae Agent Programming Interface) - Agent Supervision Framework"
+            echo "GAPI (GoPPydae Agent Process Infrastructure) - Agent Supervision Framework"
             echo ""
             echo "Available mage tasks:"
             echo "  mage build       - Build gapid and gapictl binaries"

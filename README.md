@@ -1,4 +1,4 @@
-# GAPI (GoPPydae Agent Programming Interface)
+# GAPI (GoPPydae Agent Process Infrastructure)
 
 **GAPI** is the single-node supervision kernel of the GoPPydae
 ecosystem: the mechanism for spawning, supervising, checkpointing and
