@@ -72,6 +72,65 @@ func TestED25519(t *testing.T) {
 	}
 }
 
+func TestSavePrivateIsOwnerOnly(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; mode bits do not deny reads")
+	}
+	kp, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "id.pem")
+	if err := kp.SavePrivate(path); err != nil {
+		t.Fatalf("SavePrivate: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf("private key mode is %#o; group and other bits must be clear", perm)
+	}
+}
+
+// TestSavePrivateTightensAnExistingLooseFile covers regenerating over a
+// path that already holds a world-readable file. O_CREATE's mode does
+// nothing when the file exists, so without the explicit chmod the key
+// bytes land in a 0644 file and are only protected afterwards - if at
+// all.
+func TestSavePrivateTightensAnExistingLooseFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root; mode bits do not deny reads")
+	}
+	kp, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "id.pem")
+	if err := os.WriteFile(path, []byte("stale"), 0o644); err != nil {
+		t.Fatalf("plant loose file: %v", err)
+	}
+	if err := kp.SavePrivate(path); err != nil {
+		t.Fatalf("SavePrivate over an existing file: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Fatalf("private key mode is %#o after overwriting a loose file", perm)
+	}
+	// The stale bytes must be gone, not merely overwritten in place: the
+	// key has to load back identically.
+	loaded, err := LoadPrivate(path)
+	if err != nil {
+		t.Fatalf("LoadPrivate after overwrite: %v", err)
+	}
+	if !loaded.Private.Equal(kp.Private) {
+		t.Fatal("key written over an existing file does not round-trip")
+	}
+}
+
 func TestAGE(t *testing.T) {
 	// 1. Generate Identity
 	id, err := GenerateAgeIdentity()

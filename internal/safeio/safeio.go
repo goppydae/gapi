@@ -63,6 +63,26 @@ func Create(path string) (*os.File, error) {
 	return os.Create(p)
 }
 
+// CreatePrivate creates or truncates a file that only its owner may
+// read. Use it for key material and anything else where the mode is
+// part of the contract.
+//
+// Create goes through os.Create, which is 0666 before umask - fine for
+// build output, wrong for a private key, and the difference is
+// invisible at the call site. Naming the two separately is what stops
+// the next caller getting it wrong by default.
+//
+// The mode argument to O_CREATE applies only when the file does not
+// already exist, so an existing file keeps whatever mode it had. Callers
+// overwriting a path they do not control should chmod as well.
+func CreatePrivate(path string) (*os.File, error) {
+	p, err := Resolve(path)
+	if err != nil {
+		return nil, err
+	}
+	return os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+}
+
 // ReadFile reads the resolved path.
 func ReadFile(path string) ([]byte, error) {
 	p, err := Resolve(path)
