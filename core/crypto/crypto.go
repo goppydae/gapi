@@ -72,6 +72,11 @@ func HashFile(path string) (string, error) {
 // SavePrivate saves the private key to a PEM file in PKCS#8 form ("PRIVATE KEY"
 // block), the same format PEMNS.EncodePrivateKey produces, so a key written here
 // can be loaded through either code path.
+//
+// The file is created owner-only (0600) and chmod'd back to 0600 if it already
+// existed, because O_CREATE's mode does not apply to an existing file. The mode
+// is not left to the caller: every caller of this function is writing a secret,
+// and a caller that forgets leaks the key silently.
 func (k *KeyPair) SavePrivate(path string) error {
 	der, err := x509.MarshalPKCS8PrivateKey(k.Private)
 	if err != nil {
@@ -81,7 +86,7 @@ func (k *KeyPair) SavePrivate(path string) error {
 		Type:  pemTypePKCS8,
 		Bytes: der,
 	}
-	f, err := safeio.Create(path)
+	f, err := safeio.CreatePrivate(path)
 	if err != nil {
 		return err
 	}
@@ -89,7 +94,16 @@ func (k *KeyPair) SavePrivate(path string) error {
 	if cerr := f.Close(); cerr != nil && err == nil {
 		err = cerr
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	// Overwriting a pre-existing file keeps that file's old mode, so tighten
+	// it explicitly. A key the operator believes is protected and is not is
+	// worse than a loud failure.
+	if err := os.Chmod(f.Name(), 0o600); err != nil {
+		return fmt.Errorf("restrict private key permissions: %w", err)
+	}
+	return nil
 }
 
 // LoadPrivate loads a private key from a PEM file. It accepts the canonical
