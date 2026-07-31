@@ -72,10 +72,13 @@ func TestED25519(t *testing.T) {
 	}
 }
 
+// TestSavePrivateIsOwnerOnly asserts the stored mode bits, which are
+// the same whoever asks - so this deliberately does NOT skip under
+// root. An earlier version did, borrowing a guard from a test that
+// chmods 000 and attempts a read, where root genuinely bypasses the
+// check. Here it only made the test vanish in a root CI container while
+// still reporting green.
 func TestSavePrivateIsOwnerOnly(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root; mode bits do not deny reads")
-	}
 	kp, err := GenerateKey()
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -98,10 +101,9 @@ func TestSavePrivateIsOwnerOnly(t *testing.T) {
 // nothing when the file exists, so without the explicit chmod the key
 // bytes land in a 0644 file and are only protected afterwards - if at
 // all.
+// It asserts mode bits, so like the test above it does not skip under
+// root.
 func TestSavePrivateTightensAnExistingLooseFile(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("running as root; mode bits do not deny reads")
-	}
 	kp, err := GenerateKey()
 	if err != nil {
 		t.Fatalf("generate: %v", err)
