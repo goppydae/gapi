@@ -73,7 +73,7 @@ ______________________________________________________________________
 
 The project draws from UNIX lineage, aquatic metaphors, and tactical system design.
 
-- **GAPI** - the core runtime and control system (Go-based API)
+- **GAPI** - the core runtime and control system (Go-based supervision kernel)
 - **Goblin** - the multi-node cluster orchestrator daemon; symbolic and literal overseer
 - **ADK** - Agent Development Kits (replacing the traditional "SDK" term); specialized by language (e.g., Python ADK, Go ADK)
 - `dae` **suffixes** - symbolic taxonomy of agents and utilities, such as `gapictl` (the control interface), or future agents like `netmon.py.daemon`

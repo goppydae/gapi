@@ -1,6 +1,6 @@
 # GAPI
 
-The **GoPPydae Agent Programming Interface**: a single-node agent
+The **GoPPydae Agent Process Infrastructure**: a single-node agent
 supervision kernel. It starts, supervises, verifies and checkpoints
 agent processes on one machine, and knows nothing about clusters.
 
