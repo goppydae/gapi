@@ -3,6 +3,7 @@ package crypto
 import (
 	"bytes"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,6 +131,115 @@ func TestSavePrivateTightensAnExistingLooseFile(t *testing.T) {
 	}
 	if !loaded.Private.Equal(kp.Private) {
 		t.Fatal("key written over an existing file does not round-trip")
+	}
+}
+
+// TestSavePrivateReplacesRatherThanWritesThrough is the gate for
+// GAPI-DIV-045. It plants a loose 0644 file, holds an open descriptor on
+// it, and saves over the path: if the save truncated and wrote through
+// the existing file, the held descriptor would see the key bytes, and
+// the key would have been world-readable for the length of the write. A
+// mode assertion taken afterwards cannot see that window - it passes
+// against the broken code - so the descriptor is the assertion.
+//
+// Like the mode tests above this does not skip under root: it reads
+// content through a descriptor it already owns, which root does not
+// change.
+func TestSavePrivateReplacesRatherThanWritesThrough(t *testing.T) {
+	kp, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "id.pem")
+	const stale = "stale placeholder contents\n"
+	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+		t.Fatalf("plant loose file: %v", err)
+	}
+	held, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("hold open: %v", err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Errorf("close held descriptor: %v", err)
+		}
+	}()
+
+	if err := kp.SavePrivate(path); err != nil {
+		t.Fatalf("SavePrivate over an existing file: %v", err)
+	}
+
+	got, err := io.ReadAll(held)
+	if err != nil {
+		t.Fatalf("read held descriptor: %v", err)
+	}
+	if string(got) != stale {
+		t.Fatalf("the 0644 file the key replaced was written through, not replaced: held descriptor reads %q, want %q", got, stale)
+	}
+	assertOwnerOnly(t, path)
+	loaded, err := LoadPrivate(path)
+	if err != nil {
+		t.Fatalf("LoadPrivate after replace: %v", err)
+	}
+	if !loaded.Private.Equal(kp.Private) {
+		t.Fatal("key written over an existing file does not round-trip")
+	}
+}
+
+// TestWriteAgeIdentityReplacesRatherThanWritesThrough is the same gate
+// for the age identity, which is equally a secret. os.WriteFile's perm
+// argument applied only on create and there was no compensating chmod at
+// all, so the overwrite case was strictly worse here.
+func TestWriteAgeIdentityReplacesRatherThanWritesThrough(t *testing.T) {
+	id, err := GenerateAgeIdentity()
+	if err != nil {
+		t.Fatalf("GenerateAgeIdentity: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "age.key")
+	const stale = "stale placeholder contents\n"
+	if err := os.WriteFile(path, []byte(stale), 0o644); err != nil {
+		t.Fatalf("plant loose file: %v", err)
+	}
+	held, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("hold open: %v", err)
+	}
+	defer func() {
+		if err := held.Close(); err != nil {
+			t.Errorf("close held descriptor: %v", err)
+		}
+	}()
+
+	if err := WriteAgeIdentity(path, id); err != nil {
+		t.Fatalf("WriteAgeIdentity over an existing file: %v", err)
+	}
+
+	got, err := io.ReadAll(held)
+	if err != nil {
+		t.Fatalf("read held descriptor: %v", err)
+	}
+	if string(got) != stale {
+		t.Fatalf("the 0644 file the identity replaced was written through, not replaced: held descriptor reads %q, want %q", got, stale)
+	}
+	assertOwnerOnly(t, path)
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read identity: %v", err)
+	}
+	if !strings.Contains(string(written), id.String()) {
+		t.Fatal("identity written over an existing file does not contain the private key")
+	}
+}
+
+// assertOwnerOnly fails unless path is readable by its owner alone.
+func assertOwnerOnly(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("mode is %#o, want %#o", perm, 0o600)
 	}
 }
 
