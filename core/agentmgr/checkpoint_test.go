@@ -52,7 +52,10 @@ func TestAdoptedPidIsReportedByPid(t *testing.T) {
 		t.Fatal("fresh agent reports a running process")
 	}
 
-	a.adopt(4242)
+	// The error is the epoch capture failing for a pid with no /proc
+	// entry (GAPI-DIV-046); this test is about the pid being recorded
+	// and reported regardless, which is what the reap loop matches on.
+	_ = a.adopt(4242)
 
 	pid, running := a.Pid()
 	if !running {
@@ -65,7 +68,7 @@ func TestAdoptedPidIsReportedByPid(t *testing.T) {
 
 func TestAdoptedPidIsReportedByPidPython(t *testing.T) {
 	a := &PythonAgent{id: "py-1"}
-	a.adopt(4243)
+	_ = a.adopt(4243)
 
 	pid, running := a.Pid()
 	if !running || pid != 4243 {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/goppydae/gapi/core/checkpoint"
+	"github.com/goppydae/gapi/core/procsig"
 )
 
 // Checkpoint/restore support for the runners that own a separate
@@ -56,20 +57,34 @@ func (a *GoAgent) Restore(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	a.adopt(pid)
-	return nil
+	return a.adopt(pid)
 }
 
 // adopt records a restored process. cmd is cleared because the restored
 // process is not the one exec spawned; leaving a stale cmd in place
 // would let Stop signal a pid that no longer belongs to this agent -
 // exactly the recycling hazard the epoch guard exists to prevent.
-func (a *GoAgent) adopt(pid int) {
+//
+// The start epoch is captured HERE and stored (GAPI-DIV-046). Reading it
+// at Stop time would compare the process to itself and could never fail,
+// which makes the guard decorative. Failing to capture it is an error
+// the caller must see - a restore that cannot establish the epoch has
+// not produced a supervisable process. The pid is still recorded, so the
+// reap loop can match the process through Pid(); with no epoch, Stop
+// refuses delivery (ErrStaleEpoch) rather than signalling blind.
+func (a *GoAgent) adopt(pid int) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cmd = nil
 	a.adoptedPid = pid
+	a.adoptedEpoch = 0
 	a.stopping = false
+	epoch, err := procsig.StartEpoch(pid)
+	if err != nil {
+		return fmt.Errorf("adopting restored pid %d for agent %s: %w", pid, a.id, err)
+	}
+	a.adoptedEpoch = epoch
+	return nil
 }
 
 // Checkpoint implements lifecycle.Checkpointer for PythonAgent.
@@ -89,14 +104,22 @@ func (a *PythonAgent) Restore(ctx context.Context, dir string) error {
 	if err != nil {
 		return err
 	}
-	a.adopt(pid)
-	return nil
+	return a.adopt(pid)
 }
 
-func (a *PythonAgent) adopt(pid int) {
+// adopt mirrors GoAgent.adopt, including the epoch capture: the two
+// runners are a parity contract.
+func (a *PythonAgent) adopt(pid int) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cmd = nil
 	a.adoptedPid = pid
+	a.adoptedEpoch = 0
 	a.stopping = false
+	epoch, err := procsig.StartEpoch(pid)
+	if err != nil {
+		return fmt.Errorf("adopting restored pid %d for agent %s: %w", pid, a.id, err)
+	}
+	a.adoptedEpoch = epoch
+	return nil
 }

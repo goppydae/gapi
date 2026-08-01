@@ -56,6 +56,11 @@ type GoAgent struct {
 	// for it; it reparents to the supervisor's subreaper and its exit
 	// arrives through the reap loop rather than cmd.Wait.
 	adoptedPid int
+	// adoptedEpoch is that process's start epoch, captured at adopt
+	// time (GAPI-DIV-046). It is the only thing that distinguishes the
+	// adopted process from a later occupant of the same PID, so Stop
+	// signals through procsig with it rather than by bare PID.
+	adoptedEpoch uint64
 
 	mu   sync.RWMutex
 	ctrl *lifecycle.Controller
@@ -456,6 +461,12 @@ func (a *GoAgent) Stop(ctx context.Context) error {
 	a.mu.Lock()
 
 	if a.cmd == nil || a.cmd.Process == nil {
+		// A CRIU-restored process has no exec.Cmd, but it is running:
+		// returning nil here told the caller "stopped" about a live
+		// process (GAPI-DIV-046).
+		if a.adoptedPid != 0 {
+			return a.stopAdoptedLocked(ctx)
+		}
 		a.mu.Unlock()
 		return nil
 	}
