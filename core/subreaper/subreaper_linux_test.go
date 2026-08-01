@@ -4,6 +4,7 @@ package subreaper_test
 
 import (
 	"context"
+	"maps"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -28,6 +29,51 @@ func binPath(t *testing.T, name string) string {
 	return p
 }
 
+// reapRecorder collects what the loop delivered and what it saw while
+// delivering it. Both halves are read from the test goroutine on the
+// failure path, so both are guarded by the same mutex.
+type reapRecorder struct {
+	mu     sync.Mutex
+	reaped map[int]syscall.WaitStatus
+	events []subreaper.DrainEvent
+}
+
+func newReapRecorder() *reapRecorder {
+	return &reapRecorder{reaped: map[int]syscall.WaitStatus{}}
+}
+
+func (r *reapRecorder) notify(pid int, ws syscall.WaitStatus) {
+	r.mu.Lock()
+	r.reaped[pid] = ws
+	r.mu.Unlock()
+}
+
+func (r *reapRecorder) observe(ev subreaper.DrainEvent) {
+	r.mu.Lock()
+	r.events = append(r.events, ev)
+	r.mu.Unlock()
+}
+
+// status reports what the loop delivered for pid, if anything.
+func (r *reapRecorder) status(pid int) (syscall.WaitStatus, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ws, ok := r.reaped[pid]
+	return ws, ok
+}
+
+// report renders the GAPI-DIV-043 failure dump from a consistent
+// snapshot of both halves.
+func (r *reapRecorder) report(orphanPid int) string {
+	r.mu.Lock()
+	events := make([]subreaper.DrainEvent, len(r.events))
+	copy(events, r.events)
+	reaped := make(map[int]syscall.WaitStatus, len(r.reaped))
+	maps.Copy(reaped, r.reaped)
+	r.mu.Unlock()
+	return diagnose(orphanPid, events, reaped)
+}
+
 // A double-forked orphan is reparented to the subreaper and reaped by
 // the reap loop with its true wait status - the PID-1 obligation,
 // testable unprivileged because any process may be a subreaper.
@@ -40,15 +86,10 @@ func TestReapLoop_ReapsOrphanWithStatus(t *testing.T) {
 	signal.Notify(sigchld, syscall.SIGCHLD)
 	defer signal.Stop(sigchld)
 
-	var mu sync.Mutex
-	reaped := map[int]syscall.WaitStatus{}
+	rec := newReapRecorder()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go subreaper.ReapLoop(ctx, sigchld, func(pid int, ws syscall.WaitStatus) {
-		mu.Lock()
-		reaped[pid] = ws
-		mu.Unlock()
-	})
+	go subreaper.ReapLoopWithObserver(ctx, sigchld, rec.notify, rec.observe)
 
 	// The child backgrounds a subshell (the orphan-to-be) that exits 7,
 	// prints its pid, and exits immediately - orphaning the subshell
@@ -69,17 +110,17 @@ func TestReapLoop_ReapsOrphanWithStatus(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		mu.Lock()
-		ws, ok := reaped[orphanPid]
-		mu.Unlock()
+		ws, ok := rec.status(orphanPid)
 		if ok {
 			if !ws.Exited() || ws.ExitStatus() != 7 {
-				t.Fatalf("orphan %d wait status = %v, want exit 7", orphanPid, ws)
+				t.Fatalf("orphan %d wait status = %v, want exit 7%s",
+					orphanPid, ws, rec.report(orphanPid))
 			}
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("orphan %d was not reaped within 5s", orphanPid)
+			t.Fatalf("orphan %d was not reaped within 5s%s",
+				orphanPid, rec.report(orphanPid))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -107,26 +148,22 @@ func TestReapLoop_DrainsPreexistingZombies(t *testing.T) {
 	signal.Notify(sigchld, syscall.SIGCHLD)
 	defer signal.Stop(sigchld)
 
-	var mu sync.Mutex
-	reaped := map[int]syscall.WaitStatus{}
+	rec := newReapRecorder()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go subreaper.ReapLoop(ctx, sigchld, func(pid int, ws syscall.WaitStatus) {
-		mu.Lock()
-		reaped[pid] = ws
-		mu.Unlock()
-	})
+	go subreaper.ReapLoopWithObserver(ctx, sigchld, rec.notify, rec.observe)
 
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		mu.Lock()
-		_, ok := reaped[orphanPid]
-		mu.Unlock()
-		if ok {
+		if _, ok := rec.status(orphanPid); ok {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("pre-existing zombie %d not drained", orphanPid)
+			// GAPI-DIV-043: this is the flake. The dump is the whole
+			// point of the entry's exit - it has never reproduced
+			// locally, so this text is the only evidence there will be.
+			t.Fatalf("pre-existing zombie %d not drained%s",
+				orphanPid, rec.report(orphanPid))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
