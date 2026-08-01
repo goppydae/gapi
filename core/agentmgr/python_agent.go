@@ -77,6 +77,10 @@ type PythonAgent struct {
 	// adoptedPid holds a CRIU-restored process (parity with GoAgent,
 	// GOBLIN-DIV-018). Not a child of this program, so no exec.Cmd.
 	adoptedPid int
+	// adoptedEpoch is that process's start epoch, captured at adopt
+	// time so Stop can signal it through procsig's guard rather than by
+	// bare PID (parity with GoAgent, GAPI-DIV-046).
+	adoptedEpoch uint64
 }
 
 // Pid returns the running agent process id, or false when no process
@@ -498,6 +502,11 @@ func (a *PythonAgent) Stop(ctx context.Context) error {
 	a.mu.Lock()
 
 	if a.cmd == nil || a.cmd.Process == nil {
+		// A CRIU-restored process has no exec.Cmd but is still running
+		// (parity with GoAgent, GAPI-DIV-046).
+		if a.adoptedPid != 0 {
+			return a.stopAdoptedLocked(ctx)
+		}
 		a.mu.Unlock()
 		return nil
 	}
