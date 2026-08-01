@@ -333,6 +333,13 @@ func (a *GoAgent) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Parsed before anything is allocated or spawned - see PythonAgent's
+	// Start and cgroups.ParseResourceSpec (GAPI-DIV-049).
+	limits, lerr := cgroups.ParseResourceSpec(a.cpuLimit, a.memLimit)
+	if lerr != nil {
+		return fmt.Errorf("agent %s: %w", a.id, lerr)
+	}
+
 	var extraFiles []*os.File
 	if a.listenSpec != "" {
 		socketFile, err := a.ensureListenerLocked()
@@ -394,19 +401,7 @@ func (a *GoAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("cmd.Start: %w", err)
 	}
 
-	// Apply Resource Limits
-	if a.cpuLimit != "" || a.memLimit != "" {
-		spec := parseLimits(a.cpuLimit, a.memLimit)
-		cgName := fmt.Sprintf("gapid-%s", a.id)
-		path, err := cgroups.Create(cgName, spec)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[gapid] failed to create cgroup for %s: %v\n", a.id, err)
-		} else {
-			if err := cgroups.Add(path, a.cmd.Process.Pid); err != nil {
-				fmt.Fprintf(os.Stderr, "[gapid] failed to add pid to cgroup for %s: %v\n", a.id, err)
-			}
-		}
-	}
+	attachCgroup(a.id, limits, a.cmd.Process.Pid)
 
 	// Oneshot behavior: wait for completion. Mirrors PythonAgent.Start -
 	// the lock is released around Wait so the stream handlers (which take

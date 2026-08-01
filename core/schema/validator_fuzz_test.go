@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/goppydae/gapi/core/cgroups"
 )
 
 // Fuzz targets for the manifest validators. These are a hostile
@@ -176,6 +178,104 @@ func FuzzValidateMemoryLimit(f *testing.F) {
 		cnum, cunit, cok := splitMemLimit(canonical)
 		if !cok || cunit != unit || cnum != strconv.FormatInt(v, 10) {
 			t.Fatalf("canonical form %q of %q does not re-split to (%d, %s)", canonical, s, v, unit)
+		}
+	})
+}
+
+// FuzzAcceptedLimitsAreApplicable is the cross-function target. The
+// per-function targets above can only say what a validator accepts;
+// they structurally cannot say whether an accepted limit ever reaches
+// the kernel. That gap was GAPI-DIV-049: "0.5m" and "1B" both validated
+// and both converted to a zero field, and cgroups.Create writes a limit
+// only when the field is positive, so the agent ran with no containment
+// and nothing logged.
+//
+// Three invariants, over the real pair of functions:
+//
+//  1. NO SILENT ZERO. A non-empty limit that ParseResourceSpec accepts
+//     yields a POSITIVE field. This one holds independently of the
+//     validators, and it is the assertion that fails if a parse error is
+//     ever discarded again.
+//  2. ACCEPTED IMPLIES APPLIED. Every string ValidateCPULimit accepts
+//     parses to a positive CPU; likewise ValidateMemoryLimit and Memory.
+//  3. REJECTED IMPLIES NOT APPLIED. A string a validator rejects must
+//     not quietly produce a usable field, or discovery's verdict and the
+//     runtime's behaviour disagree in the other direction.
+//
+// Parsing the pair together must also agree with parsing each alone -
+// otherwise one bad field could launder the other.
+func FuzzAcceptedLimitsAreApplicable(f *testing.F) {
+	seeds := []struct{ cpu, mem string }{
+		{"0.5", "100MB"},                   // ordinary manifest
+		{"500m", "1B"},                     // known-nasty pair: both used to yield zero
+		{"0.5m", "1000B"},                  // fractional millicpu; byte counts
+		{"1", "1KB"},                       // the unit that worked by luck
+		{"2", "1KBB"},                      // the cutset defect: silently meant 1KB
+		{"1m", "1KK"},                      // likewise
+		{"", ""},                           // no limits at all
+		{"0", "0MB"},                       // zero is not a limit
+		{"-1", "-1MB"},                     // negative
+		{"NaN", "1024"},                    // not a quantity; bare count
+		{"Inf", "MB"},                      // not a quantity; unit with no number
+		{"1e400", "1.5MB"},                 // out of range; fractional bytes
+		{"1e300", "9223372036854775807GB"}, // both overflow their product
+		{"  1  ", " 1kb "},                 // whitespace and case
+		{"m", "9007199254740993KB"},        // bare unit; overflow
+	}
+	for _, s := range seeds {
+		f.Add(s.cpu, s.mem)
+	}
+
+	f.Fuzz(func(t *testing.T, cpu, mem string) {
+		cpuErr := ValidateCPULimit(cpu)
+		memErr := ValidateMemoryLimit(mem)
+
+		cpuSpec, cpuParseErr := cgroups.ParseResourceSpec(cpu, "")
+		if cpuParseErr == nil {
+			if cpuSpec.Memory != 0 {
+				t.Fatalf("parsing cpu %q alone set Memory to %d", cpu, cpuSpec.Memory)
+			}
+			if strings.TrimSpace(cpu) != "" && cpuSpec.CPU <= 0 {
+				t.Fatalf("ParseResourceSpec accepted cpu %q but yielded CPU %v", cpu, cpuSpec.CPU)
+			}
+		}
+		if cpuErr == nil {
+			if cpuParseErr != nil {
+				t.Fatalf("ValidateCPULimit accepted %q but ParseResourceSpec rejects it: %v", cpu, cpuParseErr)
+			}
+			if cpuSpec.CPU <= 0 {
+				t.Fatalf("ValidateCPULimit accepted %q but it converts to CPU %v, which Create will not write", cpu, cpuSpec.CPU)
+			}
+		} else if cpuParseErr == nil && cpuSpec.CPU > 0 {
+			t.Fatalf("ValidateCPULimit rejected %q (%v) but it converts to a usable CPU %v", cpu, cpuErr, cpuSpec.CPU)
+		}
+
+		memSpec, memParseErr := cgroups.ParseResourceSpec("", mem)
+		if memParseErr == nil {
+			if memSpec.CPU != 0 {
+				t.Fatalf("parsing memory %q alone set CPU to %v", mem, memSpec.CPU)
+			}
+			if strings.TrimSpace(mem) != "" && memSpec.Memory <= 0 {
+				t.Fatalf("ParseResourceSpec accepted memory %q but yielded Memory %d", mem, memSpec.Memory)
+			}
+		}
+		if memErr == nil {
+			if memParseErr != nil {
+				t.Fatalf("ValidateMemoryLimit accepted %q but ParseResourceSpec rejects it: %v", mem, memParseErr)
+			}
+			if memSpec.Memory <= 0 {
+				t.Fatalf("ValidateMemoryLimit accepted %q but it converts to Memory %d, which Create will not write", mem, memSpec.Memory)
+			}
+		} else if memParseErr == nil && memSpec.Memory > 0 {
+			t.Fatalf("ValidateMemoryLimit rejected %q (%v) but it converts to a usable Memory %d", mem, memErr, memSpec.Memory)
+		}
+
+		both, bothErr := cgroups.ParseResourceSpec(cpu, mem)
+		if (cpuParseErr == nil && memParseErr == nil) != (bothErr == nil) {
+			t.Fatalf("parsing (%q, %q) together disagrees with parsing each alone: %v vs %v/%v", cpu, mem, bothErr, cpuParseErr, memParseErr)
+		}
+		if bothErr == nil && (both.CPU != cpuSpec.CPU || both.Memory != memSpec.Memory) {
+			t.Fatalf("parsing (%q, %q) together gave %+v, want CPU %v and Memory %d", cpu, mem, both, cpuSpec.CPU, memSpec.Memory)
 		}
 	})
 }
