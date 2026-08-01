@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/goppydae/gapi/core/procsig"
+	"github.com/goppydae/gapi/internal/logattr"
 )
 
 // Stop support for adopted (CRIU-restored) processes, GAPI-DIV-046.
@@ -34,6 +36,14 @@ const (
 	// for an adopted process to exit. There is no wait(2) to block on.
 	adoptedPollInterval = 10 * time.Millisecond
 )
+
+// adoptedWatchInterval is how often the adopted exit watcher samples
+// /proc. It is deliberately slower than adoptedPollInterval: that one
+// bounds a wait inside Stop, this one runs for the adopted process's
+// whole lifetime, so the cost is paid forever rather than for a few
+// hundred milliseconds. A var rather than a const only so tests can
+// shorten it; nothing in production writes it.
+var adoptedWatchInterval = 250 * time.Millisecond
 
 // stopAdopted terminates the process identified by (pid, epoch): SIGTERM
 // under the epoch guard, then SIGKILL through the same guarded path if
@@ -165,6 +175,153 @@ func procStat(pid int) (state byte, epoch uint64, err error) {
 	return fields[0][0], epoch, nil
 }
 
+// Exit watching for adopted processes, GAPI-DIV-048.
+//
+// A spawned child's claim on a PID expires by itself: the exit watcher in
+// Start returns from cmd.Wait and cleanupAfterExit clears cmd, so Pid()
+// stops reporting it. An adopted process had no such path - adoptedPid
+// was cleared only by Stop, so a process that exited on its own left the
+// agent claiming a PID forever, and NotifyExited (which matches by PID
+// equality alone, after the process is reaped and no epoch is left to
+// compare) attributed the next reap of that recycled PID to this agent.
+//
+// The claim therefore has to expire on its own. adoptedWatch is the
+// adopted equivalent of that child exit watcher: it polls the SAME
+// guarded liveness check Stop uses - adoptedHasExited compares the stored
+// start epoch while the process still exists, so a recycled PID reads as
+// gone rather than as still-ours - and clears the claim when it is.
+
+// adoptedWatch is a running exit watcher for one adopted process. It is
+// cancellable and joinable: cancel stops the poll loop, done closes when
+// the goroutine has returned. Never start one without a path that joins
+// it (see stop).
+type adoptedWatch struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+}
+
+// newAdoptedWatch starts the exit watcher for (pid, epoch) and calls
+// onExit exactly once, from the watcher goroutine, when that process is
+// gone. The goroutine returns on exactly two events: the exit is
+// detected, or the watch is cancelled. onExit is expected to take the
+// agent's mutex, so stop() must not be called with that mutex held.
+func newAdoptedWatch(pid int, epoch uint64, onExit func()) *adoptedWatch {
+	// Read the interval here, in the caller's goroutine, so a test that
+	// shortens it is ordered against the start rather than racing it.
+	interval := adoptedWatchInterval
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &adoptedWatch{cancel: cancel, done: make(chan struct{})}
+	go func() {
+		defer close(w.done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			if adoptedHasExited(pid, epoch) {
+				onExit()
+				return
+			}
+		}
+	}()
+	return w
+}
+
+// stop cancels the watch and waits for its goroutine to return, so no
+// watcher outlives the agent state it writes to.
+//
+// It MUST NOT be called with the agent's mutex held: the goroutine may be
+// blocked acquiring that mutex inside onExit, and waiting for it from
+// under the lock would deadlock. Nil-safe (no watch to join) and
+// idempotent (cancel and a closed channel both tolerate repeats). The
+// watcher never joins itself - it has already decided to return by the
+// time onExit runs, and closing done is the last thing it does.
+func (w *adoptedWatch) stop() {
+	if w == nil {
+		return
+	}
+	w.cancel()
+	<-w.done
+}
+
+// takeAdoptedWatchLocked detaches the exit watcher from the agent. Called
+// with a.mu held; the caller must join the returned watch with stop()
+// AFTER releasing the lock.
+func (a *GoAgent) takeAdoptedWatchLocked() *adoptedWatch {
+	w := a.adoptedWatch
+	a.adoptedWatch = nil
+	return w
+}
+
+// dropAdoptedLocked clears the adopted claim and detaches its watcher,
+// which the caller joins after releasing a.mu. This is agent teardown
+// (Reset): the claim must not survive the handles it names.
+func (a *GoAgent) dropAdoptedLocked() *adoptedWatch {
+	a.adoptedPid = 0
+	a.adoptedEpoch = 0
+	return a.takeAdoptedWatchLocked()
+}
+
+// adoptedExited runs when the watcher sees the adopted process go, and is
+// the whole point of GAPI-DIV-048: it drops the PID claim so Pid() reports
+// not-running and NotifyExited can no longer match this agent.
+//
+// (pid, epoch) is what the watcher was started on. It is re-checked
+// against the current claim because Stop and a fresh adopt can both
+// replace it while the watcher is in flight; stopping means Stop owns
+// this exit and will publish its own status, exactly as the child exit
+// watcher defers to Stop. FAILED mirrors what that watcher publishes for
+// an exit the supervisor did not initiate.
+func (a *GoAgent) adoptedExited(pid int, epoch uint64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stopping || a.adoptedPid != pid || a.adoptedEpoch != epoch {
+		return
+	}
+	rid := a.nextRunID
+	a.adoptedPid = 0
+	a.adoptedEpoch = 0
+	slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "adopted process exited unexpectedly",
+		logattr.Module("agentmgr"), logattr.AgentID(a.id), slog.Int("pid", pid))
+	a.publishStatusWithRunID("FAILED", "adopted process exited unexpectedly", rid)
+	a.cleanupAfterExit()
+}
+
+// takeAdoptedWatchLocked mirrors GoAgent.takeAdoptedWatchLocked.
+func (a *PythonAgent) takeAdoptedWatchLocked() *adoptedWatch {
+	w := a.adoptedWatch
+	a.adoptedWatch = nil
+	return w
+}
+
+// dropAdoptedLocked mirrors GoAgent.dropAdoptedLocked.
+func (a *PythonAgent) dropAdoptedLocked() *adoptedWatch {
+	a.adoptedPid = 0
+	a.adoptedEpoch = 0
+	return a.takeAdoptedWatchLocked()
+}
+
+// adoptedExited mirrors GoAgent.adoptedExited; the two runners are a
+// parity contract and an adopted process must behave identically under
+// either.
+func (a *PythonAgent) adoptedExited(pid int, epoch uint64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stopping || a.adoptedPid != pid || a.adoptedEpoch != epoch {
+		return
+	}
+	rid := a.nextRunID
+	a.adoptedPid = 0
+	a.adoptedEpoch = 0
+	slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "adopted process exited unexpectedly",
+		logattr.Module("agentmgr"), logattr.AgentID(a.id), slog.Int("pid", pid))
+	a.publishStatusWithRunID("FAILED", "adopted process exited unexpectedly", rid)
+	a.cleanupAfterExit()
+}
+
 // stopAdoptedLocked stops GoAgent's adopted process. It is called with
 // a.mu held and releases it, mirroring the lock discipline of the child
 // path: the lock is dropped around the wait so status publication cannot
@@ -172,8 +329,17 @@ func procStat(pid int) (state byte, epoch uint64, err error) {
 // status transitions, same cleanup, same lazy-activation re-arm.
 func (a *GoAgent) stopAdoptedLocked(ctx context.Context) error {
 	pid, epoch, rid := a.adoptedPid, a.adoptedEpoch, a.nextRunID
+	// Detach the exit watcher under the lock, join it after releasing it.
+	// A watcher already in flight can only observe stopping=true, since
+	// it is set in this same critical section and the watcher must take
+	// a.mu to act - so it defers to Stop rather than publishing its own
+	// exit. Joining then guarantees it is not still running when Stop
+	// returns, and joining with the lock DOWN is what keeps that join
+	// from deadlocking against a watcher blocked on a.mu.
+	w := a.takeAdoptedWatchLocked()
 	a.stopping = true
 	a.mu.Unlock()
+	w.stop()
 
 	err := stopAdopted(ctx, pid, epoch)
 
@@ -199,8 +365,10 @@ func (a *GoAgent) stopAdoptedLocked(ctx context.Context) error {
 // under either.
 func (a *PythonAgent) stopAdoptedLocked(ctx context.Context) error {
 	pid, epoch, rid := a.adoptedPid, a.adoptedEpoch, a.nextRunID
+	w := a.takeAdoptedWatchLocked()
 	a.stopping = true
 	a.mu.Unlock()
+	w.stop()
 
 	err := stopAdopted(ctx, pid, epoch)
 

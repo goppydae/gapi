@@ -81,6 +81,9 @@ type PythonAgent struct {
 	// time so Stop can signal it through procsig's guard rather than by
 	// bare PID (parity with GoAgent, GAPI-DIV-046).
 	adoptedEpoch uint64
+	// adoptedWatch expires that claim when the process goes (parity with
+	// GoAgent, GAPI-DIV-048). Guarded by mu; joined by Stop and Reset.
+	adoptedWatch *adoptedWatch
 }
 
 // Pid returns the running agent process id, or false when no process
@@ -507,7 +510,10 @@ func (a *PythonAgent) Stop(ctx context.Context) error {
 		if a.adoptedPid != 0 {
 			return a.stopAdoptedLocked(ctx)
 		}
+		// Join any watcher that already cleared the claim (GAPI-DIV-048).
+		w := a.takeAdoptedWatchLocked()
 		a.mu.Unlock()
+		w.stop()
 		return nil
 	}
 
@@ -603,8 +609,10 @@ func (a *PythonAgent) Reload(ctx context.Context) error {
 
 func (a *PythonAgent) Reset() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	w := a.dropAdoptedLocked() // joined below, unlocked: it takes a.mu
 	a.cleanupAfterExit()
+	a.mu.Unlock()
+	w.stop()
 }
 
 func (a *PythonAgent) streamControl(r io.Reader) {
