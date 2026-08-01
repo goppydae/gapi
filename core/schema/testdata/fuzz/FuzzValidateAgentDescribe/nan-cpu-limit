@@ -1,0 +1,7 @@
+go test fuzz v1
+string("web")
+string("service")
+string("NaN")
+string("")
+string("")
+string("")

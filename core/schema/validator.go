@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -159,7 +160,7 @@ func ValidateCPULimit(limit string) error {
 	if strings.HasSuffix(limit, "m") {
 		millis := strings.TrimSuffix(limit, "m")
 		val, err := strconv.ParseFloat(millis, 64)
-		if err != nil || val <= 0 {
+		if err != nil || !usableCPUQuantity(val) {
 			return fmt.Errorf("invalid millicpu value: %s", limit)
 		}
 		return nil
@@ -167,11 +168,20 @@ func ValidateCPULimit(limit string) error {
 
 	// Check for decimal format (e.g., "0.5", "1.5")
 	val, err := strconv.ParseFloat(limit, 64)
-	if err != nil || val <= 0 {
+	if err != nil || !usableCPUQuantity(val) {
 		return fmt.Errorf("invalid cpu limit: %s (use format: 0.5, 500m, or 1)", limit)
 	}
 
 	return nil
+}
+
+// usableCPUQuantity reports whether v is a quantity a cgroup can be
+// given. A plain "val <= 0" test is not enough: strconv.ParseFloat
+// accepts "NaN", "Inf" and "+Inf" without error, NaN compares false
+// against every bound, and +Inf is greater than zero - so all three
+// used to validate as CPU limits (GAPI-DIV-042).
+func usableCPUQuantity(v float64) bool {
+	return v > 0 && !math.IsInf(v, 0) && !math.IsNaN(v)
 }
 
 // ValidateMemoryLimit validates memory limit format
@@ -179,21 +189,33 @@ func ValidateCPULimit(limit string) error {
 func ValidateMemoryLimit(limit string) error {
 	limit = strings.TrimSpace(strings.ToUpper(limit))
 
-	validUnits := []string{"GB", "MB", "KB", "B", "G", "M", "K"}
+	// Longest suffix first, so "GB" wins over "B".
+	validUnits := []struct {
+		suffix string
+		bytes  int64
+	}{
+		{"GB", 1 << 30},
+		{"MB", 1 << 20},
+		{"KB", 1 << 10},
+		{"B", 1},
+		{"G", 1 << 30},
+		{"M", 1 << 20},
+		{"K", 1 << 10},
+	}
 
 	// Extract number and unit
 	var num string
-	var unit string
+	var mult int64
 
 	for _, u := range validUnits {
-		if strings.HasSuffix(limit, u) {
-			num = strings.TrimSuffix(limit, u)
-			unit = u
+		if strings.HasSuffix(limit, u.suffix) {
+			num = strings.TrimSuffix(limit, u.suffix)
+			mult = u.bytes
 			break
 		}
 	}
 
-	if unit == "" {
+	if mult == 0 {
 		return fmt.Errorf("invalid memory limit: %s (use format: 100MB, 1GB, etc.)", limit)
 	}
 
@@ -201,6 +223,15 @@ func ValidateMemoryLimit(limit string) error {
 	val, err := strconv.ParseInt(num, 10, 64)
 	if err != nil || val <= 0 {
 		return fmt.Errorf("invalid memory value: %s", limit)
+	}
+
+	// The limit is multiplied out to a byte count in int64 downstream
+	// (agentmgr.parseLimits). A value that fits int64 as a count of
+	// gigabytes need not fit as a count of bytes, and the product wraps
+	// silently - the cgroup would be handed a negative memory limit.
+	// Reject it at the manifest instead (GAPI-DIV-042).
+	if val > math.MaxInt64/mult {
+		return fmt.Errorf("memory limit out of range: %s (exceeds %d bytes)", limit, int64(math.MaxInt64))
 	}
 
 	return nil
