@@ -33,9 +33,14 @@ var (
 //     non-zero fire time and the zero time forever after. This is the
 //     only way a one-shot terminates (GAPI-DIV-036).
 //
-// NOTE: this target does NOT assert that Next(t) is after t. It is not,
-// for negative durations ("-5s", "@every -1s"), and what those inputs
-// should mean is an open question - see the GAPI-DIV-042 report.
+// NOTE: this target does not assert Next(t).After(t) for every accepted
+// input, because a one-shot whose elapse point has passed legitimately
+// returns a time before t. The repeating forms ARE constrained, at
+// parse time rather than here: a non-positive interval is rejected.
+//
+// "@every -1s" is accepted and does advance - robfig's Every() clamps
+// any duration below one second up to one second, so it is a one-second
+// interval, not a negative one. The seed is kept under a name saying so.
 func FuzzParseScheduleAt(f *testing.F) {
 	for _, s := range []string{
 		"OnUnitActiveSec=5s", // repeating systemd form
@@ -47,9 +52,9 @@ func FuzzParseScheduleAt(f *testing.F) {
 		"*/5 * * * *",        // cron
 		"@hourly",            // cron descriptor
 		"@every 1h",
-		"@every -1s", // known-nasty: a delay that walks backwards
+		"@every -1s", // boundary: clamped up to 1s by robfig, not negative
 		"5s",         // raw duration
-		"-5s",        // known-nasty: negative raw interval
+		"-5s",        // known-nasty: non-advancing raw interval, rejected
 		"1m30s",
 		"",                         // empty
 		"   ",                      // whitespace only
@@ -75,12 +80,19 @@ func FuzzParseScheduleAt(f *testing.F) {
 			if !strings.HasPrefix(trimmed, p) {
 				continue
 			}
-			_, derr := time.ParseDuration(strings.TrimPrefix(trimmed, p))
-			if derr == nil && err != nil {
-				t.Fatalf("rejected %q whose duration part parses: %v", s, err)
+			d, derr := time.ParseDuration(strings.TrimPrefix(trimmed, p))
+			// A repeating form additionally requires a POSITIVE
+			// interval: a non-positive one cannot advance, and the run
+			// loop clamps its delay to zero and spins rather than
+			// firing late. The one-shot forms are deliberately NOT
+			// constrained - an elapse point already in the past fires
+			// once, late, which is the documented contract.
+			wantOK := derr == nil && (!repeatingPrefix(p) || d > 0)
+			if wantOK && err != nil {
+				t.Fatalf("rejected %q which should be accepted: %v", s, err)
 			}
-			if derr != nil && err == nil {
-				t.Fatalf("accepted %q whose duration part does not parse", s)
+			if !wantOK && err == nil {
+				t.Fatalf("accepted %q which should be rejected (duration err=%v, value=%v)", s, derr, d)
 			}
 			break
 		}
@@ -120,4 +132,16 @@ func FuzzParseScheduleAt(f *testing.F) {
 			_ = sched.Next(at)
 		}
 	})
+}
+
+// repeatingPrefix reports whether a systemd prefix produces a repeating
+// schedule. It mirrors systemdPrefixes in schedule.go; the table there
+// carries the decision and this only reads it.
+func repeatingPrefix(prefix string) bool {
+	for _, p := range systemdPrefixes {
+		if p.prefix == prefix {
+			return p.repeating
+		}
+	}
+	return false
 }
