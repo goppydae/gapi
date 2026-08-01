@@ -5,8 +5,10 @@ package agentmgr
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -94,6 +96,7 @@ type adoptedAgent interface {
 	adopt(pid int) error
 	Stop(ctx context.Context) error
 	Pid() (int, bool)
+	ID() string
 }
 
 var adoptedRunners = []struct {
@@ -235,6 +238,187 @@ func TestStopAdoptedAlreadyGoneIsSuccess(t *testing.T) {
 			}
 			if pid, running := a.Pid(); running {
 				t.Fatalf("Pid still reports %d running after Stop", pid)
+			}
+		})
+	}
+}
+
+// Adopted-claim expiry, GAPI-DIV-048.
+
+// shortenAdoptedWatch makes the exit watcher poll fast enough that a test
+// resolves in milliseconds. It is restored before the test returns; every
+// watcher started under it is joined by then, and newAdoptedWatch reads
+// the interval in the calling goroutine, so there is no race with the
+// restore.
+func shortenAdoptedWatch(t *testing.T) {
+	t.Helper()
+	prev := adoptedWatchInterval
+	adoptedWatchInterval = 2 * time.Millisecond
+	t.Cleanup(func() { adoptedWatchInterval = prev })
+}
+
+// waitForClaimCleared polls until the agent stops reporting a running
+// process, or fails at the deadline. Polling rather than sleeping a fixed
+// duration is deliberate: the watcher is asynchronous, and a fixed sleep
+// would be a flake waiting to happen in either direction.
+func waitForClaimCleared(t *testing.T, a adoptedAgent, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		pid, running := a.Pid()
+		if !running {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("agent still claims pid %d as running %v after it exited; the claim never expired", pid, within)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// recordSink captures slog records. NotifyExited only logs, so its log is
+// the entire observable surface of an attribution decision; capturing it
+// is what lets the test below assert on that decision without touching
+// notify_exited.go.
+type recordSink struct {
+	mu   sync.Mutex
+	recs []slog.Record
+}
+
+func (s *recordSink) Enabled(context.Context, slog.Level) bool { return true }
+
+func (s *recordSink) Handle(_ context.Context, r slog.Record) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.recs = append(s.recs, r.Clone())
+	return nil
+}
+
+func (s *recordSink) WithAttrs([]slog.Attr) slog.Handler { return s }
+func (s *recordSink) WithGroup(string) slog.Handler      { return s }
+
+// take drains what has been captured so far.
+func (s *recordSink) take() []slog.Record {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := s.recs
+	s.recs = nil
+	return out
+}
+
+func captureRecords(t *testing.T) *recordSink {
+	t.Helper()
+	s := &recordSink{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(s))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return s
+}
+
+// reapedAs reads NotifyExited's decision for pid out of the captured
+// records: the agent id it attributed the reap to, or ok=false for the
+// unknown-pid branch. Neither branch appearing is itself a failure - it
+// would mean the assertion is measuring nothing.
+func reapedAs(t *testing.T, recs []slog.Record, pid int) (string, bool) {
+	t.Helper()
+	for _, r := range recs {
+		var agentID string
+		var recPid int
+		r.Attrs(func(at slog.Attr) bool {
+			switch at.Key {
+			case "agent_id":
+				agentID = at.Value.String()
+			case "pid":
+				recPid = int(at.Value.Int64())
+			}
+			return true
+		})
+		if recPid != pid {
+			continue
+		}
+		switch r.Message {
+		case "agent process reaped":
+			return agentID, true
+		case "adopted orphan reaped":
+			return "", false
+		}
+	}
+	t.Fatalf("NotifyExited logged neither branch for pid %d; captured %d records", pid, len(recs))
+	return "", false
+}
+
+// An adopted process that exits on its own must expire the agent's claim
+// on its PID. Before GAPI-DIV-048 adoptedPid was cleared only by Stop, so
+// an unattended exit left the agent reporting a dead PID as running
+// forever - and Pid() is what NotifyExited matches on.
+func TestAdoptedProcessExitExpiresTheClaim(t *testing.T) {
+	for _, r := range adoptedRunners {
+		t.Run(r.name, func(t *testing.T) {
+			shortenAdoptedWatch(t)
+			child := startAdoptedChild(t)
+			a := r.newAgent()
+			if err := a.adopt(child.pid); err != nil {
+				t.Fatalf("adopt(%d): %v", child.pid, err)
+			}
+			if pid, running := a.Pid(); !running || pid != child.pid {
+				t.Fatalf("after adopt Pid() = (%d, %v), want (%d, true)", pid, running, child.pid)
+			}
+
+			// The exit is unattended: nothing calls Stop, and the test -
+			// not the supervisor - reaps the process.
+			if err := child.cmd.Process.Kill(); err != nil {
+				t.Fatalf("killing helper: %v", err)
+			}
+			if !child.exited(5 * time.Second) {
+				t.Fatal("helper process did not exit after SIGKILL")
+			}
+
+			waitForClaimCleared(t, a, 10*time.Second)
+		})
+	}
+}
+
+// The point of the expiry: once the claim is gone, a later reap of that
+// recycled PID must not be logged as this agent's exit under a wait
+// status that belongs to a stranger.
+func TestStaleAdoptedClaimIsNotAttributedByNotifyExited(t *testing.T) {
+	for _, r := range adoptedRunners {
+		t.Run(r.name, func(t *testing.T) {
+			shortenAdoptedWatch(t)
+			sink := captureRecords(t)
+			child := startAdoptedChild(t)
+			a := r.newAgent()
+			if err := a.adopt(child.pid); err != nil {
+				t.Fatalf("adopt(%d): %v", child.pid, err)
+			}
+			ag, ok := a.(Agent)
+			if !ok {
+				t.Fatalf("runner %T does not satisfy Agent", a)
+			}
+			am := &AgentManager{agents: map[string]Agent{ag.ID(): ag}}
+
+			// Positive control. Without it a broken assertion that never
+			// sees an attribution would pass the negative case for free.
+			sink.take()
+			am.NotifyExited(child.pid, syscall.WaitStatus(0))
+			if id, attributed := reapedAs(t, sink.take(), child.pid); !attributed || id != ag.ID() {
+				t.Fatalf("live claim: reap of pid %d attributed to (%q, %v), want (%q, true)", child.pid, id, attributed, ag.ID())
+			}
+
+			if err := child.cmd.Process.Kill(); err != nil {
+				t.Fatalf("killing helper: %v", err)
+			}
+			if !child.exited(5 * time.Second) {
+				t.Fatal("helper process did not exit after SIGKILL")
+			}
+			waitForClaimCleared(t, a, 10*time.Second)
+
+			// Same PID, now recycled to somebody else. It is an unknown
+			// pid to this manager, and must be logged as one.
+			sink.take()
+			am.NotifyExited(child.pid, syscall.WaitStatus(0))
+			if id, attributed := reapedAs(t, sink.take(), child.pid); attributed {
+				t.Fatalf("stale claim: reap of recycled pid %d was still logged as %q's exit", child.pid, id)
 			}
 		})
 	}

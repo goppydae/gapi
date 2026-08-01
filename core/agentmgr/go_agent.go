@@ -61,6 +61,10 @@ type GoAgent struct {
 	// adopted process from a later occupant of the same PID, so Stop
 	// signals through procsig with it rather than by bare PID.
 	adoptedEpoch uint64
+	// adoptedWatch expires that claim when the process goes, the way
+	// cmd.Wait returning does for a spawned child (GAPI-DIV-048).
+	// Guarded by mu; joined by Stop, Reset and a re-adopt.
+	adoptedWatch *adoptedWatch
 
 	mu   sync.RWMutex
 	ctrl *lifecycle.Controller
@@ -467,7 +471,11 @@ func (a *GoAgent) Stop(ctx context.Context) error {
 		if a.adoptedPid != 0 {
 			return a.stopAdoptedLocked(ctx)
 		}
+		// No claim, so the exit watcher may have already cleared it.
+		// Join it (nil-safe) so Stop never leaves one behind.
+		w := a.takeAdoptedWatchLocked()
 		a.mu.Unlock()
+		w.stop()
 		return nil
 	}
 
@@ -576,8 +584,10 @@ func (a *GoAgent) Reload(ctx context.Context) error {
 
 func (a *GoAgent) Reset() {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	w := a.dropAdoptedLocked() // joined below, unlocked: it takes a.mu
 	a.cleanupAfterExit()
+	a.mu.Unlock()
+	w.stop()
 }
 
 func (a *GoAgent) streamControl(r io.Reader) {
