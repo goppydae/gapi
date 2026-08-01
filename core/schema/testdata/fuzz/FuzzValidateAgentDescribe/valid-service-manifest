@@ -1,0 +1,7 @@
+go test fuzz v1
+string("web-1")
+string("service")
+string("500m")
+string("100MB")
+string("OnBootSec=30s")
+string(":8080")
