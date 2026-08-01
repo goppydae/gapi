@@ -1,5 +1,16 @@
 name: Continuous Integration
 
+# Every target runs under mage -v so the log names each dependency as it
+# fires. Without it the run is silent about whether checkHermetic,
+# checkTerminology or checkFileLength gated anything - three gates whose
+# presence is otherwise indistinguishable from their absence, since a
+# wired dependency and a deleted one produce the same green.
+#
+# This makes the wiring VISIBLE, not enforced. Nothing asserts on the
+# line, so removing an mg.Deps still goes green; the log merely records
+# what happened instead of staying silent. That residual is recorded in
+# GAPI-DIV-044 and MAGELIB-DIV-003.
+
 on:
   push:
     branches: [ main ]
@@ -27,7 +38,7 @@ jobs:
 
       
       - name: Compile System Binaries
-        run: nix develop -c mage build
+        run: nix develop -c mage -v build
 
       # The Magefile has carried a govulncheck target since the build
       # library landed, but no workflow ever called it, so CVE drift
@@ -35,7 +46,7 @@ jobs:
       # govulncheck is call-graph filtered: it fails only on a
       # vulnerability this code actually reaches.
       - name: Audit Dependencies for Reachable CVEs
-        run: nix develop -c mage vuln
+        run: nix develop -c mage -v vuln
 
       # test/adk exercises the python ADK through the gopy native
       # extension. *.so is gitignored, so a fresh checkout has none and
@@ -43,7 +54,7 @@ jobs:
       # the parity suite then tests the fallback, not the ADK
       # (GAPI-DIV-025). Build it where the gate runs.
       - name: Build Python ADK Bindings
-        run: nix develop -c mage python:build
+        run: nix develop -c mage -v python:build
 
       # quic-go warns "failed to sufficiently increase receive buffer
       # size" on stock runners; the control plane is QUIC over loopback
@@ -59,7 +70,7 @@ jobs:
       # breaking it. GOBLIN-DIV-002 records -race finding a real data race
       # the moment it was enabled.
       - name: Execute System Tests
-        run: nix develop -c mage test
+        run: nix develop -c mage -v test
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
@@ -101,7 +112,7 @@ jobs:
       # Without the native extension the python side is DummyAdk and the
       # comparison is meaningless (GAPI-DIV-025).
       - name: Build Python ADK Bindings
-        run: nix develop -c mage python:build
+        run: nix develop -c mage -v python:build
 
       - name: Execute Cross-ADK Tests
         run: |
@@ -187,7 +198,7 @@ jobs:
           else
             export PROTO_BREAKING_AGAINST=".git#ref=HEAD~1"
           fi
-          nix develop -c mage proto
+          nix develop -c mage -v proto
 
       # 'mage proto' regenerates into pkg/proto. If the committed output
       # differs from what the pinned plugins produce, the tree is stale
@@ -250,14 +261,14 @@ jobs:
       # see the note filed against it in the divergence ledger.
       - name: Validate Dev Shell Against Ecosystem Pins
         working-directory: gapi
-        run: nix develop -c mage doctor
+        run: nix develop -c mage -v doctor
 
       - name: Detect Tool Skew Across Sibling Shells
         working-directory: gapi
-        run: nix develop -c mage envcheck
+        run: nix develop -c mage -v envcheck
 
       # Needs ../magelib for the shared golangci-lint config, which is why
       # it is here and not in ecosystem-gates.
       - name: Lint Gate (gofmt, golangci-lint, gosec)
         working-directory: gapi
-        run: nix develop -c mage lint
+        run: nix develop -c mage -v lint
