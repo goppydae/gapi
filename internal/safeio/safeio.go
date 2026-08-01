@@ -7,6 +7,7 @@
 package safeio
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,24 +64,61 @@ func Create(path string) (*os.File, error) {
 	return os.Create(p)
 }
 
-// CreatePrivate creates or truncates a file that only its owner may
-// read. Use it for key material and anything else where the mode is
-// part of the contract.
+// ReplaceOwnerOnly atomically replaces path with data, and the result is
+// readable only by its owner. Use it for key material and anything else
+// where the mode is part of the contract.
 //
-// Create goes through os.Create, which is 0666 before umask - fine for
-// build output, wrong for a private key, and the difference is
-// invisible at the call site. Naming the two separately is what stops
-// the next caller getting it wrong by default.
+// The bytes go to a temporary file in the destination's own directory -
+// same directory because rename is only atomic within a filesystem -
+// which is then renamed over path. os.CreateTemp opens with O_EXCL at
+// 0600, and umask can only clear permission bits, never add them, so the
+// data is owner-only from the instant it exists.
 //
-// The mode argument to O_CREATE applies only when the file does not
-// already exist, so an existing file keeps whatever mode it had. Callers
-// overwriting a path they do not control should chmod as well.
-func CreatePrivate(path string) (*os.File, error) {
+// Replacing rather than writing through is the load-bearing part. A
+// create mode applies only when the file does not already exist, and a
+// trailing chmod runs after the bytes are on disk; either way an
+// overwrite leaves the secret at the old file's mode for the duration of
+// the write. A replaced destination has no old mode to inherit.
+func ReplaceOwnerOnly(path string, data []byte) error {
 	p, err := Resolve(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	tmp, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp*")
+	if err != nil {
+		return fmt.Errorf("safeio: create temp for %q: %w", path, err)
+	}
+	name := tmp.Name()
+	if err := writeSyncClose(tmp, data); err != nil {
+		return errors.Join(fmt.Errorf("safeio: write %q: %w", path, err), remove(name))
+	}
+	if err := os.Rename(name, p); err != nil {
+		return errors.Join(fmt.Errorf("safeio: replace %q: %w", path, err), remove(name))
+	}
+	return nil
+}
+
+// writeSyncClose writes data to f, flushes it to stable storage and
+// closes f, reporting the first failure. f is closed on every path.
+func writeSyncClose(f *os.File, data []byte) error {
+	_, err := f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// remove deletes a temporary file left behind by a failed replace. An
+// already-absent file is not a failure; anything else is reported so the
+// caller learns that partial key material may still be on disk.
+func remove(name string) error {
+	if err := os.Remove(name); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("safeio: remove temp %q: %w", name, err)
+	}
+	return nil
 }
 
 // ReadFile reads the resolved path.

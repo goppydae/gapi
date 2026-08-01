@@ -8,7 +8,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/goppydae/gapi/internal/safeio"
 	"github.com/zeebo/blake3"
@@ -73,9 +72,9 @@ func HashFile(path string) (string, error) {
 // block), the same format PEMNS.EncodePrivateKey produces, so a key written here
 // can be loaded through either code path.
 //
-// The file is created owner-only (0600) and chmod'd back to 0600 if it already
-// existed, because O_CREATE's mode does not apply to an existing file. The mode
-// is not left to the caller: every caller of this function is writing a secret,
+// The file is replaced, not written through, so the key is never on disk at a
+// mode the operator did not choose - see safeio.ReplaceOwnerOnly. The mode is
+// not left to the caller: every caller of this function is writing a secret,
 // and a caller that forgets leaks the key silently.
 func (k *KeyPair) SavePrivate(path string) error {
 	der, err := x509.MarshalPKCS8PrivateKey(k.Private)
@@ -86,24 +85,11 @@ func (k *KeyPair) SavePrivate(path string) error {
 		Type:  pemTypePKCS8,
 		Bytes: der,
 	}
-	f, err := safeio.CreatePrivate(path)
-	if err != nil {
-		return err
+	encoded := pem.EncodeToMemory(block)
+	if encoded == nil {
+		return fmt.Errorf("encode private key pem")
 	}
-	err = pem.Encode(f, block)
-	if cerr := f.Close(); cerr != nil && err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	// Overwriting a pre-existing file keeps that file's old mode, so tighten
-	// it explicitly. A key the operator believes is protected and is not is
-	// worse than a loud failure.
-	if err := os.Chmod(f.Name(), 0o600); err != nil {
-		return fmt.Errorf("restrict private key permissions: %w", err)
-	}
-	return nil
+	return safeio.ReplaceOwnerOnly(path, encoded)
 }
 
 // LoadPrivate loads a private key from a PEM file. It accepts the canonical
@@ -149,9 +135,14 @@ func LoadPrivate(path string) (*KeyPair, error) {
 	return &KeyPair{Private: priv, Public: pub}, nil
 }
 
-// SavePublic saves the public key to a hex file (simple format for now)
+// SavePublic saves the public key to a hex file (simple format for now).
+//
+// A public key is not a secret, but this has always been written owner-only and
+// tightening or loosening that is a separate decision; routing it through the
+// same helper preserves the mode and keeps ReplaceOwnerOnly the only thing in
+// this package that decides a file mode.
 func (k *KeyPair) SavePublic(path string) error {
-	return os.WriteFile(path, []byte(hex.EncodeToString(k.Public)), 0600)
+	return safeio.ReplaceOwnerOnly(path, []byte(hex.EncodeToString(k.Public)))
 }
 
 // LoadPublic loads a public key from a hex file
