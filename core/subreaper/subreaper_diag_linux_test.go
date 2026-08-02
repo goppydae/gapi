@@ -193,14 +193,15 @@ type orphanProbe struct {
 // before anything looked. A probe taken while the answer still exists is
 // the only way to carry it into the dump.
 type orphanTrace struct {
-	// Pid is the orphan, as reported by the shell's $!.
+	// Pid is the orphan, as reported by the intermediate.
 	Pid int
-	// Shell is the resolved sh the orphan was spawned from. Whether the
-	// intermediate could have reaped its own background job before
-	// exiting - which would also produce ECHILD with no orphan in /proc,
-	// and without any reparenting failure - depends on which shell this
-	// is, and the runner's sh is not this host's.
-	Shell string
+	// Intermediate is the binary that spawned the orphan and exited.
+	// Whether it could have reaped its own child before exiting - which
+	// produces ECHILD with no orphan in /proc and no reparenting failure
+	// at all - is a property of that binary, and it is what the fifth
+	// occurrence turned out to be. Recorded so a dump names the process
+	// the premise depends on rather than leaving it assumed.
+	Intermediate string
 
 	probes []orphanProbe
 }
@@ -326,7 +327,7 @@ func diagnose(o orphanTrace, events []subreaper.DrainEvent, reaped map[int]sysca
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n--- GAPI-DIV-043 diagnostics ---\n")
 	fmt.Fprintf(&b, "self pid: %d\n", self)
-	fmt.Fprintf(&b, "orphan spawned from shell: %s\n", o.Shell)
+	fmt.Fprintf(&b, "orphan intermediate: %s\n", o.Intermediate)
 
 	flag, err := isSubreaper()
 	if err != nil {
