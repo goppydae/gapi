@@ -63,15 +63,15 @@ func (r *reapRecorder) status(pid int) (syscall.WaitStatus, bool) {
 }
 
 // report renders the GAPI-DIV-043 failure dump from a consistent
-// snapshot of both halves.
-func (r *reapRecorder) report(orphanPid int) string {
+// snapshot of both halves, against what the test observed on the way in.
+func (r *reapRecorder) report(o orphanTrace) string {
 	r.mu.Lock()
 	events := make([]subreaper.DrainEvent, len(r.events))
 	copy(events, r.events)
 	reaped := make(map[int]syscall.WaitStatus, len(r.reaped))
 	maps.Copy(reaped, r.reaped)
 	r.mu.Unlock()
-	return diagnose(orphanPid, events, reaped)
+	return diagnose(o, events, reaped)
 }
 
 // A double-forked orphan is reparented to the subreaper and reaped by
@@ -94,7 +94,8 @@ func TestReapLoop_ReapsOrphanWithStatus(t *testing.T) {
 	// The child backgrounds a subshell (the orphan-to-be) that exits 7,
 	// prints its pid, and exits immediately - orphaning the subshell
 	// onto us.
-	out, err := exec.Command(binPath(t, "sh"), "-c",
+	trace := orphanTrace{Shell: binPath(t, "sh")}
+	out, err := exec.Command(trace.Shell, "-c",
 		"( sleep 0.2; exit 7 ) & echo $!").Output()
 	if err != nil {
 		// The reap loop may collect the direct child before Output's
@@ -107,6 +108,12 @@ func TestReapLoop_ReapsOrphanWithStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse orphan pid from %q: %v", out, err)
 	}
+	// Output waited for the intermediate, so reparenting has already
+	// happened and the orphan is still sleeping: this reads the
+	// reparenting target while it is a live process rather than a
+	// memory. GAPI-DIV-043.
+	trace.Pid = orphanPid
+	trace.probe("intermediate exited")
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -114,13 +121,13 @@ func TestReapLoop_ReapsOrphanWithStatus(t *testing.T) {
 		if ok {
 			if !ws.Exited() || ws.ExitStatus() != 7 {
 				t.Fatalf("orphan %d wait status = %v, want exit 7%s",
-					orphanPid, ws, rec.report(orphanPid))
+					orphanPid, ws, rec.report(trace))
 			}
 			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("orphan %d was not reaped within 5s%s",
-				orphanPid, rec.report(orphanPid))
+				orphanPid, rec.report(trace))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -133,7 +140,8 @@ func TestReapLoop_DrainsPreexistingZombies(t *testing.T) {
 		t.Fatalf("BecomeSubreaper: %v", err)
 	}
 
-	out, err := exec.Command(binPath(t, "sh"), "-c",
+	trace := orphanTrace{Shell: binPath(t, "sh")}
+	out, err := exec.Command(trace.Shell, "-c",
 		"( exit 3 ) & echo $!").Output()
 	if err != nil && len(out) == 0 {
 		t.Fatalf("spawn: %v", err)
@@ -142,7 +150,16 @@ func TestReapLoop_DrainsPreexistingZombies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse pid: %v", err)
 	}
+	// The two probes bracket the window in which this test does nothing,
+	// which is the window the fourth occurrence's evidence points at: no
+	// reap loop is running yet, so anything that happens to the orphan
+	// here is not ours. The first says whether it ever became our child;
+	// the second whether it survived to the loop's first wait. By the
+	// deadline both facts are gone. GAPI-DIV-043.
+	trace.Pid = orphanPid
+	trace.probe("intermediate exited")
 	time.Sleep(200 * time.Millisecond) // let the orphan die first
+	trace.probe("after the 200ms wait, pre-loop")
 
 	sigchld := make(chan os.Signal, 8)
 	signal.Notify(sigchld, syscall.SIGCHLD)
@@ -163,7 +180,7 @@ func TestReapLoop_DrainsPreexistingZombies(t *testing.T) {
 			// point of the entry's exit - it has never reproduced
 			// locally, so this text is the only evidence there will be.
 			t.Fatalf("pre-existing zombie %d not drained%s",
-				orphanPid, rec.report(orphanPid))
+				orphanPid, rec.report(trace))
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
