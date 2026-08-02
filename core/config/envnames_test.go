@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/goppydae/gapi/core/config"
+	"github.com/goppydae/gapi/core/product"
 )
 
 // This is GAPI-DIV-059's gate. It walks the whole tree, not just this
@@ -27,8 +28,12 @@ import (
 //     while the code beneath read RUNTIME_AGENT_PATH, and nothing
 //     noticed because documentation is not compiled.
 //
-// It lives in core/config because that package owns EnvPrefix, which is
-// the declaration the rest of the tree is being checked against.
+// It lives in core/config because that package owns EnvKeyFor, which is
+// the declaration the rest of the tree is being checked against. The
+// PREFIX itself moved to core/product in GAPI-DIV-061, and that move is
+// why composed() below grew a second source: once a name is assembled
+// from a product identity at runtime, no literal spells it and a
+// scanning gate goes blind. See configOverrideNames.
 
 // notEnvNames are identifiers that match an old-prefix pattern and are
 // not environment variables at all. GAPID_PID is a shell local holding
@@ -66,7 +71,11 @@ var envKnownAbsent = map[string]bool{
 }
 
 var (
-	envNameRe = regexp.MustCompile(`\bGAPI_[A-Z0-9_]+\b`)
+	// ADK_ joins GAPI_ here because the kernel-to-agent contract is a
+	// second namespace with the same obligation: a name documentation
+	// describes and nothing reads is indistinguishable from a feature,
+	// whoever owns the prefix (core/agentmgr/agent_env.go).
+	envNameRe = regexp.MustCompile(`\b(?:GAPI|ADK)_[A-Z0-9_]+\b`)
 	oldNameRe = regexp.MustCompile(`\b(?:RUNTIME|GAPID)_[A-Z0-9_]+\b`)
 )
 
@@ -88,18 +97,31 @@ func readsEnv(body, name string) bool {
 	return call.MatchString(body) || assign.MatchString(body)
 }
 
-// configOverrideNames renders every environment name the config loader
-// binds, by walking Config's mapstructure tags exactly as
-// bindEnvOverrides does and composing through the production EnvKeyFor.
+// composedEnvNames renders every environment name the kernel reads that
+// no literal spells, from the two places that compose them.
 //
-// GAPI-DIV-059's exit predicted this as an unavoidable residual - "a
-// literal-scanning test cannot see a name built by concatenation at
-// runtime". It can, if it composes the same names from the same struct
-// rather than scanning for them: docs/config-example.md documents
-// GAPI_LOGGING_FORMAT and GAPI_METRICS_ENABLED, which no literal
-// anywhere spells and the loader nonetheless binds.
-func configOverrideNames() map[string]bool {
+// The first is the config loader: walk Config's mapstructure tags
+// exactly as bindEnvOverrides does and render each through the
+// production EnvKeyFor. GAPI-DIV-059's exit predicted this as an
+// unavoidable residual - "a literal-scanning test cannot see a name
+// built by concatenation at runtime". It can, if it composes the same
+// names from the same struct rather than scanning for them:
+// docs/config-example.md documents GAPI_LOGGING_FORMAT and
+// GAPI_METRICS_ENABLED, which no literal anywhere spells and the loader
+// nonetheless binds.
+//
+// The second is core/product's registry of DIRECT reads - the names that
+// are not config keys, like GAPI_CONFIG and GAPI_CGROUPS_DISABLE. Those
+// were literals until GAPI-DIV-061 made them derive from the product
+// identity. Without this half the gate would still have passed, and for
+// a bad reason: test/adk/framework.go and test/e2e.sh spell several of
+// them, so a production reader could disappear entirely while a test
+// harness kept the gate green.
+func composedEnvNames() map[string]bool {
 	out := map[string]bool{}
+	for _, n := range product.DirectEnvNames() {
+		out[n] = true
+	}
 	var walk func(t reflect.Type, prefix string)
 	walk = func(t reflect.Type, prefix string) {
 		for i := range t.NumField() {
@@ -238,7 +260,7 @@ func TestEnvNames_DocumentedNamesHaveReaders(t *testing.T) {
 
 	// Names the loader binds by composing them at runtime; no literal
 	// spells them, and they are read all the same.
-	composed := configOverrideNames()
+	composed := composedEnvNames()
 
 	inCode := func(name string) bool {
 		if composed[name] {
@@ -283,7 +305,7 @@ func TestEnvNames_DeclarationsStillApply(t *testing.T) {
 		}
 		codeBodies = append(codeBodies, body)
 	})
-	composed := configOverrideNames()
+	composed := composedEnvNames()
 	inCode := func(name string) bool {
 		if composed[name] {
 			return true

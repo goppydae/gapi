@@ -10,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/goppydae/gapi/core/agentmgr"
 )
 
 // TestHarness provides utilities for ADK integration testing
@@ -55,11 +57,17 @@ func (h *TestHarness) Start() error {
 	// start whatever example agents happen to live there, and their start
 	// timeouts starved the fixture agents' state transitions (the ~90s
 	// TestTimerAgent_Execution failure; GAPI-DIV-021).
+	//
+	// The GAPI_ spellings are literal on purpose: they name the CHILD's
+	// namespace, and the child is gapid. This process is a test binary
+	// with no product identity of its own, so composing them through
+	// core/product here would assert the parent's identity onto the
+	// child (GAPI-DIV-061).
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
 		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
 		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
-		"GAPI_FORCE_DUMMY_ADK=1",
+		agentmgr.EnvForceDummy+"=1",
 		"GAPI_CGROUPS_DISABLE=1",
 	)
 

@@ -149,7 +149,7 @@ Verification is gated on
 verify key configured, discovery rejects every binary - fail closed.
 
 Production mode does exactly two things: this gate, and setting
-`GAPI_REJECT_DUMMY_ADK` for Python agents. It does not touch TLS, the
+`ADK_REJECT_DUMMY` for Python agents. It does not touch TLS, the
 listen address, or anything else.
 
 Note that only binary agents are verified. Python agents are described
@@ -253,10 +253,10 @@ def start():
 
 | Variable | Set for | Meaning |
 | -------- | ------- | ------- |
-| `GAPI_RUN_ID` | Go and Python agents | per-start correlation id |
+| `ADK_RUN_ID` | Go and Python agents | per-start correlation id |
 | `LISTEN_FDS` | socket-activated agents | how many descriptors were passed |
 | `LISTEN_PID` | socket-activated agents | `self` |
-| `GAPI_REJECT_DUMMY_ADK` | Python agents | fail loudly rather than falling back to the stub ADK |
+| `ADK_REJECT_DUMMY` | Python agents | fail loudly rather than falling back to the stub ADK |
 
 The passed sockets start at **file descriptor 3**. `LISTEN_FDS` is a
 *count*, not a descriptor number:
@@ -272,6 +272,13 @@ There is no `AGENT_ID`, `AGENT_TYPE` or `GAPI_SOCKET`, and no `ENV_`
 prefix mechanism for injecting custom variables.
 
 ## Environment variables GAPI reads
+
+The `GAPI_` prefix belongs to the PRODUCT, not to the kernel. The kernel
+is a library: `goblind` links the same code and reads `GOBLIN_` names,
+searches `/etc/goblin`, and tags dmesg with `goblind:`. Every name in
+this table is composed from that one identity at startup, so under
+another product each row reads `<PREFIX>_` instead (GAPI-DIV-061). The
+table below is `gapid`'s view of it.
 
 | Variable | Purpose |
 | -------- | ------- |
