@@ -120,6 +120,10 @@ grep -q "DEPS =" $TEST_AGENTS_DIR/heartbeat.py.service || echo 'DEPS = ["base"]'
 # 2. Start Daemon
 log "Starting gapid..."
 export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
+# GAPI-DIV-063: AGENT_PATH is additive now, so the fence is explicit.
+# Without this the built-in tiers come back underneath and this run
+# discovers whatever agents the host has installed.
+export GAPI_AGENT_PATH_EXCLUSIVE=1
 export ADK_FORCE_DUMMY=1
 ./bin/gapid > gapid.log 2>&1 &
 GAPID_PID=$!

@@ -90,6 +90,9 @@ func TestPid1EndToEnd(t *testing.T) {
 		"-v", "/nix/store:/nix/store:ro",
 		"-v", tmpVol+":/tmp",
 		"--env", "GAPI_AGENT_PATH=/agents",
+		// Explicit since GAPI-DIV-063 made AGENT_PATH additive: the
+		// guest must see /agents and nothing else.
+		"--env", "GAPI_AGENT_PATH_EXCLUSIVE=1",
 		"--env", "GAPI_KMSG_PATH=/tmp/kmsg",
 		"--rootfs", built.rootfs+":O",
 		"/gapid", "--pid1", "--no-early-mounts", "--log-level", "debug",

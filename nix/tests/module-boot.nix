@@ -54,6 +54,11 @@ pkgs.testers.runNixOSTest {
     # The agents directory reaches the loader through the variable it
     # actually reads. GAPI_AGENTS_DIR was set here for a long time and
     # consumed by nothing.
+    #
+    # This node sets agentsDir explicitly, so AGENT_PATH must appear.
+    # Since GAPI-DIV-063 that variable ADDS precedence rather than
+    # replacing the search path, so it is an extra directory and not the
+    # only one.
     unit_env = node.succeed("systemctl show gapi.service -p Environment --value")
     assert "GAPI_AGENT_PATH" in unit_env, (
         "GAPI_AGENT_PATH is not set on the unit, so agentsDir does nothing: "
@@ -62,6 +67,15 @@ pkgs.testers.runNixOSTest {
     assert "GAPI_AGENTS_DIR" not in unit_env, (
         "GAPI_AGENTS_DIR is set but read by no code: " + unit_env
     )
+
+    # The operator tier exists without anyone configuring it. /etc/gapi/
+    # agents is a built-in search path, so an admin must have somewhere
+    # to drop an agent without first learning which directory is read.
+    node.succeed("test -d /etc/gapi/agents")
+
+    # /var/lib is STATE. Agents are executable payload and no longer
+    # default to living there (GAPI-DIV-063).
+    node.succeed("test -d /var/lib/gapi/certs")
 
     # The binary is real and reports a stamped version rather than the
     # 'dev' placeholder (GAPI-DIV-007).

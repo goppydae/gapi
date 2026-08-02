@@ -10,8 +10,8 @@ agents/
 |   |-- services/    # Long-running services
 |   |-- timers/      # Scheduled/periodic tasks
 |   `-- sockets/     # Socket-activated services
-|-- go/              # Go agents (foundational/high-performance)
-|   |-- foundational/  # System boot, core services
+|-- *.go.<type>      # built Go agents (the deploy payload)
+|-- *.py.<type>      # Python agents (source IS the artifact)
 |   `-- coordination/  # Cluster coordination
 |-- plugins/         # Shared-object plugins (experimental)
 `-- build/           # Build artifacts (gitignored)
@@ -50,11 +50,39 @@ All agents follow the **`name.lang.type`** naming pattern:
 
 GAPI uses a systemd-style search path for agent discovery:
 
-1. **Development**: `./agents/`, `$GAPI_DEV_AGENTS`
-1. **User**: `~/.local/share/gapi/agents/`, `~/.gapi/agents/`
-1. **System**: `/usr/lib/gapi/agents/`, `/usr/local/lib/gapi/agents/`
+The ordering rule, shared by both scopes: **configuration beats runtime
+beats data beats vendor**. An operator's edit outranks a package's file.
 
-**First match wins**: Agents in higher priority paths override those in lower priority paths.
+**System scope** (the daemon an init system starts), highest first:
+
+1. `$GAPI_DEV_AGENTS` - explicit development override
+1. `/etc/gapi/agents/` - operator-authored
+1. `/run/gapi/agents/` - transient, generated at runtime
+1. `/usr/local/lib/gapi/agents/` - locally installed
+1. `/usr/lib/gapi/agents/` - package-owned
+
+**User scope** (`--user`; the tier list is defined, the flag is not yet
+implemented), highest first:
+
+1. `$GAPI_DEV_AGENTS`
+1. `$XDG_CONFIG_HOME/gapi/agents/` (`~/.config/gapi/agents/`)
+1. `/etc/gapi/user/agents/` - operator-provided, for all users
+1. `$XDG_RUNTIME_DIR/gapi/agents/`
+1. `$XDG_DATA_HOME/gapi/agents/` (`~/.local/share/gapi/agents/`)
+1. `~/.gapi/agents/` - legacy, lowest user tier
+1. `/usr/lib/gapi/user/agents/` - package-owned user agents
+
+**First match wins**: an agent ID found in a higher-priority path masks
+the same ID found lower down. That masking is the override mechanism.
+
+**Scope is chosen, never inferred from privilege.** A system daemon
+commonly runs as an unprivileged service user, so deriving scope from
+uid would silently flip it into user scope. System scope contains no
+home-directory path at all, which is a security boundary and not tidiness.
+
+**There is no implicit `./agents` tier.** It made discovery depend on the
+directory a daemon happened to be started from. Name a development
+directory explicitly with `GAPI_DEV_AGENTS`.
 
 ## Environment Variables
 
@@ -94,39 +122,24 @@ gapid
 
 ```bash
 # Create a Go agent
-mkdir -p agents/go/foundational/my_agent
-cat > agents/go/foundational/my_agent/main.go << 'EOF'
-package main
+gapictl agent new --lang go --type service my_agent
+# writes src/agents/my_agent.go.service - a single file, no main:
+#
+#   package agent
+#
+#   import "context"
+#
+#   const (
+#       ID   = "my_agent"
+#       Type = "service"
+#   )
+#
+#   func Start(ctx context.Context) error {
+#       <-ctx.Done()
+#       return nil
+#   }
 
-import (
-    "encoding/json"
-    "flag"
-    "os"
-)
-
-var describe = flag.Bool("describe", false, "Print agent metadata")
-
-func main() {
-    flag.Parse()
-
-    if *describe {
-        metadata := map[string]interface{}{
-            "describe": map[string]interface{}{
-                "id":      "my_agent",
-                "type":    "service",
-                "version": "1.0.0",
-            },
-        }
-        json.NewEncoder(os.Stdout).Encode(metadata)
-        return
-    }
-
-    // Agent logic here
-}
-EOF
-
-# Build the agent
-gapictl agent build agents/go/foundational/my_agent/
+gapictl agent build src/agents/my_agent.go.service
 
 # Start gapid (discovers from build/)
 gapid

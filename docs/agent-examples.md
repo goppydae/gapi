@@ -319,7 +319,7 @@ A Go agent is any executable that answers `--describe` with a JSON
 metadata block. `gapictl agent new <name>` scaffolds one:
 
 ```go
-// agents/go/foundational/my_service/main.go
+// src/agents/my_service.go.service
 package main
 
 import (
@@ -369,7 +369,7 @@ That produces the binary plus its `.b3` digest. Sign it before running
 under `productionMode`:
 
 ```bash
-gapictl crypto sign agents/go/foundational/my_service/my_service --key signing-key.pem
+gapictl crypto sign agents/my_service.go.service --key signing-key.pem
 ```
 
 ## Events

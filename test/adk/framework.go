@@ -25,9 +25,24 @@ type TestHarness struct {
 	cancel    context.CancelFunc
 }
 
-// NewHarness creates a new test harness
+// NewHarness creates a harness over the whole fixtures tree.
 func NewHarness() (*TestHarness, error) {
-	// Get project root
+	root, err := findProjectRoot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find project root: %w", err)
+	}
+	return NewHarnessAt(filepath.Join(root, "test", "adk", "fixtures"))
+}
+
+// NewHarnessAt creates a harness whose discovery is fenced to agentsDir.
+//
+// A caller that stages exactly the agents its test needs gets two things
+// the shared fixtures tree cannot give it. The obvious one is isolation.
+// The load-bearing one is that unrelated agents' start timeouts cannot
+// starve the agents under test - that is the ~90s TestTimerAgent_Execution
+// failure recorded as GAPI-DIV-021, and it came from discovery finding
+// more than the test meant it to.
+func NewHarnessAt(agentsDir string) (*TestHarness, error) {
 	root, err := findProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find project root: %w", err)
@@ -35,7 +50,7 @@ func NewHarness() (*TestHarness, error) {
 
 	return &TestHarness{
 		gapictl:   filepath.Join(root, "bin", "gapictl"),
-		agentsDir: filepath.Join(root, "test", "adk", "fixtures"),
+		agentsDir: agentsDir,
 		configDir: filepath.Join(root, "config"),
 		binDir:    filepath.Join(root, "bin"),
 	}, nil
@@ -66,6 +81,12 @@ func (h *TestHarness) Start() error {
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
 		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
+		// The fence is EXPLICIT since GAPI-DIV-063. AGENT_PATH used to
+		// replace the whole search path as a side effect of being set,
+		// and this harness depended on that side effect; it is additive
+		// now, so without this line the tiers come back underneath and
+		// discovery starts whatever agents the checkout happens to hold.
+		"GAPI_AGENT_PATH_EXCLUSIVE=1",
 		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
 		agentmgr.EnvForceDummy+"=1",
 		"GAPI_CGROUPS_DISABLE=1",

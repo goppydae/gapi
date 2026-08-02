@@ -12,6 +12,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// langInfix is the filename infix each language's agents carry. It is
+// spelled out here rather than derived from the scaffold table so the
+// test disagrees with the code: deriving it would make the suffix
+// assertion compare the table against itself.
+var langInfix = map[string]string{"go": "go", "python": "py"}
+
 // scaffoldAt runs 'agent new' for one (lang, type) pair into dir and
 // returns the path it wrote. The command reads its inputs from package
 // globals, so they are set and restored here rather than in each test.
@@ -51,11 +57,11 @@ func declaredType(t *testing.T, path string) string {
 		t.Fatalf("read scaffold: %v", err)
 	}
 
-	// Python declares TYPE = "service"; Go declares "type": "service"
-	// inside its describe payload.
+	// Python declares TYPE = "service" at module level; Go declares
+	// Type = "service" inside a const block, so the Go form is indented.
 	for _, re := range []*regexp.Regexp{
 		regexp.MustCompile(`(?m)^TYPE\s*=\s*"([a-z]+)"`),
-		regexp.MustCompile(`"type"\s*:\s*"([a-z]+)"`),
+		regexp.MustCompile(`(?m)^\s*Type\s+=\s*"([a-z]+)"`),
 	} {
 		if m := re.FindSubmatch(body); m != nil {
 			return string(m[1])
@@ -94,16 +100,30 @@ func TestAgentNew_EveryAdvertisedPairScaffoldsItsOwnType(t *testing.T) {
 						got, typ, filepath.Base(path))
 				}
 
-				// Python's file name is what discovery routes on, so the
-				// suffix is behaviour and not decoration. Go builds a
-				// package, so its type lives only in the source.
-				if lang == "python" {
-					want := fmt.Sprintf(".py.%s", typ)
-					if !strings.HasSuffix(path, want) {
-						t.Errorf("scaffold named %q, want suffix %q",
-							filepath.Base(path), want)
-					}
+				// The file name is behaviour, not decoration, in BOTH
+				// languages now: discovery routes Python on the ".py."
+				// infix, and 'gapictl agent build' finds Go agents by
+				// the ".go." one. A Go scaffold that landed as main.go
+				// would not be found by either.
+				want := fmt.Sprintf(".%s.%s", langInfix[lang], typ)
+				if !strings.HasSuffix(path, want) {
+					t.Errorf("scaffold named %q, want suffix %q",
+						filepath.Base(path), want)
+				}
+
+				switch lang {
+				case "python":
 					assertPythonParses(t, path)
+				case "go":
+					// The generated-main path is what makes a Go
+					// scaffold a working agent, so the scaffold is
+					// checked by ASSEMBLING AND COMPILING it rather
+					// than by reading it. A template that parses but
+					// declares no Start is a broken scaffold that no
+					// textual assertion catches.
+					if _, err := scanGoAgent(path); err != nil {
+						t.Errorf("scaffolded Go agent does not scan: %v", err)
+					}
 				}
 			})
 		}

@@ -108,6 +108,10 @@ EOF
 # dropped silently by viper and configure nothing.
 export GAPI_CONFIG="$WORK/config.yaml"
 export GAPI_AGENT_PATH="$WORK/agents"
+# GAPI-DIV-063: AGENT_PATH is additive now, so the fence is explicit.
+# Without this the built-in tiers come back underneath and this run
+# discovers whatever agents the host has installed.
+export GAPI_AGENT_PATH_EXCLUSIVE=1
 export GAPI_SKIP_SYSTEM_AGENTS=1
 export GAPI_PY_RUNNER="$ROOT/adk/python/agent/runner.py"
 

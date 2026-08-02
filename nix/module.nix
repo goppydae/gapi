@@ -42,9 +42,21 @@ in {
     };
     
     agentsDir = mkOption {
-      type = types.path;
-      default = "/var/lib/gapi/agents";
-      description = "Directory containing agent definitions";
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        An ADDITIONAL agent directory, prepended to the built-in search
+        path. Leave null unless agents live somewhere non-standard.
+
+        Operator-authored agents belong in /etc/gapi/agents, which is a
+        built-in tier and needs no option at all. /var/lib/gapi is state
+        (the database, certificates) and is deliberately NOT an agent
+        directory: agents are executable payload, not variable state.
+
+        This used to default to /var/lib/gapi/agents and was passed as
+        GAPI_AGENT_PATH, which REPLACED the whole search path - so every
+        tier below it was dead on a packaged install (GAPI-DIV-063).
+      '';
     };
     
     configFile = mkOption {
@@ -181,8 +193,13 @@ in {
       # (core/config/agent_paths.go reads GAPI_AGENT_PATH), so
       # services.gapi.agentsDir was a no-op and its default was not even
       # on the search path.
-      environment = {
-        GAPI_AGENT_PATH = cfg.agentsDir;
+      #
+      # AGENT_PATH is now ADDITIVE, so setting it adds precedence rather
+      # than discarding /etc/gapi/agents and the rest. It is set only
+      # when the operator asked for an extra directory; the built-in
+      # tiers cover the normal case unaided.
+      environment = optionalAttrs (cfg.agentsDir != null) {
+        GAPI_AGENT_PATH = toString cfg.agentsDir;
       } // optionalAttrs (cfg.configFile != null) {
         GAPI_CONFIG = toString cfg.configFile;
       };
@@ -190,9 +207,17 @@ in {
     
     # Create required directories
     systemd.tmpfiles.rules = [
+      # /var/lib is STATE: the database and certificates. Agents are
+      # executable payload and live on the search path instead.
       "d /var/lib/gapi 0750 ${cfg.user} ${cfg.group} -"
       "d /var/lib/gapi/certs 0750 ${cfg.user} ${cfg.group} -"
-      "d ${cfg.agentsDir} 0750 ${cfg.user} ${cfg.group} -"
+
+      # The operator tier, created so an admin has somewhere to put an
+      # agent without first discovering which directory is searched.
+      "d /etc/gapi 0755 root root -"
+      "d /etc/gapi/agents 0755 root root -"
+    ] ++ optionals (cfg.agentsDir != null) [
+      "d ${toString cfg.agentsDir} 0750 ${cfg.user} ${cfg.group} -"
     ];
     
     # Firewall configuration

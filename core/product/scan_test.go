@@ -33,6 +33,10 @@ var scanRoots = []string{"core", "pkg/cli"}
 var wireLiterals = map[string]string{
 	"gapi-quic": "core/transport: the QUIC ALPN. A protocol constant - " +
 		"renaming it breaks every peer, and no operator reads it off a terminal.",
+	"github.com/goppydae/gapi/adk/go/agent": "pkg/cli: the Go ADK's import " +
+		"path, written into a generated main. A Go MODULE path, which is the " +
+		"module's identity and not the product's - it stays the same string " +
+		"whichever binary does the generating, and no operator reads it.",
 }
 
 // wirePrefixes are literal prefixes that must keep the gapi spelling.
@@ -97,11 +101,10 @@ var allowedIn = map[string][]string{
 			"  2. Signature (if .sig file exists and --pubkey provided)\n" +
 			"  3. Source hash (if --check-source and source available)\n\n" +
 			"Examples:\n" +
-			"  gapictl agent verify agents/build/go/my_service\n" +
-			"  gapictl agent verify agents/build/go/my_service --pubkey=key.pub\n" +
-			"  gapictl agent verify agents/build/go/my_service --check-source --source=agents/go/my_service",
+			"  gapictl agent verify agents/my_service.go.service\n" +
+			"  gapictl agent verify agents/my_service.go.service --pubkey=key.pub\n" +
+			"  gapictl agent verify agents/my_service.go.service --check-source --source=src/agents/my_service.go.service",
 	},
-	"pkg/cli/agent_new.go": {"  2. Build: gapictl agent build %s\n"},
 }
 
 func TestNoVendorNameInOperatorFacingLiterals(t *testing.T) {
