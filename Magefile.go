@@ -289,7 +289,7 @@ func Tidy() error {
 func Dev() error {
 	mg.Deps(Build, Python{}.Build)
 	fmt.Println("Starting gapid in development mode...")
-	return sh.RunV("./bin/gapid")
+	return sh.RunV("./bin/gapid", "start")
 }
 
 // All runs fmt, tidy, build, and test

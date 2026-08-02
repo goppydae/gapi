@@ -48,7 +48,7 @@ func (h *TestHarness) Start() error {
 	h.ctx, h.cancel = context.WithCancel(context.Background())
 
 	gapidPath := filepath.Join(h.binDir, "gapid")
-	h.gapidCmd = exec.CommandContext(h.ctx, gapidPath)
+	h.gapidCmd = exec.CommandContext(h.ctx, gapidPath, "start")
 
 	// Set environment. RUNTIME_AGENT_PATH is fenced to the fixtures dir
 	// ONLY: including the checkout's production agents/ made discovery
