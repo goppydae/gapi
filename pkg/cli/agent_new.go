@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/goppydae/gapi/core/product"
 	"github.com/goppydae/gapi/internal/safeio"
 	"github.com/spf13/cobra"
 )
@@ -41,24 +42,27 @@ type agentScaffold struct {
 // scaffoldLangs and scaffoldTypes below, which derive from this map, so a
 // language or type cannot be advertised without a scaffold existing.
 var agentScaffolds = map[scaffoldKey]agentScaffold{
-	{"go", "service"}: {"templates/go_service.tmpl", goMainFile},
-	{"go", "timer"}:   {"templates/go_timer.tmpl", goMainFile},
-	{"go", "socket"}:  {"templates/go_socket.tmpl", goMainFile},
+	{"go", "service"}: {"templates/go_service.tmpl", langFile("go", "service")},
+	{"go", "timer"}:   {"templates/go_timer.tmpl", langFile("go", "timer")},
+	{"go", "socket"}:  {"templates/go_socket.tmpl", langFile("go", "socket")},
 
-	{"python", "service"}: {"templates/python_service.tmpl", pyFile("service")},
-	{"python", "timer"}:   {"templates/python_timer.tmpl", pyFile("timer")},
-	{"python", "socket"}:  {"templates/python_socket.tmpl", pyFile("socket")},
+	{"python", "service"}: {"templates/python_service.tmpl", langFile("py", "service")},
+	{"python", "timer"}:   {"templates/python_timer.tmpl", langFile("py", "timer")},
+	{"python", "socket"}:  {"templates/python_socket.tmpl", langFile("py", "socket")},
 }
 
-// goMainFile is the file name for every Go scaffold: a Go agent is a
-// package built as a whole, so the type lives in the source rather than
-// in the name.
-func goMainFile(string) string { return "main.go" }
-
-// pyFile renders the "<name>.py.<type>" form discovery routes on.
-func pyFile(typ string) func(string) string {
+// langFile renders "<name>.<lang>.<type>" - the form BOTH languages use.
+//
+// Go agents were "main.go" in a directory of their own until the Go ADK
+// landed; a Go agent is now a single file like a Python one, and the
+// suffix carries the type for the same reason. That the name does not end
+// in ".go" is load-bearing rather than cosmetic: it keeps agent sources
+// invisible to 'go build ./...', so the agent tree needs no build or lint
+// exclusion - a property of the naming scheme instead of configuration
+// somebody has to maintain.
+func langFile(lang, typ string) func(string) string {
 	return func(agentName string) string {
-		return fmt.Sprintf("%s.py.%s", agentName, typ)
+		return fmt.Sprintf("%s.%s.%s", agentName, lang, typ)
 	}
 }
 
@@ -101,11 +105,17 @@ func runAgentNew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unsupported combination: --lang %s --type %s", agentLang, agentType)
 	}
 
-	// Determine output directory
+	// Determine output directory.
+	//
+	// Go SOURCE lands off the agent search path, because a built Go agent
+	// keeps its source's exact name - agents/hash.go.service is the
+	// binary - and source and artifact cannot share a directory when they
+	// share a name. Python has no such split: its file IS the artifact,
+	// so it is written straight into the deploy tree.
 	outputPath := agentOutput
 	if outputPath == "" {
 		if agentLang == "go" {
-			outputPath = filepath.Join("agents", "go", "foundational", agentName)
+			outputPath = filepath.Join("src", "agents")
 		} else {
 			// Python agents go in type-specific directories
 			typeDir := agentType + "s" // service -> services, timer -> timers
@@ -161,13 +171,21 @@ func runAgentNew(cmd *cobra.Command, args []string) error {
 	fmt.Printf("[OK] Created %s agent: %s\n", agentLang, outputFile)
 	fmt.Printf("\nNext steps:\n")
 	if agentLang == "go" {
+		built := filepath.Join("agents", filepath.Base(outputFile))
 		fmt.Printf("  1. Edit %s\n", outputFile)
-		fmt.Printf("  2. Build: gapictl agent build %s\n", outputPath)
-		fmt.Printf("  3. Test:  %s --describe\n", filepath.Join("agents/build/go", agentName))
+		fmt.Printf("  2. Build: %s agent build %s\n", product.Name()+"ctl", outputFile)
+		fmt.Printf("  3. Test:  %s --describe\n", built)
 	} else {
 		fmt.Printf("  1. Edit %s\n", outputFile)
 		fmt.Printf("  2. Test:  python3 adk/python/agent/runner.py --module %s --describe\n", outputFile)
 	}
+
+	// The scaffold's directory is NOT searched just because it is called
+	// "agents" - there is no working-directory tier. Saying so here is
+	// the difference between an author whose agent runs and one who
+	// discovers the silence themselves.
+	fmt.Printf("\nTo have %s discover it, name the directory:\n", product.Daemon())
+	fmt.Printf("  export %s=$PWD/agents\n", product.EnvKey("DEV_AGENTS"))
 
 	return nil
 }
