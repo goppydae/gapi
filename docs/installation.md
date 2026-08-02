@@ -108,7 +108,7 @@ The module puts `cfg.package` on `environment.systemPackages`, so
 
 With `configFile = null` the module writes `/etc/gapi/config.yaml`,
 which is the one search root a release build consults. Setting
-`configFile` instead exports `RUNTIME_CONFIG` to the unit - there is no
+`configFile` instead exports `GAPI_CONFIG` to the unit - there is no
 `-config` flag on `gapid`.
 
 `openFirewall` opens both the TCP and the UDP port parsed from
@@ -159,8 +159,8 @@ Restart=on-failure
 RestartSec=5s
 WorkingDirectory=/var/lib/gapi
 
-Environment=RUNTIME_AGENT_PATH=/var/lib/gapi/agents
-Environment=RUNTIME_CONFIG=/etc/gapi/config.yaml
+Environment=GAPI_AGENT_PATH=/var/lib/gapi/agents
+Environment=GAPI_CONFIG=/etc/gapi/config.yaml
 
 NoNewPrivileges=true
 PrivateTmp=true
@@ -184,7 +184,7 @@ TasksMax=256
 WantedBy=multi-user.target
 ```
 
-The variables are `RUNTIME_`-prefixed. `GAPI_AGENTS_DIR` is read by
+The variables are `GAPI_`-prefixed. `GAPI_AGENTS_DIR` is read by
 nothing.
 
 ```bash
@@ -281,7 +281,7 @@ FROM debian:stable-slim
 RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/gapid /usr/local/bin/gapid
 COPY --from=build /out/gapictl /usr/local/bin/gapictl
-ENV RUNTIME_AGENT_PATH=/var/lib/gapi/agents
+ENV GAPI_AGENT_PATH=/var/lib/gapi/agents
 EXPOSE 14242/udp
 ENTRYPOINT ["/usr/local/bin/gapid"]
 ```
@@ -329,8 +329,8 @@ See [configuration.md](configuration.md) for every key, and
 [config-example.md](config-example.md) for worked examples. In brief:
 
 - A release build reads `/etc/gapi/config.yaml` and nothing else.
-- `RUNTIME_CONFIG` points it elsewhere. There is no `--config` flag.
-- Every config key can be set by environment variable: `RUNTIME_`,
+- `GAPI_CONFIG` points it elsewhere. There is no `--config` flag.
+- Every config key can be set by environment variable: `GAPI_`,
   uppercase, dots to underscores. Environment beats file beats default.
 - `transport.insecureSkipVerify` defaults to **true**. Set it to
   `false` before exposing a daemon beyond loopback.
@@ -396,7 +396,7 @@ error means a flag that does not exist - `gapid` accepts only
 `127.0.0.1:14242`, and the transport is QUIC over UDP - a TCP-only
 firewall rule silently blackholes it.
 
-**Agents are not discovered.** Confirm `RUNTIME_AGENT_PATH` points at
+**Agents are not discovered.** Confirm `GAPI_AGENT_PATH` points at
 the directory you populated. A Python agent must be named
 `<name>.py.service`, `.py.timer` or `.py.socket` - the `.py.` infix is
 part of the match, so `hello.service` is not a Python agent. A Go agent

@@ -50,17 +50,17 @@ func (h *TestHarness) Start() error {
 	gapidPath := filepath.Join(h.binDir, "gapid")
 	h.gapidCmd = exec.CommandContext(h.ctx, gapidPath, "start")
 
-	// Set environment. RUNTIME_AGENT_PATH is fenced to the fixtures dir
+	// Set environment. GAPI_AGENT_PATH is fenced to the fixtures dir
 	// ONLY: including the checkout's production agents/ made discovery
 	// start whatever example agents happen to live there, and their start
 	// timeouts starved the fixture agents' state transitions (the ~90s
 	// TestTimerAgent_Execution failure; GAPI-DIV-021).
 	root, _ := findProjectRoot() // Ignore error since we already validated in NewHarness
 	h.gapidCmd.Env = append(os.Environ(),
-		fmt.Sprintf("RUNTIME_AGENT_PATH=%s", h.agentsDir),
-		fmt.Sprintf("RUNTIME_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
-		"RUNTIME_FORCE_DUMMY_ADK=1",
-		"RUNTIME_CGROUPS_DISABLE=1",
+		fmt.Sprintf("GAPI_AGENT_PATH=%s", h.agentsDir),
+		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
+		"GAPI_FORCE_DUMMY_ADK=1",
+		"GAPI_CGROUPS_DISABLE=1",
 	)
 
 	// Capture output for debugging

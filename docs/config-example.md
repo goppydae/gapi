@@ -26,7 +26,7 @@ logging:
 Or without a file at all:
 
 ```bash
-RUNTIME_LOGGING_LEVEL=debug RUNTIME_LOGGING_FORMAT=console gapid
+GAPI_LOGGING_LEVEL=debug GAPI_LOGGING_FORMAT=console gapid
 ```
 
 Console output comes from the stdlib `slog` text handler:
@@ -140,18 +140,18 @@ Use the file sink and ship the file, until this is built.
 
 ## Environment-only configuration
 
-Every key can be set without a file. Prefix `RUNTIME_`, uppercase, dots
+Every key can be set without a file. Prefix `GAPI_`, uppercase, dots
 to underscores:
 
 ```bash
-RUNTIME_TRANSPORT_ADDRESS=:15000 RUNTIME_LOGGING_LEVEL=warn RUNTIME_METRICS_ENABLED=true gapid
+GAPI_TRANSPORT_ADDRESS=:15000 GAPI_LOGGING_LEVEL=warn GAPI_METRICS_ENABLED=true gapid
 ```
 
 The prefix is `RUNTIME`, not `GAPI`. That includes the `supervisor`
 section and the TLS paths:
 
 ```bash
-RUNTIME_SUPERVISOR_PRODUCTIONMODE=true RUNTIME_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
+GAPI_SUPERVISOR_PRODUCTIONMODE=true GAPI_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
 ```
 
 Only maps have no environment spelling; `logging.loki.labels` is
@@ -160,7 +160,7 @@ config-file only.
 ## Pointing at a specific file
 
 ```bash
-RUNTIME_CONFIG=/opt/gapi/prod.yaml gapid
+GAPI_CONFIG=/opt/gapi/prod.yaml gapid
 ```
 
 A release build otherwise reads `/etc/gapi/config.yaml` and nothing

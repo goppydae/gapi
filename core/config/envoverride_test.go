@@ -15,7 +15,7 @@ import (
 // knows, and it learns them from a config file, a default, or an explicit
 // bind. Keys that had no SetDefault were therefore dropped in silence:
 // the whole supervisor section, security.verifyKey, and the transport TLS
-// paths. RUNTIME_SUPERVISOR_PRODUCTIONMODE=true produced a daemon with
+// paths. GAPI_SUPERVISOR_PRODUCTIONMODE=true produced a daemon with
 // signature enforcement OFF and no error (GAPI-DIV-038).
 //
 // This test walks the Config struct by reflection rather than listing
@@ -144,7 +144,7 @@ func TestEveryConfigKeyIsReachableFromTheEnvironment(t *testing.T) {
 		}
 
 		t.Run(l.path, func(t *testing.T) {
-			t.Setenv("RUNTIME_CONFIG", empty)
+			t.Setenv("GAPI_CONFIG", empty)
 			t.Setenv(EnvKeyFor(l.path), envVal)
 
 			cfg, err := Load()
@@ -169,13 +169,13 @@ func TestSecurityRelevantOverridesApply(t *testing.T) {
 	if err := os.WriteFile(empty, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("RUNTIME_CONFIG", empty)
-	t.Setenv("RUNTIME_SUPERVISOR_PRODUCTIONMODE", "true")
-	t.Setenv("RUNTIME_SUPERVISOR_PID1MODE", "true")
-	t.Setenv("RUNTIME_SECURITY_VERIFYKEY", "/probe/agent.pub.hex")
-	t.Setenv("RUNTIME_TRANSPORT_TLSCERT", "/probe/server.crt")
-	t.Setenv("RUNTIME_TRANSPORT_TLSKEY", "/probe/server.key")
-	t.Setenv("RUNTIME_TRANSPORT_INSECURESKIPVERIFY", "false")
+	t.Setenv("GAPI_CONFIG", empty)
+	t.Setenv("GAPI_SUPERVISOR_PRODUCTIONMODE", "true")
+	t.Setenv("GAPI_SUPERVISOR_PID1MODE", "true")
+	t.Setenv("GAPI_SECURITY_VERIFYKEY", "/probe/agent.pub.hex")
+	t.Setenv("GAPI_TRANSPORT_TLSCERT", "/probe/server.crt")
+	t.Setenv("GAPI_TRANSPORT_TLSKEY", "/probe/server.key")
+	t.Setenv("GAPI_TRANSPORT_INSECURESKIPVERIFY", "false")
 
 	cfg, err := Load()
 	if err != nil {
@@ -217,7 +217,7 @@ func TestPrecedenceEnvOverFileOverDefault(t *testing.T) {
 		if err := os.WriteFile(empty, []byte("{}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("RUNTIME_CONFIG", empty)
+		t.Setenv("GAPI_CONFIG", empty)
 		cfg, err := Load()
 		if err != nil {
 			t.Fatal(err)
@@ -231,7 +231,7 @@ func TestPrecedenceEnvOverFileOverDefault(t *testing.T) {
 	})
 
 	t.Run("file beats default", func(t *testing.T) {
-		t.Setenv("RUNTIME_CONFIG", file)
+		t.Setenv("GAPI_CONFIG", file)
 		cfg, err := Load()
 		if err != nil {
 			t.Fatal(err)
@@ -245,9 +245,9 @@ func TestPrecedenceEnvOverFileOverDefault(t *testing.T) {
 	})
 
 	t.Run("env beats file", func(t *testing.T) {
-		t.Setenv("RUNTIME_CONFIG", file)
-		t.Setenv("RUNTIME_LOGGING_LEVEL", "error")
-		t.Setenv("RUNTIME_SUPERVISOR_PRODUCTIONMODE", "false")
+		t.Setenv("GAPI_CONFIG", file)
+		t.Setenv("GAPI_LOGGING_LEVEL", "error")
+		t.Setenv("GAPI_SUPERVISOR_PRODUCTIONMODE", "false")
 		cfg, err := Load()
 		if err != nil {
 			t.Fatal(err)
@@ -270,8 +270,8 @@ func TestLoadDoesNotLeakBetweenCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Setenv("RUNTIME_CONFIG", empty)
-	t.Setenv("RUNTIME_SUPERVISOR_PRODUCTIONMODE", "true")
+	t.Setenv("GAPI_CONFIG", empty)
+	t.Setenv("GAPI_SUPERVISOR_PRODUCTIONMODE", "true")
 	first, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestLoadDoesNotLeakBetweenCalls(t *testing.T) {
 
 	// t.Setenv above registers the restore; unsetting here is what the
 	// second load must observe.
-	if err := os.Unsetenv("RUNTIME_SUPERVISOR_PRODUCTIONMODE"); err != nil {
+	if err := os.Unsetenv("GAPI_SUPERVISOR_PRODUCTIONMODE"); err != nil {
 		t.Fatal(err)
 	}
 	second, err := Load()
@@ -296,12 +296,12 @@ func TestLoadDoesNotLeakBetweenCalls(t *testing.T) {
 
 func TestEnvKeyForSpelling(t *testing.T) {
 	for path, want := range map[string]string{
-		"supervisor.pid1Mode":             "RUNTIME_SUPERVISOR_PID1MODE",
-		"transport.tlsCert":               "RUNTIME_TRANSPORT_TLSCERT",
-		"logging.file.maxBackups":         "RUNTIME_LOGGING_FILE_MAXBACKUPS",
-		"security.verifyKey":              "RUNTIME_SECURITY_VERIFYKEY",
-		"supervisor.watchdog.interval":    "RUNTIME_SUPERVISOR_WATCHDOG_INTERVAL",
-		"supervisor.shutdown.gracePeriod": "RUNTIME_SUPERVISOR_SHUTDOWN_GRACEPERIOD",
+		"supervisor.pid1Mode":             "GAPI_SUPERVISOR_PID1MODE",
+		"transport.tlsCert":               "GAPI_TRANSPORT_TLSCERT",
+		"logging.file.maxBackups":         "GAPI_LOGGING_FILE_MAXBACKUPS",
+		"security.verifyKey":              "GAPI_SECURITY_VERIFYKEY",
+		"supervisor.watchdog.interval":    "GAPI_SUPERVISOR_WATCHDOG_INTERVAL",
+		"supervisor.shutdown.gracePeriod": "GAPI_SUPERVISOR_SHUTDOWN_GRACEPERIOD",
 	} {
 		if got := EnvKeyFor(path); got != want {
 			t.Errorf("EnvKeyFor(%q) = %q, want %q", path, got, want)

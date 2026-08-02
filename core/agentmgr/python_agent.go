@@ -397,11 +397,11 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	cmd.Env = os.Environ() // start with env
 
 	if a.nextRunID != "" {
-		cmd.Env = append(cmd.Env, "RUNTIME_RUN_ID="+a.nextRunID)
+		cmd.Env = append(cmd.Env, "GAPI_RUN_ID="+a.nextRunID)
 	}
 
 	if a.productionMode {
-		cmd.Env = append(cmd.Env, "RUNTIME_REJECT_DUMMY_ADK=1")
+		cmd.Env = append(cmd.Env, "GAPI_REJECT_DUMMY_ADK=1")
 	}
 
 	if len(extraFiles) > 0 {
@@ -594,7 +594,7 @@ func (a *PythonAgent) Reload(ctx context.Context) error {
 		"--module", a.path, "--id", a.id, "--type", a.typ, "--reload",
 	)
 	if a.nextRunID != "" {
-		cmd.Env = append(os.Environ(), "RUNTIME_RUN_ID="+a.nextRunID)
+		cmd.Env = append(os.Environ(), "GAPI_RUN_ID="+a.nextRunID)
 	}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

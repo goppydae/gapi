@@ -29,7 +29,7 @@ for a two-sided protocol, drive each side from its real entry point.
 
 ### AutomaticEnv does not make a key reachable
 
-**Symptom**: `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid` started a
+**Symptom**: `GAPI_SUPERVISOR_PRODUCTIONMODE=true gapid` started a
 daemon that was *not* in production mode, silently.
 
 **Cause**: viper's `Unmarshal` builds its result from the keys viper
@@ -81,14 +81,13 @@ SCHEDULE = "@hourly"
 
 **Symptom**: a test harness or custom directory is ignored.
 
-**Cause**: the variable is `RUNTIME_AGENT_PATH`, and it *replaces* the
-search path rather than adding to it. There is no `GAPI_AGENTS_DIR` or
-`GAPI_AGENT_PATH` - both names appear in older docs and are read by
-nothing.
+**Cause**: the variable is `GAPI_AGENT_PATH`, and it *replaces* the
+search path rather than adding to it. There is no `GAPI_AGENTS_DIR` -
+that name appears in older docs and is read by nothing.
 
-**Fix**: `RUNTIME_AGENT_PATH` to force one directory,
-`RUNTIME_SKIP_SYSTEM_AGENTS=1` to drop the system roots,
-`RUNTIME_DEV_AGENTS` to add development ones.
+**Fix**: `GAPI_AGENT_PATH` to force one directory,
+`GAPI_SKIP_SYSTEM_AGENTS=1` to drop the system roots,
+`GAPI_DEV_AGENTS` to add development ones.
 
 ## Event bus
 

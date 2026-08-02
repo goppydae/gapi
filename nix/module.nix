@@ -140,7 +140,7 @@ in {
         # cobra rejects anything else, so passing one made the unit fail
         # to start whenever configFile was set. The config override is an
         # environment variable (core/config/config.go reads
-        # RUNTIME_CONFIG), set below.
+        # GAPI_CONFIG), set below.
         ExecStart = "${cfg.package}/bin/gapid start";
         Restart = "on-failure";
         RestartSec = "5s";
@@ -176,15 +176,15 @@ in {
         TasksMax = 256;
       };
       
-      # RUNTIME_-prefixed, because that is what the loader reads.
+      # GAPI_-prefixed, because that is what the loader reads.
       # GAPI_AGENTS_DIR was set here and consumed by nothing
-      # (core/config/agent_paths.go reads RUNTIME_AGENT_PATH), so
+      # (core/config/agent_paths.go reads GAPI_AGENT_PATH), so
       # services.gapi.agentsDir was a no-op and its default was not even
       # on the search path.
       environment = {
-        RUNTIME_AGENT_PATH = cfg.agentsDir;
+        GAPI_AGENT_PATH = cfg.agentsDir;
       } // optionalAttrs (cfg.configFile != null) {
-        RUNTIME_CONFIG = toString cfg.configFile;
+        GAPI_CONFIG = toString cfg.configFile;
       };
     };
     

@@ -18,7 +18,7 @@ There is **no `--config` flag**. `gapid` defines only `--runtime-addr`,
 anything else. To point at a specific file, set an environment variable:
 
 ```bash
-RUNTIME_CONFIG=/path/to/config.yaml gapid
+GAPI_CONFIG=/path/to/config.yaml gapid
 ```
 
 GAPI runs with no config file at all - every setting below has a
@@ -27,18 +27,18 @@ default.
 ### Environment overrides
 
 **Every** key can be overridden by an environment variable: prefix
-`RUNTIME_`, uppercase, dots become underscores.
+`GAPI_`, uppercase, dots become underscores.
 
 ```bash
-RUNTIME_LOGGING_LEVEL=debug gapid
+GAPI_LOGGING_LEVEL=debug gapid
 ```
 
 ```bash
-RUNTIME_SUPERVISOR_PRODUCTIONMODE=true gapid
+GAPI_SUPERVISOR_PRODUCTIONMODE=true gapid
 ```
 
 ```bash
-RUNTIME_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
+GAPI_TRANSPORT_TLSCERT=/etc/gapi/server.crt gapid
 ```
 
 The prefix is `RUNTIME`, not `GAPI`. Precedence is environment over
@@ -50,7 +50,7 @@ config-file only.
 > This used to cover only the keys that happened to carry a registered
 > default - the whole `supervisor` section, `security.verifyKey` and the
 > TLS paths were dropped in silence, so
-> `RUNTIME_SUPERVISOR_PRODUCTIONMODE=true` produced a daemon with
+> `GAPI_SUPERVISOR_PRODUCTIONMODE=true` produced a daemon with
 > signature enforcement off and no error (GAPI-DIV-038). Bindings are now
 > derived from the config struct itself, and a test walks every field to
 > keep it that way.
@@ -137,8 +137,8 @@ JSON output comes from the stdlib `slog` JSON handler, so records carry
 ### Agent signature verification
 
 `security.verifyKey` points at an Ed25519 public key. Either
-`RUNTIME_SECURITY_VERIFYKEY` (the ordinary override) or
-`RUNTIME_VERIFY_KEY` sets it; the latter is a separate `os.Getenv` in
+`GAPI_SECURITY_VERIFYKEY` (the ordinary override) or
+`GAPI_VERIFY_KEY` sets it; the latter is a separate `os.Getenv` in
 the supervisor, consulted when the config key is empty, and predates the
 override covering every key.
 
@@ -149,7 +149,7 @@ Verification is gated on
 verify key configured, discovery rejects every binary - fail closed.
 
 Production mode does exactly two things: this gate, and setting
-`RUNTIME_REJECT_DUMMY_ADK` for Python agents. It does not touch TLS, the
+`GAPI_REJECT_DUMMY_ADK` for Python agents. It does not touch TLS, the
 listen address, or anything else.
 
 Note that only binary agents are verified. Python agents are described
@@ -253,11 +253,10 @@ def start():
 
 | Variable | Set for | Meaning |
 | -------- | ------- | ------- |
-| `GAPI_RUN_ID` | Go agents | per-start correlation id |
-| `RUNTIME_RUN_ID` | Python agents | per-start correlation id |
+| `GAPI_RUN_ID` | Go and Python agents | per-start correlation id |
 | `LISTEN_FDS` | socket-activated agents | how many descriptors were passed |
 | `LISTEN_PID` | socket-activated agents | `self` |
-| `RUNTIME_REJECT_DUMMY_ADK` | Python agents | fail loudly rather than falling back to the stub ADK |
+| `GAPI_REJECT_DUMMY_ADK` | Python agents | fail loudly rather than falling back to the stub ADK |
 
 The passed sockets start at **file descriptor 3**. `LISTEN_FDS` is a
 *count*, not a descriptor number:
@@ -276,16 +275,18 @@ prefix mechanism for injecting custom variables.
 
 | Variable | Purpose |
 | -------- | ------- |
-| `RUNTIME_CONFIG` | Path to the config file |
-| `RUNTIME_<SECTION>_<KEY>` | Override any config key |
-| `RUNTIME_AGENT_PATH` | Override the agent search root |
-| `RUNTIME_DEV_AGENTS` | Include development agent paths |
-| `RUNTIME_SKIP_SYSTEM_AGENTS` | Skip the system agent directories |
-| `RUNTIME_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
-| `RUNTIME_PY_RUNNER` | Override the Python runner path |
-| `RUNTIME_CGROUPS_DISABLE` | Disable cgroup setup |
-| `GAPID_KMSG_PATH` | Override the kmsg device (PID 1 mode) |
+| `GAPI_CONFIG` | Path to the config file |
+| `GAPI_<SECTION>_<KEY>` | Override any config key |
+| `GAPI_AGENT_PATH` | Override the agent search root |
+| `GAPI_DEV_AGENTS` | Include development agent paths |
+| `GAPI_SKIP_SYSTEM_AGENTS` | Skip the system agent directories |
+| `GAPI_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
+| `GAPI_PY_RUNNER` | Override the Python runner path |
+| `GAPI_CGROUPS_DISABLE` | Disable cgroup setup |
+| `GAPI_KMSG_PATH` | Override the kmsg device (PID 1 mode) |
 
-There is no `GAPI_AGENTS_DIR`, `GAPI_AGENT_PATH`, `GAPI_LOG_LEVEL` or
-`GAPI_TRACE_EVENTS`. Those names appear in older documentation and are
-read by nothing.
+There is no `GAPI_AGENTS_DIR`, `GAPI_LOG_LEVEL` or `GAPI_TRACE_EVENTS`.
+Those names appear in older documentation and are read by nothing.
+`GAPI_AGENT_PATH` is real and listed above. It carried the old
+namespace prefix until GAPI-DIV-059, and this paragraph went on denying
+it under the new spelling - see the release notes for the rename.
