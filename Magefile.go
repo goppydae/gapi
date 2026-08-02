@@ -270,7 +270,7 @@ func Fmt() error {
 // Rule-level gosec carve-outs (GAPI-DIV-024):
 //   - G204: gapid is a process supervisor; launching operator-registered
 //     agent binaries and interpreters with discovered paths is the product.
-//     Discovery roots are fenced (RUNTIME_AGENT_PATH) and binaries are
+//     Discovery roots are fenced (GAPI_AGENT_PATH) and binaries are
 //     signature-verified before start (agentreg integrity check).
 //   - G304: every variable-path open routes through internal/safeio, the
 //     audited chokepoint (clean + absolute, root-confined where a root

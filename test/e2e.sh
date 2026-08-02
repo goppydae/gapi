@@ -94,7 +94,7 @@ agents:
   dir: "$TEST_AGENTS_DIR"
 EOF
 log "Created config.yaml"
-export RUNTIME_CONFIG="$(pwd)/config.yaml"
+export GAPI_CONFIG="$(pwd)/config.yaml"
 
 # 2. Setup Agents
 cp agents/python/services/heartbeat.py.service $TEST_AGENTS_DIR/heartbeat.py.service
@@ -119,8 +119,8 @@ grep -q "DEPS =" $TEST_AGENTS_DIR/heartbeat.py.service || echo 'DEPS = ["base"]'
 
 # 2. Start Daemon
 log "Starting gapid..."
-export RUNTIME_AGENT_PATH="$TEST_AGENTS_DIR"
-export RUNTIME_FORCE_DUMMY_ADK=1
+export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
+export GAPI_FORCE_DUMMY_ADK=1
 ./bin/gapid > gapid.log 2>&1 &
 GAPID_PID=$!
 log "gapid PID: $GAPID_PID"

@@ -106,10 +106,10 @@ EOF
 
 # tlsCert/tlsKey are the names the loader reads; certFile/keyFile are
 # dropped silently by viper and configure nothing.
-export RUNTIME_CONFIG="$WORK/config.yaml"
-export RUNTIME_AGENT_PATH="$WORK/agents"
-export RUNTIME_SKIP_SYSTEM_AGENTS=1
-export RUNTIME_PY_RUNNER="$ROOT/adk/python/agent/runner.py"
+export GAPI_CONFIG="$WORK/config.yaml"
+export GAPI_AGENT_PATH="$WORK/agents"
+export GAPI_SKIP_SYSTEM_AGENTS=1
+export GAPI_PY_RUNNER="$ROOT/adk/python/agent/runner.py"
 
 echo "[TEST] Starting gapid on 127.0.0.1:$PORT..."
 ./bin/gapid > "$WORK/gapid.log" 2>&1 &

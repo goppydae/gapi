@@ -69,12 +69,15 @@ def start(stop_evt=None):
 	runGapid := func(ctx context.Context) (*exec.Cmd, string, error) {
 		cmd := exec.CommandContext(ctx, gapidBin, "start")
 		cmd.Env = append(os.Environ(),
-			"RUNTIME_DEV_AGENTS="+agentsDir,
-			"RUNTIME_VERIFY_KEY="+pubKeyPath,
-			"RUNTIME_SKIP_ROOT_CHECK=1",
-			"RUNTIME_TRANSPORT_TYPE=quic",           // Ensure consistent transport
-			"RUNTIME_TRANSPORT_ADDRESS=127.0.0.1:0", // Random port
-			"RUNTIME_PY_RUNNER=../../adk/python/agent/runner.py",
+			"GAPI_DEV_AGENTS="+agentsDir,
+			"GAPI_VERIFY_KEY="+pubKeyPath,
+			// GAPI_SKIP_ROOT_CHECK was set here and read by no code in
+			// the tree - a no-op that read as a precondition. Dropped
+			// while renaming the namespace (GAPI-DIV-059); the scan gate
+			// added there now fails on a set-but-unread project name.
+			"GAPI_TRANSPORT_TYPE=quic",           // Ensure consistent transport
+			"GAPI_TRANSPORT_ADDRESS=127.0.0.1:0", // Random port
+			"GAPI_PY_RUNNER=../../adk/python/agent/runner.py",
 		)
 		// Capture stdout/stderr
 		logFile := filepath.Join(tmpDir, "gapid.log")

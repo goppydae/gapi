@@ -30,7 +30,7 @@ const defaultShutdownGrace = 10 * time.Second
 // reboot is not permitted (containers), the completion returns and
 // the caller exits; for a container init, exiting IS poweroff.
 func (s *Supervisor) EnablePid1(ctx context.Context) (func(action shutdown.Action), error) {
-	kmsg := logging.NewKmsg(os.Getenv("GAPID_KMSG_PATH"))
+	kmsg := logging.NewKmsg(os.Getenv("GAPI_KMSG_PATH"))
 	kmsg.Log(logging.KmsgInfo, "phase 0: pre-userspace")
 
 	reapKick := make(chan os.Signal, 8)

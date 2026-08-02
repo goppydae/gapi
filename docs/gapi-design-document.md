@@ -194,7 +194,7 @@ No manifest files, in either language.
 The Python ADK reaches the kernel through gopy bindings under
 `adk/python/gapi/native/`, which are built (`mage python:build`), not
 committed. Absent them the runner falls back to a stub that writes
-events to stdout. `RUNTIME_REJECT_DUMMY_ADK` turns that into a hard
+events to stdout. `GAPI_REJECT_DUMMY_ADK` turns that into a hard
 failure, and production mode sets it.
 
 gopy cannot bind Go channels, so the bridge is blocking calls over

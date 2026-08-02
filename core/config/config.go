@@ -93,11 +93,22 @@ type Config struct {
 }
 
 // EnvPrefix is the prefix on every environment variable that overrides a
-// config key. It is RUNTIME, not GAPI.
-const EnvPrefix = "RUNTIME"
+// config key.
+//
+// It was the literal "RUNTIME" until GAPI-DIV-059, which is the kernel's
+// name for nothing in particular and, worse, was inherited wholesale by
+// the orchestrator: goblin imports this package, so a host running both
+// daemons had RUNTIME_CONFIG exported for one silently consumed by the
+// other. Each project owns one prefix named for the project
+// (cli-contract.md), so this is GAPI and goblin's is GOBLIN.
+//
+// The rename is HARD - no fallback reads the old spelling, decided by
+// the operator. A deployed RUNTIME_CONFIG therefore yields default
+// config rather than an error, which is why this carries a release note.
+const EnvPrefix = "GAPI"
 
 // EnvKeyFor renders a dotted config path as the environment variable that
-// overrides it: "supervisor.pid1Mode" becomes "RUNTIME_SUPERVISOR_PID1MODE".
+// overrides it: "supervisor.pid1Mode" becomes "GAPI_SUPERVISOR_PID1MODE".
 func EnvKeyFor(path string) string {
 	return EnvPrefix + "_" + strings.ToUpper(strings.ReplaceAll(path, ".", "_"))
 }
@@ -156,7 +167,7 @@ func Load() (*Config, error) {
 	// configuration bug reproduce only in the second test.
 	v := viper.New()
 
-	if env := os.Getenv("RUNTIME_CONFIG"); env != "" {
+	if env := os.Getenv("GAPI_CONFIG"); env != "" {
 		v.SetConfigFile(env)
 	} else {
 		v.SetConfigName("config")

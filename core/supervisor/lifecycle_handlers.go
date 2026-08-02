@@ -190,7 +190,7 @@ func isInFlight(state string) bool {
 }
 
 func resolvePyRunner() string {
-	if v := os.Getenv("RUNTIME_PY_RUNNER"); v != "" {
+	if v := os.Getenv("GAPI_PY_RUNNER"); v != "" {
 		return v
 	}
 	if exe, err := os.Executable(); err == nil {

@@ -72,7 +72,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	// Check config first, then env
 	kp := cfg.Security.VerifyKey
 	if kp == "" {
-		kp = os.Getenv("RUNTIME_VERIFY_KEY")
+		kp = os.Getenv("GAPI_VERIFY_KEY")
 	}
 
 	if kp != "" {

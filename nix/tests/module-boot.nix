@@ -55,8 +55,8 @@ pkgs.testers.runNixOSTest {
     # actually reads. GAPI_AGENTS_DIR was set here for a long time and
     # consumed by nothing.
     unit_env = node.succeed("systemctl show gapi.service -p Environment --value")
-    assert "RUNTIME_AGENT_PATH" in unit_env, (
-        "RUNTIME_AGENT_PATH is not set on the unit, so agentsDir does nothing: "
+    assert "GAPI_AGENT_PATH" in unit_env, (
+        "GAPI_AGENT_PATH is not set on the unit, so agentsDir does nothing: "
         + unit_env
     )
     assert "GAPI_AGENTS_DIR" not in unit_env, (

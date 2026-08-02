@@ -88,7 +88,7 @@ def stop():
 paths. To point it at a specific directory:
 
 ```bash
-RUNTIME_AGENT_PATH=./agents ./bin/gapid
+GAPI_AGENT_PATH=./agents ./bin/gapid
 ```
 
 In another shell:
@@ -159,7 +159,7 @@ That writes the `.b3` digest and the `.sig` over it. Both are required.
 ## Troubleshooting
 
 **The agent does not appear in `agent status`.** Check the discovery
-root. GAPI searches several paths; `RUNTIME_AGENT_PATH` overrides them
+root. GAPI searches several paths; `GAPI_AGENT_PATH` overrides them
 with one directory of your choosing.
 
 **The agent is listed but never starts.** Check `ENABLED`. An agent with

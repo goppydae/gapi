@@ -89,8 +89,8 @@ func TestPid1EndToEnd(t *testing.T) {
 		"--name", name,
 		"-v", "/nix/store:/nix/store:ro",
 		"-v", tmpVol+":/tmp",
-		"--env", "RUNTIME_AGENT_PATH=/agents",
-		"--env", "GAPID_KMSG_PATH=/tmp/kmsg",
+		"--env", "GAPI_AGENT_PATH=/agents",
+		"--env", "GAPI_KMSG_PATH=/tmp/kmsg",
 		"--rootfs", built.rootfs+":O",
 		"/gapid", "--pid1", "--no-early-mounts", "--log-level", "debug",
 	)

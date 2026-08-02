@@ -107,7 +107,7 @@ repo-wide, with the reasons recorded at `Magefile.go`'s `Lint`:
 
 - **G204** - launching operator-registered agent binaries with
   discovered paths is the product. Roots are fenced by
-  `RUNTIME_AGENT_PATH` and binaries are signature-verified before start.
+  `GAPI_AGENT_PATH` and binaries are signature-verified before start.
 - **G304** - every variable-path open routes through `internal/safeio`,
   so the rule fires only inside that package.
 
@@ -196,7 +196,7 @@ is no `internal/scheduler` and no `internal/socket`.
 ```
 
 ```bash
-RUNTIME_LOGGING_LEVEL=debug ./bin/gapid
+GAPI_LOGGING_LEVEL=debug ./bin/gapid
 ```
 
 `GAPI_LOG_LEVEL` and `GAPI_TRACE_EVENTS` are read by nothing. The

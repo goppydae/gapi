@@ -142,7 +142,7 @@ qemu-system-x86_64 \
 Build the initrd with `gapid` symlinked to `/init`, and remember that
 `gapid` needs `--pid1`. Bake the flag into a wrapper script used as
 `/init`, put `supervisor.pid1Mode: true` in the config file, or set
-`RUNTIME_SUPERVISOR_PID1MODE=true` in the environment.
+`GAPI_SUPERVISOR_PID1MODE=true` in the environment.
 
 ### systemd-nspawn
 
@@ -232,7 +232,7 @@ console under init.
 **Debug logging.**
 
 ```bash
-RUNTIME_LOGGING_LEVEL=debug gapid --pid1
+GAPI_LOGGING_LEVEL=debug gapid --pid1
 ```
 
 ## Next steps
