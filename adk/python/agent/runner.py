@@ -16,12 +16,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 # it restores it here rather than trusting generated code to unwind.
 _entry_cwd = os.getcwd()
 try:
-    if os.getenv("GAPI_FORCE_DUMMY_ADK"):
+    if os.getenv("ADK_FORCE_DUMMY"):
         raise ImportError("Forced Dummy ADK")
     from gapi.native import adk
 except ImportError as e:
-    if os.getenv("GAPI_REJECT_DUMMY_ADK"):
-        print(f"[FATAL] Failed to import gapi.native.adk and GAPI_REJECT_DUMMY_ADK is set: {e}", file=sys.stderr)
+    if os.getenv("ADK_REJECT_DUMMY"):
+        print(f"[FATAL] Failed to import gapi.native.adk and ADK_REJECT_DUMMY is set: {e}", file=sys.stderr)
         sys.exit(1)
     
     print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
@@ -44,10 +44,10 @@ except ImportError as e:
     adk = DummyAdk()
     
     # Warn if not explicitly forced
-    if not os.getenv("GAPI_FORCE_DUMMY_ADK"):
+    if not os.getenv("ADK_FORCE_DUMMY"):
         print("[WARNING] Running with DummyAdk (stdout fallback mode). "
               "This should only be used for development/testing. "
-              "Set GAPI_FORCE_DUMMY_ADK=1 to suppress this warning.",
+              "Set ADK_FORCE_DUMMY=1 to suppress this warning.",
               file=sys.stderr)
 finally:
     # Unconditional: this block never leaves the process somewhere the
@@ -89,7 +89,7 @@ SCHEMA_VERSION = "1.0.0"
 READY_TIMEOUT_SEC = float(os.getenv("RUNNER_READY_TIMEOUT", "20"))
 GRACE_SEC = float(os.getenv("RUNNER_READY_GRACE", "0.25"))
 READY_MODE = os.getenv("RUNNER_READY_MODE", "strict").lower()  # strict by default now
-RUN_ID = os.getenv("GAPI_RUN_ID", "")
+RUN_ID = os.getenv("ADK_RUN_ID", "")
 
 def _notify(event: str, **kv):
     kv.setdefault("ts", time.time())

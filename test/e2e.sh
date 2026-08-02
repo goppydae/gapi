@@ -120,7 +120,7 @@ grep -q "DEPS =" $TEST_AGENTS_DIR/heartbeat.py.service || echo 'DEPS = ["base"]'
 # 2. Start Daemon
 log "Starting gapid..."
 export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
-export GAPI_FORCE_DUMMY_ADK=1
+export ADK_FORCE_DUMMY=1
 ./bin/gapid > gapid.log 2>&1 &
 GAPID_PID=$!
 log "gapid PID: $GAPID_PID"

@@ -312,7 +312,7 @@ mage python:build
 
 Without them the runner falls back to `DummyAdk`, which writes events to
 stdout instead of the bus, and warns on stderr. Set
-`GAPI_REJECT_DUMMY_ADK=1` to make that a hard failure instead -
+`ADK_REJECT_DUMMY=1` to make that a hard failure instead -
 `productionMode` sets it for you.
 
 ### What the ADK exposes
