@@ -86,8 +86,13 @@ search path rather than adding to it. There is no `GAPI_AGENTS_DIR` -
 that name appears in older docs and is read by nothing.
 
 **Fix**: `GAPI_AGENT_PATH` to force one directory,
-`GAPI_SKIP_SYSTEM_AGENTS=1` to drop the system roots,
-`GAPI_DEV_AGENTS` to add development ones.
+`GAPI_SKIP_SYSTEM_AGENTS=1` to drop the package-owned roots (`/etc` and
+`/run` survive it), `GAPI_DEV_AGENTS` to add development ones.
+
+**Also**: there is no implicit `./agents` tier any more. A daemon started
+from a checkout does not discover that checkout's agents unless
+`GAPI_DEV_AGENTS` names the directory. That is deliberate - the old
+behaviour made discovery depend on the working directory.
 
 ## Event bus
 

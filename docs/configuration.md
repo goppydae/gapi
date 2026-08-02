@@ -285,8 +285,8 @@ table below is `gapid`'s view of it.
 | `GAPI_CONFIG` | Path to the config file |
 | `GAPI_<SECTION>_<KEY>` | Override any config key |
 | `GAPI_AGENT_PATH` | Override the agent search root |
-| `GAPI_DEV_AGENTS` | Include development agent paths |
-| `GAPI_SKIP_SYSTEM_AGENTS` | Skip the system agent directories |
+| `GAPI_DEV_AGENTS` | Highest-priority agent directory, in either scope |
+| `GAPI_SKIP_SYSTEM_AGENTS` | Drop the package-owned agent tiers (`/usr/lib`, `/usr/local/lib`); `/etc` and `/run` survive |
 | `GAPI_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
 | `GAPI_PY_RUNNER` | Override the Python runner path |
 | `GAPI_CGROUPS_DISABLE` | Disable cgroup setup |
