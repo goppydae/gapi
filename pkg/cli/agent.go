@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -76,8 +77,13 @@ func init() {
 	agentBuildCmd.Flags().StringVar(&keyPath, "key", "", "Path to ED25519 signing key")
 	agentBuildCmd.Flags().StringVarP(&outputDir, "output", "o", "agents/build/go", "Output directory for built binaries")
 
-	agentNewCmd.Flags().StringVarP(&agentLang, "lang", "l", "go", "Agent language (go, python)")
-	agentNewCmd.Flags().StringVarP(&agentType, "type", "t", "service", "Agent type (service, timer, socket)")
+	// The advertised sets come from the scaffold matrix rather than from
+	// literals here: help that names a type with no template is the same
+	// promise the fallback used to keep badly (GAPI-DIV-054).
+	agentNewCmd.Flags().StringVarP(&agentLang, "lang", "l", "go",
+		fmt.Sprintf("Agent language (%s)", strings.Join(scaffoldLangs(), ", ")))
+	agentNewCmd.Flags().StringVarP(&agentType, "type", "t", "service",
+		fmt.Sprintf("Agent type (%s)", strings.Join(scaffoldTypes(), ", ")))
 	agentNewCmd.Flags().StringVarP(&agentOutput, "output", "o", "", "Output directory (default: agents/{lang}/foundational or agents/{lang}/services)")
 
 	agentCmd.AddCommand(agentBuildCmd)
