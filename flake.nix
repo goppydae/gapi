@@ -36,10 +36,18 @@
         onLinux = pkgs.stdenv.hostPlatform.isLinux;
 
         # The image formats nix/generators/README.md already documents.
+        # Formats every Linux host can produce.
         imageFormats = [
           "iso" "vm" "qcow" "raw" "docker" "lxc" "lxc-metadata"
-          "virtualbox" "vmware"
+          "vmware"
         ];
+
+        # virtualbox's image builder pulls in the VirtualBox package,
+        # which nixpkgs marks x86_64-linux only - so offering this format
+        # on aarch64-linux advertises a target that cannot be built there.
+        # Found by running 'nix flake check --all-systems', which nothing
+        # in CI ran until GAPI-DIV-064.
+        x86ImageFormats = [ "virtualbox" ];
 
         mkImage = format: nixos-generators.nixosGenerate {
           inherit system format;
@@ -71,8 +79,6 @@
             # only the error branch. libseccomp is criu's own pkg-config
             # dependency. Kept in step with goblin's shell, which
             # 'mage envcheck' compares against.
-            criu
-            libseccomp
 
             # Lint and security gate
             golangci-lint
@@ -100,6 +106,23 @@
             
             # Markdown linting
             markdownlint-cli2
+          ]
+          # DAEMON-SIDE ONLY, and the reason aarch64-darwin was declared
+          # and unusable: criu and libseccomp have no darwin build, so
+          # merely instantiating this shell there failed. The flake said
+          # "aarch64-darwin stays for editing in the dev shell" while no
+          # such shell could exist (GAPI-DIV-064).
+          #
+          # The split is the product's own: the control-plane client is
+          # cross-platform - gapictl cross-compiles to darwin/arm64 today
+          # - and the supervisor is not, because cgroups v2, PID 1 and
+          # CRIU are the point rather than an implementation detail. A
+          # darwin shell therefore builds both binaries, runs the unit
+          # tests and lints; it cannot run the daemon meaningfully or the
+          # privileged suites, neither of which it could have anyway.
+          ++ lib.optionals stdenv.hostPlatform.isLinux [
+            criu
+            libseccomp
           ];
 
           shellHook = ''
@@ -131,7 +154,19 @@
           '';
         };
 
-        packages = {
+        # Linux-only, and honestly so: nix/package.nix declares
+        # platforms.linux because the supervisor IS cgroups v2, PID 1 and
+        # CRIU. Advertising a package on darwin that cannot be built there
+        # makes 'nix flake check --all-systems' fail for a Mac developer
+        # rather than simply find nothing to do - the same reasoning
+        # nix/checks.nix already applies to the VM tests (GAPI-DIV-064).
+        #
+        # The dev shell IS offered on darwin, which is the whole point: a
+        # Mac can build both binaries with the Go toolchain, run the unit
+        # tests and lint. gapictl cross-compiles to darwin/arm64 today; a
+        # packaged cross-platform client would be an additive output here,
+        # not a change to this one.
+        packages = pkgs.lib.optionalAttrs onLinux {
           default = pkgs.callPackage ./nix/package.nix { };
           gapi = self.packages.${system}.default;
         } // pkgs.lib.optionalAttrs onLinux (
@@ -139,6 +174,8 @@
           # nix/generators/README.md has documented all along and the
           # flake never exposed.
           pkgs.lib.genAttrs imageFormats mkImage
+        ) // pkgs.lib.optionalAttrs (onLinux && pkgs.stdenv.hostPlatform.isx86_64) (
+          pkgs.lib.genAttrs x86ImageFormats mkImage
         );
 
         # VM-backed checks. Booting a guest is the only way to assert the
