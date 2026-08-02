@@ -34,9 +34,19 @@ pkgs.testers.runNixOSTest {
         "gapi.service ExecStart does not run gapid: " + exec_start
     )
 
-    # No -config flag. gapid defines only --runtime-addr, --log-level,
-    # --pid1 and --no-early-mounts; cobra rejects anything else, so a
-    # stray -config here means the unit can never start.
+    # The daemon lives behind an explicit start verb (cli-contract.md,
+    # GAPI-DIV-057). A bare ExecStart no longer boots anything: the root
+    # carries no RunE, so it prints help and exits 1, and the unit would
+    # fail on every start with no other signal.
+    assert "gapid start" in exec_start, (
+        "ExecStart does not use the start verb; a bare gapid prints help "
+        "and exits nonzero: " + exec_start
+    )
+
+    # No -config flag. gapid's start verb defines --listen-addr, --pid1
+    # and --no-early-mounts locally, plus the shared persistent daemon
+    # set; cobra rejects anything else, so a stray -config here means the
+    # unit can never start.
     assert "-config" not in exec_start, (
         "ExecStart passes -config, which gapid does not accept: " + exec_start
     )

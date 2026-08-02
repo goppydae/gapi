@@ -67,7 +67,7 @@ def start(stop_evt=None):
 
 	// Helper to run gapid
 	runGapid := func(ctx context.Context) (*exec.Cmd, string, error) {
-		cmd := exec.CommandContext(ctx, gapidBin)
+		cmd := exec.CommandContext(ctx, gapidBin, "start")
 		cmd.Env = append(os.Environ(),
 			"RUNTIME_DEV_AGENTS="+agentsDir,
 			"RUNTIME_VERIFY_KEY="+pubKeyPath,
