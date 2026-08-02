@@ -14,7 +14,7 @@ require (
 	github.com/go-python/gopy v0.4.10
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
-	github.com/goppydae/magelib v0.5.0
+	github.com/goppydae/magelib v0.5.1
 	github.com/magefile/mage v1.15.0
 	github.com/prometheus/client_golang v1.20.5
 	github.com/quic-go/quic-go v0.59.1
