@@ -222,6 +222,52 @@ jobs:
       - name: Assert Committed Codegen Is Current
         run: git diff --exit-code
 
+  flake-build:
+    # GAPI-DIV-064. The same shape as GAPI-DIV-041 one layer out: the
+    # flake DECLARED a package and VM checks, and no job built either.
+    # Every other step here is 'nix develop -c ...', which resolves the
+    # WORKING TREE - so nix/package.nix, nix/module.nix and nix/tests/
+    # were ungated in the repo that owns them.
+    #
+    # A FLAKE BUILDS FROM THE GIT TREE, which is a third resolution mode
+    # beside go.work and vendor/. An uncommitted file does not exist to
+    # it, so 'nix develop -c go build ./...' can be green while
+    # 'nix build .#' fails on the same checkout. Only this job sees that.
+    #
+    # The VM checks are NOT here - they need KVM and minutes, and live in
+    # vm-checks.yml off the pull-request path. What is here is the cheap
+    # half, and it is cheap: measured at 6s and 20s locally.
+    name: Flake Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Workspace
+        uses: actions/checkout@v4
+
+      - name: Synchronize Environment (Nix)
+        uses: cachix/install-nix-action@v24
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      # Compiles the packaged source set - the git tree, not the working
+      # tree. This is the step that catches a file the author never
+      # committed.
+      - name: Build the Flake Package
+        run: nix build .# --no-link --print-build-logs
+
+      # --all-systems is load-bearing rather than thoroughness. A plain
+      # check PASSES on outputs that cannot evaluate for a declared
+      # system: it omits the incompatible ones, says so in a warning, and
+      # exits 0. Adding this flag found three real defects on the commit
+      # that introduced the job - a dev shell that could not instantiate
+      # on aarch64-darwin, a package advertised there that declares
+      # platforms.linux, and a virtualbox image format offered on
+      # aarch64-linux where VirtualBox does not exist.
+      #
+      # --no-build keeps the VM checks out: it evaluates every declared
+      # output on every declared system without booting a guest.
+      - name: Evaluate Every Declared System
+        run: nix flake check --no-build --all-systems
+
   sibling-gates:
     # The half of GAPI-DIV-041 that needs the sibling trees:
     #   lint     - magelib.Lint reads ../magelib/.golangci.yml, the shared

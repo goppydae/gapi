@@ -1,0 +1,94 @@
+name: VM Checks
+
+# The guest-booting gate, deliberately OFF the pull-request path.
+#
+# gapi's flake DECLARES these checks (flake.nix imports nix/checks.nix)
+# and until now nothing ran them. Every step in ci.yml is
+# 'nix develop -c ...', which resolves the WORKING TREE, so the module,
+# the package and the NixOS tests were ungated in the repo that owns them
+# while goblin gated its equivalents (GAPI-DIV-064).
+#
+# WHY OFF THE PULL-REQUEST PATH. Booting a guest needs KVM and minutes,
+# and it would set the floor on merge latency for every change including
+# ones that cannot affect it. goblin made this trade first and its
+# vm-checks.yml records the reasoning; this file follows it deliberately
+# rather than by copying.
+#
+# WHAT IT COSTS, stated rather than discovered. A defect can now merge and
+# be caught afterwards instead of being blocked at review, so a green pull
+# request does NOT imply the VM checks passed. It also means this must NOT
+# become a required status check: a required context that never reports on
+# a pull request blocks it forever.
+#
+# The cheap half of the coverage DOES gate pull requests - ci.yml builds
+# the flake package and evaluates every declared system on each one. This
+# file is only for what needs a running kernel.
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    # 06:00 UTC daily. GitHub disables scheduled workflows on a repository
+    # with no activity for 60 days, which would silently stop this - the
+    # exact failure mode the file exists to prevent, written down so a
+    # future reader checks it rather than assumes.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  vm-checks:
+    name: NixOS VM Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Workspace
+        uses: actions/checkout@v4
+
+      # No sibling checkout: the flake builds from the git tree through
+      # vendor/, which is the resolution the no-replace job proves.
+
+      - name: Synchronize Environment (Nix)
+        uses: cachix/install-nix-action@v24
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      # GitHub's Linux runners ship /dev/kvm but leave it owned by a group
+      # the runner user is not in, so QEMU falls back to software
+      # emulation and the guests take minutes instead of seconds.
+      - name: Open /dev/kvm to the Runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+
+      # --max-jobs 1 serializes the guests: nix builds derivations in
+      # parallel and each check boots a VM, so concurrent guests
+      # oversubscribe a runner with its own hypervisor. gapi declares one
+      # check today; the flag is here because the second one must not
+      # arrive alongside a lesson goblin already paid for.
+      #
+      # --keep-going because serializing makes fail-fast actively harmful:
+      # one failing check would leave the rest unrun, so a single flake
+      # masks the state of everything else.
+      #
+      # set -o pipefail because tee otherwise swallows a nonzero exit and
+      # reports a failing suite as green. That is not hypothetical here -
+      # ci.yml's cross-ADK job did exactly that for its entire existence,
+      # and reported success on a run where every Go subtest failed.
+      - name: Execute NixOS VM Checks
+        run: |
+          set -o pipefail
+          nix flake check --print-build-logs --max-jobs 1 --keep-going 2>&1 | tee vm-checks.log
+
+      # Uploaded on success as well as failure. Re-running a failed job
+      # REPLACES its conclusion, so a failure rerun before anyone reads it
+      # leaves no trace in the run history at all. Nobody is watching at
+      # 06:00, so the log has to survive without a reader; the passing runs
+      # are the baseline to diff a failure against.
+      - name: Preserve the VM check log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-checks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: vm-checks.log
+          retention-days: 30
