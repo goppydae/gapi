@@ -142,3 +142,38 @@ func TestRegister_ConcurrentRegistrations(t *testing.T) {
 		t.Fatalf("registered %d agents, want %d", len(agents), n)
 	}
 }
+
+// TestTopologicalSort_HonoursReverseEdges covers the second reader of
+// the reverse-edge semantic. Register writes wanted_by and required_by
+// into the graph as reverse edges, and this sort built its inputs from
+// Requires and Wants alone, so the graph and the ordering disagreed -
+// the same gap core/agentmgr had, in the same shape. One fix without
+// the other would have left the advisory graph complete and the
+// ordering short, which is exactly the drift that is hard to see.
+//
+// The names are anti-alphabetical on purpose: with no edge between them
+// the sort falls back to a deterministic (alphabetical) order, so an
+// implementation that drops reverse edges returns [alpha zebra] and
+// fails here. Naming them the other way round yields a test that passes
+// against the unfixed code.
+func TestTopologicalSort_HonoursReverseEdges(t *testing.T) {
+	r := newTestRegistry(t)
+
+	// zebra is wanted_by alpha: the edge is alpha -> zebra, so zebra
+	// must be ordered first.
+	if err := r.Register(&AgentDescription{ID: "zebra", Type: "service", WantedBy: []string{"alpha"}}); err != nil {
+		t.Fatalf("register zebra: %v", err)
+	}
+	if err := r.Register(&AgentDescription{ID: "alpha", Type: "service"}); err != nil {
+		t.Fatalf("register alpha: %v", err)
+	}
+
+	order, err := r.TopologicalSort()
+	if err != nil {
+		t.Fatalf("TopologicalSort() error = %v", err)
+	}
+	if len(order) != 2 || order[0] != "zebra" || order[1] != "alpha" {
+		t.Errorf("TopologicalSort() = %v, want [zebra alpha]: "+
+			"zebra is wanted_by alpha, so it must be ordered first", order)
+	}
+}

@@ -20,6 +20,8 @@ func (m *MockAgent) Dependencies() []string {
 	return append(append([]string(nil), m.deps...), m.wants...)
 }
 func (m *MockAgent) Requires() []string                { return m.deps }
+func (m *MockAgent) WantedBy() []string                { return nil }
+func (m *MockAgent) RequiredBy() []string              { return nil }
 func (m *MockAgent) Wants() []string                   { return m.wants }
 func (m *MockAgent) SetRunID(string)                   {}
 func (m *MockAgent) Controller() *lifecycle.Controller { return nil }
