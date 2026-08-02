@@ -114,8 +114,23 @@ jobs:
       - name: Build Python ADK Bindings
         run: nix develop -c mage -v python:build
 
+      # The parity suite drives agents through a REAL supervisor, so it
+      # needs gapid and gapictl on disk. Without this the harness fatals
+      # before any assertion runs, which is exactly what happened the
+      # first time the rewritten suite met CI - and the job still went
+      # green, for the reason below.
+      - name: Build Binaries
+        run: nix develop -c mage -v build
+
+      # set -o pipefail is load-bearing, not hygiene. Piping into tee
+      # makes the STEP's exit status tee's, so this job reported success
+      # regardless of the test outcome for its entire existence - a job
+      # named for the parity suite that could not fail if the suite did.
+      # goblin's vm-checks.yml carries the same line with the same
+      # reasoning; gapi never got it.
       - name: Execute Cross-ADK Tests
         run: |
+          set -o pipefail
           nix develop -c go test -v ./test/adk/ -run 'TestCrossADKParity|TestADKIntegration' 2>&1 | tee /tmp/cross-adk-test.log
       
       - name: Upload test results
