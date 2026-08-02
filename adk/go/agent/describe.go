@@ -45,9 +45,10 @@ type describeEnvelope struct {
 // identical arrays for identical agents - the cross-ADK suite compares
 // them element by element, not as sets.
 //
-// The Python side also honours @capability-decorated functions. Go has no
-// equivalent surface and does not invent one; the list here is exactly
-// the lifecycle set.
+// Declared extras follow the lifecycle set and are de-duplicated, which
+// is the order and the treatment runner.py gives its @capability
+// decorators - lifecycle names first, decorated names appended, then
+// dict.fromkeys to dedupe.
 func (s *Spec) capabilities() []string {
 	caps := []string{}
 	for _, c := range []struct {
@@ -62,6 +63,17 @@ func (s *Spec) capabilities() []string {
 	} {
 		if c.present {
 			caps = append(caps, c.name)
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, c := range caps {
+		seen[c] = true
+	}
+	for _, c := range s.Capabilities {
+		if c != "" && !seen[c] {
+			seen[c] = true
+			caps = append(caps, c)
 		}
 	}
 	return caps

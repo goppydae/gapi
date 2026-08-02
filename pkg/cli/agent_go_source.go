@@ -75,6 +75,7 @@ var specFields = map[string][]string{
 	"ListenStream": {"ListenStream", "LISTEN_STREAM", "Socket", "SOCKET"},
 	"CPULimit":     {"CPULimit", "CPU_LIMIT", "CPU"},
 	"MemoryLimit":  {"MemoryLimit", "MEMORY_LIMIT", "Memory", "MEMORY"},
+	"Capabilities": {"Capabilities", "CAPABILITIES"},
 }
 
 // lifecycleFields are the func-valued Spec fields. Start is handled

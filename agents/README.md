@@ -10,8 +10,8 @@ agents/
 |   |-- services/    # Long-running services
 |   |-- timers/      # Scheduled/periodic tasks
 |   `-- sockets/     # Socket-activated services
-|-- go/              # Go agents (foundational/high-performance)
-|   |-- foundational/  # System boot, core services
+|-- *.go.<type>      # built Go agents (the deploy payload)
+|-- *.py.<type>      # Python agents (source IS the artifact)
 |   `-- coordination/  # Cluster coordination
 |-- plugins/         # Shared-object plugins (experimental)
 `-- build/           # Build artifacts (gitignored)
@@ -122,39 +122,24 @@ gapid
 
 ```bash
 # Create a Go agent
-mkdir -p agents/go/foundational/my_agent
-cat > agents/go/foundational/my_agent/main.go << 'EOF'
-package main
+gapictl agent new --lang go --type service my_agent
+# writes src/agents/my_agent.go.service - a single file, no main:
+#
+#   package agent
+#
+#   import "context"
+#
+#   const (
+#       ID   = "my_agent"
+#       Type = "service"
+#   )
+#
+#   func Start(ctx context.Context) error {
+#       <-ctx.Done()
+#       return nil
+#   }
 
-import (
-    "encoding/json"
-    "flag"
-    "os"
-)
-
-var describe = flag.Bool("describe", false, "Print agent metadata")
-
-func main() {
-    flag.Parse()
-
-    if *describe {
-        metadata := map[string]interface{}{
-            "describe": map[string]interface{}{
-                "id":      "my_agent",
-                "type":    "service",
-                "version": "1.0.0",
-            },
-        }
-        json.NewEncoder(os.Stdout).Encode(metadata)
-        return
-    }
-
-    // Agent logic here
-}
-EOF
-
-# Build the agent
-gapictl agent build agents/go/foundational/my_agent/
+gapictl agent build src/agents/my_agent.go.service
 
 # Start gapid (discovers from build/)
 gapid

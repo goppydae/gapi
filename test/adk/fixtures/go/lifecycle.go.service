@@ -1,0 +1,33 @@
+// Parity fixture: the Go side of TestCrossADKParity/LifecycleTransitions.
+//
+// Its Python counterpart is fixtures/python/lifecycle_agent.py. Both are
+// driven THROUGH THE SUPERVISOR, so what this file proves is that a Go
+// agent written in the target form reaches RUNNING and returns to
+// STOPPED on a lifecycle action - the transition no Go agent could make
+// before the ADK existed (GAPI-DIV-051, GAPI-DIV-052).
+//
+// There is no main, no flag parsing, no describe JSON and no signal
+// handling. That absence IS the fixture: the hand-rolled equivalent was
+// 93 lines and could not be started by its own supervisor.
+package agent
+
+import "context"
+
+const (
+	ID          = "parity_lifecycle"
+	Type        = "service"
+	Version     = "1.0.0"
+	Description = "Agent demonstrating full lifecycle support"
+)
+
+func Initialize() error { return nil }
+
+// Start blocks until the supervisor cancels. A service that returns
+// early is a service that stopped.
+func Start(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+func Stop() error   { return nil }
+func Reload() error { return nil }

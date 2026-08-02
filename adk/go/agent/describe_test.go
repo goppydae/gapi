@@ -140,3 +140,42 @@ func TestCapabilities_OmitUndeclaredLifecycleFunctions(t *testing.T) {
 			"advertise lifecycle verbs it cannot serve", got, want)
 	}
 }
+
+// TestCapabilities_DeclaredExtrasFollowLifecycle is the parity case for
+// Python's @capability decorator. The cross-ADK suite compares the two
+// languages' arrays element by element, and its capabilities fixture
+// advertises "custom_action" - a name no lifecycle function produces. A
+// Go agent with no way to declare it could not reach parity at all.
+func TestCapabilities_DeclaredExtrasFollowLifecycle(t *testing.T) {
+	noop := func() error { return nil }
+	s := &Spec{
+		ID: "probe", Type: "service",
+		Initialize:   noop,
+		Stop:         noop,
+		Reload:       noop,
+		Start:        func(context.Context) error { return nil },
+		Capabilities: []string{"custom_action"},
+	}
+
+	want := []string{"initialize", "start", "stop", "reload", "custom_action"}
+	if got := s.capabilities(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("capabilities %v, want %v", got, want)
+	}
+}
+
+// TestCapabilities_DeclaredDuplicateIsDropped matches runner.py, which
+// runs dict.fromkeys over the combined list. An agent declaring "stop"
+// alongside a Stop function must not advertise it twice.
+func TestCapabilities_DeclaredDuplicateIsDropped(t *testing.T) {
+	s := &Spec{
+		ID: "probe", Type: "service",
+		Stop:         func() error { return nil },
+		Start:        func(context.Context) error { return nil },
+		Capabilities: []string{"stop", "extra"},
+	}
+
+	want := []string{"start", "stop", "extra"}
+	if got := s.capabilities(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("capabilities %v, want %v", got, want)
+	}
+}

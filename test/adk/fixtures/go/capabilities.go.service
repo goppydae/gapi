@@ -1,0 +1,29 @@
+// Parity fixture: the Go side of TestCrossADKParity/CapabilityDetection.
+//
+// Its Python counterpart declares custom_action through a @capability
+// decorator. Go declares it as a slice - two idiomatic surfaces, one
+// wire field. Without the Capabilities declaration a Go agent could
+// advertise nothing but its lifecycle functions, so this pair could
+// never have agreed.
+package agent
+
+import "context"
+
+const (
+	ID          = "parity_capabilities"
+	Type        = "service"
+	Version     = "1.0.0"
+	Description = "Agent advertising a capability beyond its lifecycle"
+)
+
+var Capabilities = []string{"custom_action"}
+
+func Initialize() error { return nil }
+
+func Start(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+func Stop() error   { return nil }
+func Reload() error { return nil }

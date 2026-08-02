@@ -36,7 +36,9 @@ mage doctor
 ./bin/gapictl agent new my_service
 ```
 
-That writes `agents/go/foundational/my_service/`. For Python, ask for
+That writes `src/agents/my_service.go.service` - one file, no main.
+Build it with `gapictl agent build` and the artifact lands in
+`agents/`. For Python, ask for
 it explicitly:
 
 ```bash
@@ -132,7 +134,7 @@ lists everything.
 ## Verifying an agent
 
 ```bash
-./bin/gapictl agent verify agents/go/foundational/my_service/my_service
+./bin/gapictl agent verify agents/my_service.go.service
 ```
 
 The command reports two things: whether the binary matches its `.b3`
@@ -151,7 +153,7 @@ That writes `signing-key.pem` (private) and `signing-key.pub.hex`
 (public).
 
 ```bash
-./bin/gapictl crypto sign agents/go/foundational/my_service/my_service --key signing-key.pem
+./bin/gapictl crypto sign agents/my_service.go.service --key signing-key.pem
 ```
 
 That writes the `.b3` digest and the `.sig` over it. Both are required.

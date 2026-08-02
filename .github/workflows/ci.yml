@@ -116,7 +116,7 @@ jobs:
 
       - name: Execute Cross-ADK Tests
         run: |
-          nix develop -c go test -v ./test/adk/ -run TestCrossADKParity 2>&1 | tee /tmp/cross-adk-test.log
+          nix develop -c go test -v ./test/adk/ -run 'TestCrossADKParity|TestADKIntegration' 2>&1 | tee /tmp/cross-adk-test.log
       
       - name: Upload test results
         if: always()

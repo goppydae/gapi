@@ -1,19 +1,19 @@
-package adk_test
+// package adk, not adk_test: this suite drives the harness in
+// framework.go, which is unexported. Its sibling python_lifecycle_test.go
+// is already internal for the same reason.
+package adk
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/goppydae/gapi/core/config"
-	"github.com/goppydae/gapi/core/supervisor"
 )
 
 // CrossADKTestSuite defines a test scenario that should behave identically
@@ -33,21 +33,21 @@ func TestCrossADKParity(t *testing.T) {
 		{
 			Name:        "DescribeMetadata",
 			Description: "Verify --describe output is consistent",
-			GoAgent:     "fixtures/go/simple_service/main.go",
+			GoAgent:     "fixtures/go/simple.go.service",
 			PyAgent:     "fixtures/python/simple_service.py",
 			TestFunc:    testDescribeMetadata,
 		},
 		{
 			Name:        "LifecycleTransitions",
 			Description: "Verify Initialize -> Start -> Stop lifecycle",
-			GoAgent:     "fixtures/go/lifecycle_agent/main.go",
+			GoAgent:     "fixtures/go/lifecycle.go.service",
 			PyAgent:     "fixtures/python/lifecycle_agent.py",
 			TestFunc:    testLifecycleTransitions,
 		},
 		{
 			Name:        "CapabilityDetection",
 			Description: "Verify capability introspection",
-			GoAgent:     "fixtures/go/capabilities_agent/main.go",
+			GoAgent:     "fixtures/go/capabilities.go.service",
 			PyAgent:     "fixtures/python/capabilities_agent.py",
 			TestFunc:    testCapabilityDetection,
 		},
@@ -78,13 +78,7 @@ func testDescribeMetadata(t *testing.T, lang string, agentPath string) {
 
 	switch lang {
 	case "go":
-		// For Go agents, we need to build them first
-		tmpBin := filepath.Join(t.TempDir(), "agent")
-		buildCmd := exec.Command("go", "build", "-o", tmpBin, agentPath)
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go agent: %v", err)
-		}
-		cmd = exec.Command(tmpBin, "--describe")
+		cmd = exec.Command(buildGoFixture(t, agentPath), "--describe")
 	case "python":
 		runner := findPythonRunner(t)
 		cmd = exec.Command("python3", runner, "--module", agentPath, "--describe")
@@ -122,77 +116,134 @@ func testDescribeMetadata(t *testing.T, lang string, agentPath string) {
 	}
 }
 
-// testLifecycleTransitions verifies lifecycle state transitions
+// testLifecycleTransitions drives an agent THROUGH THE SUPERVISOR and
+// asserts the observed state sequence.
+//
+// The previous version exec'd the agent BESIDE a supervisor and asserted
+// nothing that could fail (GAPI-DIV-053). It ran the Go fixture with
+// --start, which exited 2 in milliseconds because no template defined
+// that flag; slept two seconds; signalled a process that was already
+// gone, swallowing the error to t.Logf; then selected on a Wait that had
+// already returned against a 30-second timeout. Every step after the
+// build passed on a corpse, and the Python half being real is what made
+// the pair read as evidence of parity.
+//
+// What holds it closed now is that the states come from the supervisor's
+// own view via gapictl, so an agent that never starts cannot reach
+// "running" no matter how the test is written.
 func testLifecycleTransitions(t *testing.T, lang string, agentPath string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	stage := t.TempDir()
+	agentID := stageAgent(t, stage, lang, agentPath)
 
-	// Start a test supervisor
-	cfg := &config.Config{
-		Transport: config.TransportConfig{
-			Type:    "quic",
-			Address: "127.0.0.1:0", // Use port 0 to get random available port
-		},
-	}
-
-	sup, err := supervisor.New(cfg)
+	h, err := NewHarnessAt(stage)
 	if err != nil {
-		t.Fatalf("Failed to create supervisor: %v", err)
+		t.Fatalf("harness: %v", err)
 	}
-
-	go func() {
-		_ = sup.Run(ctx)
-	}()
-
-	// Give supervisor time to start
-	time.Sleep(500 * time.Millisecond)
-
-	// Start the agent
-	var cmd *exec.Cmd
-	switch lang {
-	case "go":
-		tmpBin := filepath.Join(t.TempDir(), "agent")
-		buildCmd := exec.Command("go", "build", "-o", tmpBin, agentPath)
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go agent: %v", err)
-		}
-		cmd = exec.Command(tmpBin, "--start")
-	case "python":
-		runner := findPythonRunner(t)
-		cmd = exec.Command("python3", runner, "--module", agentPath, "--start")
-	}
-
-	cmd.Env = append(os.Environ(), "GAPI_QUIC_ADDR=127.0.0.1:14242")
-
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("Failed to start agent: %v", err)
+	if err := h.Start(); err != nil {
+		t.Fatalf("start supervisor: %v", err)
 	}
 	defer func() {
-		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			t.Logf("kill agent: %v", err)
+		if err := h.Stop(); err != nil {
+			t.Errorf("stop supervisor: %v", err)
 		}
 	}()
 
-	// Wait for agent to reach running state
-	time.Sleep(2 * time.Second)
-
-	// Send stop signal
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		t.Logf("Failed to send interrupt: %v", err)
+	// PENDING -> RUNNING. For a Go agent this is only reachable because
+	// the ADK emits the "ready" control event; nothing else in the tree
+	// produces the transition.
+	if err := h.WaitForState(agentID, "running", config.TestAgentStartTimeout); err != nil {
+		t.Fatalf("%s agent did not reach running: %v", lang, err)
 	}
 
-	// Wait for graceful shutdown
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
-
-	select {
-	case <-done:
-		// Success
-	case <-time.After(30 * time.Second):
-		t.Error("Agent did not stop within timeout")
+	if err := h.SendLifecycleAction(agentID, "stop"); err != nil {
+		t.Fatalf("stop %s agent: %v", lang, err)
 	}
+
+	// RUNNING -> STOPPED.
+	if err := h.WaitForState(agentID, "stopped", config.TestAgentStopTimeout); err != nil {
+		t.Errorf("%s agent did not reach stopped: %v", lang, err)
+	}
+}
+
+// stageAgent puts one agent into dir and returns the ID discovery will
+// give it. Go agents are built through the same path 'gapictl agent
+// build' uses; Python agents are copied, because a Python agent's source
+// IS its artifact.
+func stageAgent(t *testing.T, dir, lang, agentPath string) string {
+	t.Helper()
+
+	switch lang {
+	case "go":
+		out, err := exec.Command(gapictlPath(t), "agent", "build", agentPath, "-o", dir).CombinedOutput()
+		if err != nil {
+			t.Fatalf("build %s: %v\n%s", agentPath, err, out)
+		}
+		return declaredID(t, agentPath, `(?m)^\s*ID\s+=\s+"([a-z0-9_]+)"`)
+
+	case "python":
+		// The name carries the type, and discovery routes on it: a
+		// fixture copied as "lifecycle_agent.py" lands in the Python
+		// SERVICE branch by suffix rather than by declaration.
+		dst := filepath.Join(dir, "parity_lifecycle_py.py.service")
+		body, err := os.ReadFile(agentPath)
+		if err != nil {
+			t.Fatalf("read %s: %v", agentPath, err)
+		}
+		if err := os.WriteFile(dst, body, 0600); err != nil {
+			t.Fatalf("stage %s: %v", dst, err)
+		}
+		return declaredID(t, agentPath, `(?m)^ID\s*=\s*"([a-z0-9_]+)"`)
+
+	default:
+		t.Fatalf("unknown language: %s", lang)
+		return ""
+	}
+}
+
+// buildGoFixture builds a target-form Go agent through 'gapictl agent
+// build' and returns the binary.
+//
+// It goes through the real command rather than 'go build' on the source:
+// a Go agent file is not a program - it has no main - so 'go build' on it
+// cannot work, and building it any other way would test a path no
+// operator uses.
+func buildGoFixture(t *testing.T, agentPath string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	out, err := exec.Command(gapictlPath(t), "agent", "build", agentPath, "-o", dir).CombinedOutput()
+	if err != nil {
+		t.Fatalf("build %s: %v\n%s", agentPath, err, out)
+	}
+	return filepath.Join(dir, filepath.Base(agentPath))
+}
+
+func declaredID(t *testing.T, path, pattern string) string {
+	t.Helper()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	m := regexp.MustCompile(pattern).FindSubmatch(body)
+	if m == nil {
+		t.Fatalf("no ID declaration in %s", path)
+	}
+	return string(m[1])
+}
+
+func gapictlPath(t *testing.T) string {
+	t.Helper()
+
+	root, err := findProjectRoot()
+	if err != nil {
+		t.Fatalf("project root: %v", err)
+	}
+	p := filepath.Join(root, "bin", "gapictl")
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("gapictl is not built (%v); run 'mage build' first", err)
+	}
+	return p
 }
 
 // testCapabilityDetection verifies capability introspection
@@ -201,12 +252,7 @@ func testCapabilityDetection(t *testing.T, lang string, agentPath string) {
 
 	switch lang {
 	case "go":
-		tmpBin := filepath.Join(t.TempDir(), "agent")
-		buildCmd := exec.Command("go", "build", "-o", tmpBin, agentPath)
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go agent: %v", err)
-		}
-		cmd = exec.Command(tmpBin, "--describe")
+		cmd = exec.Command(buildGoFixture(t, agentPath), "--describe")
 	case "python":
 		runner := findPythonRunner(t)
 		cmd = exec.Command("python3", runner, "--module", agentPath, "--describe")
@@ -321,76 +367,53 @@ func findPythonRunner(t *testing.T) string {
 	return ""
 }
 
-// TestADKIntegration runs a full integration test with both ADKs
+// TestADKIntegration verifies that Go and Python agents coexist under
+// one supervisor.
+//
+// The previous version asserted nothing that could fail (GAPI-DIV-053).
+// It checked cmd.ProcessState, which is nil until Wait is called and Wait
+// was never called, so both of its assertions were unreachable. It also
+// exported GAPI_QUIC_ADDR, which no code in the repo reads - a variable
+// set by a test and read by nobody is a false signal of wiring, so it is
+// gone rather than renamed.
+//
+// Both agents are now staged into ONE directory and driven through the
+// supervisor, which is what "coexist" actually means: discovery routes
+// each to its own branch by suffix, and both must reach running.
 func TestADKIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	// This test verifies that Go and Python agents can coexist
-	// in the same supervisor and communicate via the event bus
 	t.Run("MixedLanguageAgents", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
+		stage := t.TempDir()
+		goID := stageAgent(t, stage, "go", "fixtures/go/lifecycle.go.service")
+		pyID := stageAgent(t, stage, "python", "fixtures/python/lifecycle_agent.py")
 
-		cfg := &config.Config{
-			Transport: config.TransportConfig{
-				Type:    "quic",
-				Address: "127.0.0.1:24242",
-			},
+		if goID == pyID {
+			t.Fatalf("both agents claim the id %q; the test cannot tell them apart", goID)
 		}
 
-		sup, err := supervisor.New(cfg)
+		h, err := NewHarnessAt(stage)
 		if err != nil {
-			t.Fatalf("Failed to create supervisor: %v", err)
+			t.Fatalf("harness: %v", err)
 		}
-
-		go func() {
-			_ = sup.Run(ctx)
-		}()
-
-		time.Sleep(1 * time.Second)
-
-		// Start a Go agent
-		goAgent := filepath.Join(t.TempDir(), "go_agent")
-		buildCmd := exec.Command("go", "build", "-o", goAgent, "fixtures/go/event_emitter.go")
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go agent: %v", err)
-		}
-
-		goCmd := exec.Command(goAgent, "--start")
-		goCmd.Env = append(os.Environ(), "GAPI_QUIC_ADDR=127.0.0.1:24242")
-		if err := goCmd.Start(); err != nil {
-			t.Fatalf("Failed to start Go agent: %v", err)
+		if err := h.Start(); err != nil {
+			t.Fatalf("start supervisor: %v", err)
 		}
 		defer func() {
-			if err := goCmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				t.Logf("kill go agent: %v", err)
+			if err := h.Stop(); err != nil {
+				t.Errorf("stop supervisor: %v", err)
 			}
 		}()
 
-		// Start a Python agent
-		runner := findPythonRunner(t)
-		pyCmd := exec.Command("python3", runner, "--module", "fixtures/python/event_receiver.py", "--start")
-		pyCmd.Env = append(os.Environ(), "GAPI_QUIC_ADDR=127.0.0.1:24242")
-		if err := pyCmd.Start(); err != nil {
-			t.Fatalf("Failed to start Python agent: %v", err)
-		}
-		defer func() {
-			if err := pyCmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-				t.Logf("kill python agent: %v", err)
+		// Liveness comes from the supervisor's own view rather than from
+		// a process handle, so it holds whether or not anyone called
+		// Wait - the defect this test replaces.
+		for _, id := range []string{goID, pyID} {
+			if err := h.WaitForState(id, "running", config.TestAgentStartTimeout); err != nil {
+				t.Errorf("agent %s did not reach running: %v", id, err)
 			}
-		}()
-
-		// Let them run and communicate
-		time.Sleep(5 * time.Second)
-
-		// Verify both are still running
-		if goCmd.ProcessState != nil && goCmd.ProcessState.Exited() {
-			t.Error("Go agent exited unexpectedly")
-		}
-		if pyCmd.ProcessState != nil && pyCmd.ProcessState.Exited() {
-			t.Error("Python agent exited unexpectedly")
 		}
 	})
 }

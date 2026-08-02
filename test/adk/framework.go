@@ -25,9 +25,24 @@ type TestHarness struct {
 	cancel    context.CancelFunc
 }
 
-// NewHarness creates a new test harness
+// NewHarness creates a harness over the whole fixtures tree.
 func NewHarness() (*TestHarness, error) {
-	// Get project root
+	root, err := findProjectRoot()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find project root: %w", err)
+	}
+	return NewHarnessAt(filepath.Join(root, "test", "adk", "fixtures"))
+}
+
+// NewHarnessAt creates a harness whose discovery is fenced to agentsDir.
+//
+// A caller that stages exactly the agents its test needs gets two things
+// the shared fixtures tree cannot give it. The obvious one is isolation.
+// The load-bearing one is that unrelated agents' start timeouts cannot
+// starve the agents under test - that is the ~90s TestTimerAgent_Execution
+// failure recorded as GAPI-DIV-021, and it came from discovery finding
+// more than the test meant it to.
+func NewHarnessAt(agentsDir string) (*TestHarness, error) {
 	root, err := findProjectRoot()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find project root: %w", err)
@@ -35,7 +50,7 @@ func NewHarness() (*TestHarness, error) {
 
 	return &TestHarness{
 		gapictl:   filepath.Join(root, "bin", "gapictl"),
-		agentsDir: filepath.Join(root, "test", "adk", "fixtures"),
+		agentsDir: agentsDir,
 		configDir: filepath.Join(root, "config"),
 		binDir:    filepath.Join(root, "bin"),
 	}, nil

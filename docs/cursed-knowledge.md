@@ -175,7 +175,8 @@ module for the same reason.
 **Cause**: pointing at the directory rather than the file when the
 fixture is a `main` package.
 
-**Fix**: `fixtures/go/my_agent/main.go`, not the directory.
+**Fix**: `fixtures/go/my_agent.go.service` - a Go agent is one file
+named for its type, and `gapictl agent build` is what compiles it.
 
 ## Nix
 

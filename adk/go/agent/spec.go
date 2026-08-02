@@ -50,6 +50,17 @@ type Spec struct {
 	CPULimit     string
 	MemoryLimit  string
 
+	// Capabilities are names this agent advertises BEYOND its lifecycle
+	// functions. The Python ADK collects these from @capability
+	// decorators; Go declares them as a slice. Two idiomatic surfaces,
+	// one wire field - which is what the parity contract asks for, as
+	// opposed to two languages that merely resemble each other.
+	//
+	// Without this a Go agent could advertise nothing but initialize,
+	// start, stop, reload and restart, so any capability a Python agent
+	// could express was unreachable from Go.
+	Capabilities []string
+
 	// Lifecycle. Start is required; the rest are optional and nil when
 	// the author did not declare them.
 	//

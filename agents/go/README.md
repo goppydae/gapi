@@ -1,281 +1,208 @@
 # Go ADK for GAPI
 
-Go agents are used for **foundational** and **high-performance** use cases. Use Go for system boot agents, cluster coordination, and high-throughput services.
+A Go agent is **a single file, not a program**. It declares metadata and
+lifecycle functions and nothing else - no `main`, no flag parsing, no
+hand-written `--describe` JSON, no signal handling. The ADK supplies all
+of it, which is what makes Go and Python agents equivalent rather than
+merely similar.
 
-## When to Use Go Agents
+## When to use Go agents
 
-**Use Go for**:
+Go suits agents that are performance-sensitive, need static linking, or
+run early in boot before a Python interpreter is available. Python suits
+orchestration and glue. The lifecycle semantics, dependency declarations,
+resource limits and event publishing are identical in both - that is the
+parity contract, not a coincidence, and the cross-ADK suite enforces it.
 
-- System boot agents (PID 1 init)
-- Cluster coordination (Serf/Raft join)
-- High-throughput services (log aggregation, metrics collection)
-- Low-latency requirements (\<10ms startup)
-- Self-contained binaries (no runtime dependencies)
+## Quick start
 
-**Use Python for**:
+```bash
+gapictl agent new --lang go --type service my_service
+```
 
-- Business logic and application services
-- Rapid iteration and development
-- Integration with Python ecosystem (NumPy, pandas, etc.)
-
-## Quick Start
-
-### Basic Service Agent
+That writes `src/agents/my_service.go.service`:
 
 ```go
-// agents/go/foundational/my_agent/main.go
-package main
+package agent
 
-import (
-    "encoding/json"
-    "flag"
-    "fmt"
-    "os"
-    "os/signal"
-    "syscall"
+import "context"
+
+const (
+	ID          = "my_service"
+	Type        = "service"
+	Version     = "1.0.0"
+	Description = "My service agent"
+	Enabled     = true
 )
 
-var describe = flag.Bool("describe", false, "Print agent metadata")
+func Initialize() error { return nil }
 
-func main() {
-    flag.Parse()
-
-    // Self-describing via --describe flag
-    if *describe {
-        metadata := map[string]interface{}{
-            "describe": map[string]interface{}{
-                "id":           "my_agent",
-                "type":         "service",
-                "version":      "1.0.0",
-                "language":     "go",
-                "description":  "My Go service agent",
-                "capabilities": []string{"initialize", "start", "stop"},
-                "requires":     []string{},
-                "wants":        []string{},
-            },
-        }
-        json.NewEncoder(os.Stdout).Encode(metadata)
-        return
-    }
-
-    // Normal agent logic
-    fmt.Println("[my_agent] Starting...")
-
-    // Handle graceful shutdown
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-    <-sigChan
-    fmt.Println("[my_agent] Shutting down...")
+// Start blocks until the supervisor cancels. A service that returns
+// early is a service that stopped.
+func Start(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
 }
+
+func Stop() error { return nil }
 ```
 
-### Build and Run
+`func Start() error` is accepted too, when the agent has no use for the
+context. `Initialize`, `Stop`, `Reload` and `Restart` are optional.
+
+### The filename carries the type
+
+`<name>.go.<type>`, exactly as Python uses `<name>.py.<type>`. Because it
+does not end in `.go`, the file is invisible to `go build ./...`, so the
+agent tree needs no build or lint exclusion - that is a property of the
+naming scheme rather than configuration anyone maintains.
+
+### Source and artifact live apart
+
+A built Go agent keeps its source's exact name, so the two cannot share a
+directory. Sources live off the agent search path (`src/agents/` by
+default); the build writes the artifact into an agent directory:
 
 ```bash
-# Build the agent
-gapictl agent build agents/go/foundational/my_agent/
-
-# Verify metadata
-./agents/build/go/my_agent --describe
-
-# Run manually
-./agents/build/go/my_agent
-
-# Or let gapid discover and run it
-gapid
+gapictl agent build src/agents/my_service.go.service
 ```
 
-## Agent Metadata (--describe)
+That produces `agents/my_service.go.service` - an executable, sitting
+beside Python agents, every one readable by name.
 
-All Go agents **must** implement the `--describe` flag to return JSON metadata:
-
-```go
-{
-  "describe": {
-    "id": "my_agent",           // Required: unique identifier
-    "type": "service",           // Required: service, timer, socket, init
-    "version": "1.0.0",          // Required: semantic version
-    "language": "go",            // Required: "go"
-    "description": "...",        // Optional: human-readable description
-    "capabilities": [...],       // Optional: list of capabilities
-    "requires": [...],           // Optional: hard dependencies
-    "wants": [...],              // Optional: soft dependencies
-    "wanted_by": [...],          // Optional: reverse dependencies
-    "required_by": [...]         // Optional: reverse dependencies
-  }
-}
-```
-
-## Agent Types
-
-### Service Agent
-
-Long-running service with graceful shutdown:
-
-```go
-func main() {
-    if *describe { /* ... */ }
-
-    // Service logic
-    sigChan := make(chan os.Signal, 1)
-    signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-    <-sigChan
-}
-```
-
-### Init Agent (PID 1)
-
-System bootstrap agent:
-
-```go
-{
-  "describe": {
-    "id": "init",
-    "type": "init",  // Special type for PID 1
-    "version": "1.0.0"
-  }
-}
-```
-
-### Timer Agent
-
-Periodic task (run and exit):
-
-```go
-func main() {
-    if *describe { /* ... */ }
-
-    // Execute task
-    fmt.Println("Task executed")
-    // Exit (supervisor will restart based on schedule)
-}
-```
-
-## Build Process
-
-### Manual Build
+To have the daemon discover it, name the directory. There is no implicit
+`./agents` tier:
 
 ```bash
-go build -o agents/build/go/my_agent agents/go/foundational/my_agent/
+export GAPI_DEV_AGENTS=$PWD/agents
 ```
 
-### Using gapictl
+## Declarations
+
+Package-level consts and vars, in idiomatic Go spelling. The Python
+spellings are accepted as aliases, so porting an agent between languages
+does not mean renaming declarations.
+
+| Go | wire | notes |
+|----|------|-------|
+| `ID` | `id` | required |
+| `Type` | `type` | `service`, `timer`, `socket` |
+| `Version` | `version` | |
+| `Description` | `description` | |
+| `Enabled` | `enabled` | absent means enabled |
+| `Requires` | `requires` | hard dependency |
+| `Wants` | `wants` | soft dependency |
+| `WantedBy` | `wanted_by` | reverse edge, systemd's `[Install]` direction |
+| `RequiredBy` | `required_by` | reverse edge |
+| `Schedule` | `schedule` | timers; cron or `OnUnitActiveSec=` |
+| `ListenStream` | `listen_stream` | sockets; the address the SUPERVISOR binds |
+| `CPULimit` | `cpu_limit` | `0.5` = half a core |
+| `MemoryLimit` | `memory_limit` | `"512MB"` |
+| `Capabilities` | `capabilities` | names beyond the lifecycle set |
+
+Lifecycle functions are reported as capabilities automatically;
+`Capabilities` declares any extra ones, which is Go's equivalent of the
+Python ADK's `@capability` decorator.
+
+## Agent types
+
+### Service
+
+Runs continuously. `Start` blocks until the context is cancelled. The
+supervisor treats the agent as RUNNING once the ADK reports ready.
+
+### Timer
+
+Runs once per firing and **returns**. The supervisor waits for the
+process to exit before scheduling the next firing, so blocking in a
+timer's `Start` holds the timer inside a single run and every later
+firing is skipped. One firing is bounded at 30s.
+
+```go
+const Type = "timer"
+
+var Schedule = "OnUnitActiveSec=60s"
+
+func Start() error { return nil }
+```
+
+### Socket
+
+Socket-activated. `ListenStream` declares the address **the supervisor
+binds**, not one the agent binds. The listener arrives as an inherited
+descriptor:
+
+```go
+func Start(ctx context.Context) error {
+	ln, err := adk.Listener()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = ln.Close() }()
+	// accept on ln
+}
+```
+
+Never call `net.Listen` on `ListenStream`. The supervisor has already
+bound it, so a fresh bind either fails with `EADDRINUSE` or races the
+supervisor and wins - which is worse, because connections that queued
+before the agent started are then stranded on a socket nobody is serving.
+
+## Build artifacts
+
+`gapictl agent build` emits the binary plus a BLAKE3 hash file, and a
+signature when `--sign` is given:
+
+```
+agents/my_service.go.service
+agents/my_service.go.service.b3
+agents/my_service.go.service.sig
+```
+
+The hash covers the assembled package - the author's file plus the
+generated main - because that is what was compiled.
 
 ```bash
-# Build single agent
-gapictl agent build agents/go/foundational/my_agent/
+# one agent
+gapictl agent build src/agents/my_service.go.service
 
-# Build all Go agents
-gapictl agent build agents/go/
+# every agent under a directory
+gapictl agent build src/agents/
 
-# Build with signing
-gapictl agent build --sign --key=~/.gapi/signing.key agents/go/foundational/my_agent/
+# signed
+gapictl agent build --sign --key=signing.key src/agents/my_service.go.service
 
-# Watch mode (auto-rebuild on changes)
-gapictl agent build --watch agents/go/foundational/my_agent/
-```
-
-## Build Artifacts
-
-After building, you'll have:
-
-```
-agents/build/go/
-|-- my_agent        # Binary
-|-- my_agent.b3     # BLAKE3 hash
-`-- my_agent.sig    # ED25519 signature (if --sign used)
+# rebuild on change
+gapictl agent build --watch src/agents/
 ```
 
 ## Dependencies
 
-Specify dependencies in the `--describe` output:
-
-```go
-"requires": ["database", "cache"],  // Must start before this agent
-"wants": ["monitoring"]              // Start if available
-```
-
-## Best Practices
-
-1. **Always implement --describe**: Required for discovery
-1. **Graceful shutdown**: Handle SIGINT/SIGTERM
-1. **Minimal dependencies**: Keep binaries small and self-contained
-1. **Error handling**: Return non-zero exit codes on failure
-1. **Logging**: Use structured logging (JSON) for easy parsing
-1. **Idempotent**: Safe to restart at any time
-
-## Example: Cluster Join Agent
-
-```go
-// agents/go/coordination/cluster_join/main.go
-package main
-
-import (
-    "encoding/json"
-    "flag"
-    "fmt"
-    "os"
-
-    "github.com/hashicorp/serf/serf"
-)
-
-var describe = flag.Bool("describe", false, "Print agent metadata")
-
-func main() {
-    flag.Parse()
-
-    if *describe {
-        metadata := map[string]interface{}{
-            "describe": map[string]interface{}{
-                "id":      "cluster_join",
-                "type":    "service",
-                "version": "1.0.0",
-                "language": "go",
-                "description": "Serf cluster join coordinator",
-            },
-        }
-        json.NewEncoder(os.Stdout).Encode(metadata)
-        return
-    }
-
-    // Serf cluster join logic
-    config := serf.DefaultConfig()
-    config.NodeName = os.Getenv("NODE_NAME")
-
-    cluster, err := serf.Create(config)
-    if err != nil {
-        fmt.Fprintf(os.Stderr, "Failed to create cluster: %v\n", err)
-        os.Exit(1)
-    }
-    defer cluster.Shutdown()
-
-    // Join existing cluster
-    if seeds := os.Getenv("CLUSTER_SEEDS"); seeds != "" {
-        cluster.Join([]string{seeds}, true)
-    }
-
-    // Wait for shutdown signal
-    select {}
-}
-```
+The assembled package is built inside the module that provides the
+kernel, so an agent can import it and the standard library without a
+`go.mod` of its own. Third-party dependencies are not supported today.
 
 ## Testing
 
 ```bash
-# Test describe output
-./agents/build/go/my_agent --describe | jq .
+# metadata, the way discovery reads it
+agents/my_service.go.service --describe
 
-# Test execution
-./agents/build/go/my_agent
+# supervised, the way the daemon runs it
+agents/my_service.go.service --start
 
-# Verify hash
-cat agents/build/go/my_agent.b3
+# integrity
+gapictl agent verify agents/my_service.go.service
 ```
 
-## See Also
+`--start` prints lifecycle events as JSON lines on stdout: `starting`,
+then `ready`, then `stopping` and `stopped`. That stream is the control
+channel the supervisor reads, which is why the ADK redirects anything an
+agent writes to stdout onto stderr - a stray `fmt.Println` would
+otherwise displace the protocol.
 
-- [GAPI Design Document](../../docs/gapi-design-document.md)
-- [Agent Directory Structure](../README.md)
-- [Python ADK Guide](../python/README.md)
-- [gapictl agent build](../../cmd/gapictl/agent.go)
+## See also
+
+- [Agent tree layout](../README.md)
+- [Agent examples](../../docs/agent-examples.md)
+- [Getting started](../../docs/getting-started.md)
