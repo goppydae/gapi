@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -11,18 +13,92 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// scaffoldKey identifies one (language, type) pair of the scaffold matrix.
+type scaffoldKey struct {
+	lang string
+	typ  string
+}
+
+// agentScaffold names the template to render and the file name to render
+// it into. The file name is not cosmetic: discovery routes Python agents
+// on the ".py.<type>" infix (core/agentmgr/discovery.go), so the suffix
+// decides which supervision branch the agent lands in.
+type agentScaffold struct {
+	template string
+	fileName func(agentName string) string
+}
+
+// agentScaffolds is the whole matrix, and it has NO default branch on
+// purpose. The previous code selected the Go template by interpolating
+// the type and then read templates/python_service.tmpl for EVERY Python
+// type, so 'agent new --lang python --type timer' wrote a file declaring
+// TYPE = "service", named it <name>.py.service, and dropped it in
+// agents/python/timers/ - a service wearing a timer's directory,
+// discovered and supervised as a service, exit status 0 (GAPI-DIV-054).
+//
+// A missing pair must therefore be an error naming the pair rather than a
+// fallback to some other type's template. The advertised axes come from
+// scaffoldLangs and scaffoldTypes below, which derive from this map, so a
+// language or type cannot be advertised without a scaffold existing.
+var agentScaffolds = map[scaffoldKey]agentScaffold{
+	{"go", "service"}: {"templates/go_service.tmpl", goMainFile},
+	{"go", "timer"}:   {"templates/go_timer.tmpl", goMainFile},
+	{"go", "socket"}:  {"templates/go_socket.tmpl", goMainFile},
+
+	{"python", "service"}: {"templates/python_service.tmpl", pyFile("service")},
+	{"python", "timer"}:   {"templates/python_timer.tmpl", pyFile("timer")},
+	{"python", "socket"}:  {"templates/python_socket.tmpl", pyFile("socket")},
+}
+
+// goMainFile is the file name for every Go scaffold: a Go agent is a
+// package built as a whole, so the type lives in the source rather than
+// in the name.
+func goMainFile(string) string { return "main.go" }
+
+// pyFile renders the "<name>.py.<type>" form discovery routes on.
+func pyFile(typ string) func(string) string {
+	return func(agentName string) string {
+		return fmt.Sprintf("%s.py.%s", agentName, typ)
+	}
+}
+
+// scaffoldLangs and scaffoldTypes report the advertised matrix axes,
+// derived from agentScaffolds so the validator, the flag help and the
+// test all read one source.
+func scaffoldLangs() []string { return scaffoldAxis(func(k scaffoldKey) string { return k.lang }) }
+func scaffoldTypes() []string { return scaffoldAxis(func(k scaffoldKey) string { return k.typ }) }
+
+func scaffoldAxis(pick func(scaffoldKey) string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for k := range agentScaffolds {
+		if v := pick(k); !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func runAgentNew(cmd *cobra.Command, args []string) error {
 	agentName := args[0]
 
-	// Validate language
-	if agentLang != "go" && agentLang != "python" {
-		return fmt.Errorf("unsupported language: %s (supported: go, python)", agentLang)
-	}
-
-	// Validate type
-	validTypes := map[string]bool{"service": true, "timer": true, "socket": true}
-	if !validTypes[agentType] {
-		return fmt.Errorf("unsupported type: %s (supported: service, timer, socket)", agentType)
+	scaffold, ok := agentScaffolds[scaffoldKey{agentLang, agentType}]
+	if !ok {
+		// One error for the PAIR, not two independent ones. A valid
+		// language and a valid type can still be an unsupported
+		// combination, and reporting them separately is what let the
+		// fallback look like success.
+		if !slices.Contains(scaffoldLangs(), agentLang) {
+			return fmt.Errorf("unsupported language: %s (supported: %s)",
+				agentLang, strings.Join(scaffoldLangs(), ", "))
+		}
+		if !slices.Contains(scaffoldTypes(), agentType) {
+			return fmt.Errorf("unsupported type: %s (supported: %s)",
+				agentType, strings.Join(scaffoldTypes(), ", "))
+		}
+		return fmt.Errorf("unsupported combination: --lang %s --type %s", agentLang, agentType)
 	}
 
 	// Determine output directory
@@ -42,20 +118,10 @@ func runAgentNew(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Determine template file and output filename
-	var templateFile string
-	var outputFile string
-
-	if agentLang == "go" {
-		templateFile = fmt.Sprintf("templates/go_%s.tmpl", agentType)
-		outputFile = filepath.Join(outputPath, "main.go")
-	} else {
-		templateFile = "templates/python_service.tmpl"
-		outputFile = filepath.Join(outputPath, fmt.Sprintf("%s.py.service", agentName))
-	}
+	outputFile := filepath.Join(outputPath, scaffold.fileName(agentName))
 
 	// Load template
-	tmplContent, err := templatesFS.ReadFile(templateFile)
+	tmplContent, err := templatesFS.ReadFile(scaffold.template)
 	if err != nil {
 		return fmt.Errorf("failed to read template: %w", err)
 	}
