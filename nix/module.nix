@@ -141,7 +141,7 @@ in {
         # to start whenever configFile was set. The config override is an
         # environment variable (core/config/config.go reads
         # RUNTIME_CONFIG), set below.
-        ExecStart = "${cfg.package}/bin/gapid";
+        ExecStart = "${cfg.package}/bin/gapid start";
         Restart = "on-failure";
         RestartSec = "5s";
         

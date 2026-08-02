@@ -14,48 +14,33 @@ import (
 	"github.com/goppydae/gapi/core/logging"
 	"github.com/goppydae/gapi/core/shutdown"
 	"github.com/goppydae/gapi/core/supervisor"
-	"github.com/goppydae/gapi/core/version"
 	"github.com/goppydae/gapi/internal/logattr"
+	"github.com/goppydae/gapi/pkg/cli"
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "gapid",
-	Short: "GAPI Supervisor Daemon",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return run()
-	},
-}
+func newRootCmd() (*cobra.Command, *cli.DaemonFlags, *cli.GapidStartFlags) {
+	// Declared before construction so the start closure can capture them:
+	// the flag structs are what NewGapidRoot RETURNS, and the start action
+	// needs both. The closure resolves them when start runs, always after
+	// the assignment below.
+	var daemonFlags *cli.DaemonFlags
+	var startFlags *cli.GapidStartFlags
 
-var (
-	runtimeAddr   string
-	logLevel      string
-	pid1Mode      bool
-	noEarlyMounts bool
-)
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print version info",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Print(version.Summary())
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.Flags().StringVar(&runtimeAddr, "runtime-addr", "", "Runtime bind address (default: 127.0.0.1:14242)")
-	rootCmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: trace, debug, info, warn, error (overrides config)")
-	rootCmd.Flags().BoolVar(&pid1Mode, "pid1", false, "Run as PID 1: Phase 0 pre-userspace boot (subreaper, signals, mounts, reaping)")
-	rootCmd.Flags().BoolVar(&noEarlyMounts, "no-early-mounts", false, "Skip the Phase 0 mount table (container environments)")
+	root, d, sf := cli.NewGapidRoot(func(cmd *cobra.Command, args []string) error {
+		return run(daemonFlags, startFlags)
+	})
+	daemonFlags, startFlags = d, sf
+	return root, d, sf
 }
 
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	root, _, _ := newRootCmd()
+	if err := cli.RunRoot(root, os.Args[1:]); err != nil {
 		os.Exit(1)
 	}
 }
 
-func run() (err error) {
+func run(flags *cli.DaemonFlags, startFlags *cli.GapidStartFlags) (err error) {
 	// Load config
 	cfg, err := config.Load()
 	if err != nil {
@@ -66,8 +51,11 @@ func run() (err error) {
 	// process logger from configuration. This sets the level and wires the
 	// file output after flag parsing rather than hardcoding Info at
 	// init() time.
-	if logLevel != "" {
-		cfg.Logging.Level = logLevel
+	if flags.LogLevel != "" {
+		cfg.Logging.Level = flags.LogLevel
+	}
+	if flags.LogFormat != "" {
+		cfg.Logging.Format = flags.LogFormat
 	}
 	rootLogger, logCloser, err := logging.Build(&cfg.Logging)
 	if err != nil {
@@ -83,15 +71,15 @@ func run() (err error) {
 	logger := rootLogger.With(logattr.Module("gapid"))
 
 	// Override from flag
-	if runtimeAddr != "" {
-		cfg.Transport.Address = runtimeAddr
+	if startFlags.ListenAddr != "" {
+		cfg.Transport.Address = startFlags.ListenAddr
 	}
 
 	// Flag overrides for PID-1 mode (flags beat config)
-	if pid1Mode {
+	if startFlags.Pid1Mode {
 		cfg.Supervisor.Pid1Mode = true
 	}
-	if noEarlyMounts {
+	if startFlags.NoEarlyMounts {
 		cfg.Supervisor.NoEarlyMounts = true
 	}
 
