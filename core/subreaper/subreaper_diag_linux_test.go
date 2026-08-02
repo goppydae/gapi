@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"testing"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -29,6 +30,20 @@ import (
 // path. A green run must cost nothing observable, because perturbing
 // the timing of an intermittent failure can make it stop happening
 // before it has been explained.
+//
+// SECOND PASS, after the fourth occurrence turned out to be diagnostic.
+// That failure showed wait4(-1) returning ECHILD at event 0 with the
+// subreaper flag set and the orphan already gone from /proc, which says
+// the orphan never entered this process's child set at all - a
+// reparenting failure rather than a reaping one. Everything above reads
+// the orphan AFTER the deadline, by which time whatever happened to it
+// has already been erased. So this pass adds two things the first one
+// could not have: snapshots of the orphan taken on the HAPPY path at
+// the moments the answer still exists (orphanTrace), and the /proc
+// ancestor chain of this process, which names the ancestors that could
+// have taken the orphan instead. The probes are the only instrumentation
+// here that runs on a green run; both sit inside windows the test
+// already spends sleeping.
 
 // isSubreaper reports whether this process currently carries the child
 // subreaper flag. PR_GET_CHILD_SUBREAPER writes a C int through the
@@ -52,11 +67,19 @@ func isSubreaper() (bool, error) {
 	return flag != 0, nil
 }
 
-// procStatus is the parsed third and fourth fields of /proc/<pid>/stat.
+// procStatus is the parsed head of /proc/<pid>/stat.
 type procStatus struct {
+	// Pid is the process this snapshot describes, carried so a chain of
+	// them reads without an index.
+	Pid int
 	// Present is false when /proc/<pid> is gone, meaning the process
 	// has been fully reaped by somebody.
 	Present bool
+	// Comm is the executable name from the parenthesised stat field. It
+	// costs nothing extra to parse and it is what makes an ancestor
+	// chain legible: "which ancestor" is a question about identity, not
+	// about pid numbers that differ every run.
+	Comm string
 	// State is the single-letter kernel state: Z is a zombie awaiting
 	// a wait, R or S mean it has not exited at all.
 	State string
@@ -68,32 +91,216 @@ type procStatus struct {
 	Err error
 }
 
-// readProcStatus parses /proc/<pid>/stat. The comm field is wrapped in
-// parentheses and may itself contain spaces and parentheses, so the
-// fixed fields are taken relative to the LAST ')' rather than by
-// splitting the whole line.
+// String renders one snapshot as a single diagnostic line.
+func (st procStatus) String() string {
+	switch {
+	case !st.Present:
+		return fmt.Sprintf("%d GONE from /proc", st.Pid)
+	case st.Err != nil:
+		return fmt.Sprintf("%d UNREADABLE: %v", st.Pid, st.Err)
+	default:
+		return fmt.Sprintf("%d (%s) state=%s ppid=%d", st.Pid, st.Comm, st.State, st.PPid)
+	}
+}
+
+// readProcStatus snapshots /proc/<pid>/stat.
 func readProcStatus(pid int) procStatus {
 	raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return procStatus{Present: false}
+			return procStatus{Pid: pid, Present: false}
 		}
-		return procStatus{Present: true, Err: err}
+		return procStatus{Pid: pid, Present: true, Err: err}
 	}
-	line := string(raw)
+	return parseProcStat(pid, string(raw))
+}
+
+// parseProcStat parses a /proc/<pid>/stat line. The comm field is
+// wrapped in parentheses and may itself contain spaces and parentheses,
+// so it is taken between the FIRST '(' and the LAST ')', and the fixed
+// fields after it are taken relative to that last ')' rather than by
+// splitting the whole line.
+//
+// It is split from the read so it can be tested. This parser only ever
+// runs on a failure path that has never once occurred locally, which
+// means a defect in it would be discovered by producing a garbage dump
+// on the single CI occurrence the whole entry is waiting for - the flake
+// would be spent and still unexplained. The diagnostic is the artifact
+// here, so it gets the same treatment as production code.
+func parseProcStat(pid int, line string) procStatus {
+	commStart := strings.Index(line, "(")
 	commEnd := strings.LastIndex(line, ")")
-	if commEnd < 0 {
-		return procStatus{Present: true, Err: fmt.Errorf("no comm terminator in %q", line)}
+	if commStart < 0 || commEnd < commStart {
+		return procStatus{Pid: pid, Present: true, Err: fmt.Errorf("no comm field in %q", line)}
 	}
+	st := procStatus{Pid: pid, Present: true, Comm: line[commStart+1 : commEnd]}
 	fields := strings.Fields(line[commEnd+1:])
 	if len(fields) < 2 {
-		return procStatus{Present: true, Err: fmt.Errorf("short stat tail %q", line[commEnd+1:])}
+		st.Err = fmt.Errorf("short stat tail %q", line[commEnd+1:])
+		return st
 	}
+	st.State = fields[0]
 	ppid, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return procStatus{Present: true, State: fields[0], Err: fmt.Errorf("parse ppid %q: %w", fields[1], err)}
+		st.Err = fmt.Errorf("parse ppid %q: %w", fields[1], err)
+		return st
 	}
-	return procStatus{Present: true, State: fields[0], PPid: ppid}
+	st.PPid = ppid
+	return st
+}
+
+// ancestry walks the /proc parent chain from pid upward, so a dump names
+// the runner's process tree rather than only this process's place in it.
+//
+// The surviving hypothesis is that some ancestor other than us takes the
+// orphan. The child-subreaper flag of another process cannot be read -
+// prctl is self-only, and the flag is not exposed in /proc (checked) -
+// so the chain plus each comm is as close as this gets: it identifies
+// the candidates by name and lets the log be compared against the
+// runner's known supervision, which the failing run reported as
+// system.slice/hosted-compute-agent.service.
+func ancestry(pid int) []procStatus {
+	// A malformed or racing /proc could otherwise loop; the chain on any
+	// real host is single digits deep.
+	const maxDepth = 32
+	chain := make([]procStatus, 0, 8)
+	for range maxDepth {
+		st := readProcStatus(pid)
+		chain = append(chain, st)
+		if !st.Present || st.Err != nil || st.PPid <= 0 || st.PPid == st.Pid {
+			break
+		}
+		pid = st.PPid
+	}
+	return chain
+}
+
+// orphanProbe is a /proc snapshot of the orphan taken at a named moment
+// on the HAPPY path, before anything has failed.
+type orphanProbe struct {
+	// At names the moment: what had just happened when this was taken.
+	At string
+	// Status is the snapshot.
+	Status procStatus
+}
+
+// orphanTrace accumulates what the test knew about its orphan before the
+// reap loop's own record begins.
+//
+// The fourth occurrence found the orphan already GONE from /proc at the
+// deadline, so the facts that would name what happened to it - was it
+// ever ours, and if not whose was it - had been destroyed three seconds
+// before anything looked. A probe taken while the answer still exists is
+// the only way to carry it into the dump.
+type orphanTrace struct {
+	// Pid is the orphan, as reported by the intermediate.
+	Pid int
+	// Intermediate is the binary that spawned the orphan and exited.
+	// Whether it could have reaped its own child before exiting - which
+	// produces ECHILD with no orphan in /proc and no reparenting failure
+	// at all - is a property of that binary, and it is what the fifth
+	// occurrence turned out to be. Recorded so a dump names the process
+	// the premise depends on rather than leaving it assumed.
+	Intermediate string
+
+	probes []orphanProbe
+}
+
+// probe snapshots the orphan now, labelled with what has just happened.
+func (o *orphanTrace) probe(at string) {
+	o.probes = append(o.probes, orphanProbe{At: at, Status: readProcStatus(o.Pid)})
+}
+
+// The stat parser must survive a comm containing spaces and
+// parentheses, because that is the field an ancestor on a CI runner is
+// most likely to have and the least likely to be seen locally.
+func TestParseProcStat(t *testing.T) {
+	// A naive strings.Fields split of the whole line reads the second
+	// and third whitespace-separated tokens as comm and state, so for
+	// the adversarial case it yields comm="(my" state="(weird)" ppid=0
+	// - every wanted value below disagrees with that.
+	tests := []struct {
+		name  string
+		line  string
+		comm  string
+		state string
+		ppid  int
+	}{
+		{
+			name:  "ordinary",
+			line:  "432495 (sh) Z 432449 432288 0 -1 0 4194560\n",
+			comm:  "sh",
+			state: "Z",
+			ppid:  432449,
+		},
+		{
+			name:  "comm with spaces and parens",
+			line:  "1234 (my (weird) proc) S 99 1 0 -1 0 0\n",
+			comm:  "my (weird) proc",
+			state: "S",
+			ppid:  99,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			st := parseProcStat(1234, tc.line)
+			if st.Err != nil {
+				t.Fatalf("parseProcStat: %v", st.Err)
+			}
+			if st.Comm != tc.comm || st.State != tc.state || st.PPid != tc.ppid {
+				t.Errorf("comm/state/ppid = %q/%q/%d, want %q/%q/%d",
+					st.Comm, st.State, st.PPid, tc.comm, tc.state, tc.ppid)
+			}
+		})
+	}
+}
+
+// A pid that cannot exist must read as GONE rather than as an error,
+// because GONE is the branch the fourth occurrence took and the dump
+// distinguishes "somebody reaped it" from "we could not look" by it.
+func TestReadProcStatus_AbsentPid(t *testing.T) {
+	// One past the kernel's maximum is never allocated, so this needs no
+	// process and carries no pid-reuse race.
+	raw, err := os.ReadFile("/proc/sys/kernel/pid_max")
+	if err != nil {
+		t.Skipf("pid_max unreadable: %v", err)
+	}
+	pidMax, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("parse pid_max %q: %v", raw, err)
+	}
+
+	st := readProcStatus(pidMax + 1)
+	if st.Present || st.Err != nil {
+		t.Fatalf("pid %d: present=%t err=%v, want absent with no error",
+			pidMax+1, st.Present, st.Err)
+	}
+	if got := st.String(); !strings.Contains(got, "GONE") {
+		t.Errorf("String() = %q, want it to say GONE", got)
+	}
+}
+
+// The ancestor walk must terminate and must report a chain the kernel
+// agrees with. os.Getppid is an independent read of the same fact, so
+// this fails if the ppid field is being taken from the wrong column.
+func TestAncestry(t *testing.T) {
+	chain := ancestry(os.Getpid())
+	if len(chain) < 2 {
+		t.Fatalf("chain = %v, want at least this process and its parent", chain)
+	}
+	if chain[0].Pid != os.Getpid() {
+		t.Errorf("chain[0].Pid = %d, want %d", chain[0].Pid, os.Getpid())
+	}
+	if chain[0].PPid != os.Getppid() {
+		t.Errorf("chain[0].PPid = %d, want os.Getppid() = %d", chain[0].PPid, os.Getppid())
+	}
+	if chain[1].Pid != os.Getppid() {
+		t.Errorf("chain[1].Pid = %d, want the walk to step to %d", chain[1].Pid, os.Getppid())
+	}
+	last := chain[len(chain)-1]
+	if last.Present && last.Err == nil && last.PPid > 0 && last.PPid != last.Pid {
+		t.Errorf("walk stopped at %s with a live parent still to visit - depth cap hit", last)
+	}
 }
 
 // formatStatus renders a wait status without making the reader decode
@@ -112,12 +319,15 @@ func formatStatus(ws syscall.WaitStatus) string {
 }
 
 // diagnose renders the full failure report for an orphan that was not
-// reaped. events is every Wait4 outcome the loop saw, in order; reaped
-// is what did get delivered to notify.
-func diagnose(orphanPid int, events []subreaper.DrainEvent, reaped map[int]syscall.WaitStatus) string {
+// reaped. o carries what the test observed before the failure, events is
+// every Wait4 outcome the loop saw, in order, and reaped is what did get
+// delivered to notify.
+func diagnose(o orphanTrace, events []subreaper.DrainEvent, reaped map[int]syscall.WaitStatus) string {
+	self := os.Getpid()
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n--- GAPI-DIV-043 diagnostics ---\n")
-	fmt.Fprintf(&b, "self pid: %d\n", os.Getpid())
+	fmt.Fprintf(&b, "self pid: %d\n", self)
+	fmt.Fprintf(&b, "orphan intermediate: %s\n", o.Intermediate)
 
 	flag, err := isSubreaper()
 	if err != nil {
@@ -126,15 +336,32 @@ func diagnose(orphanPid int, events []subreaper.DrainEvent, reaped map[int]sysca
 		fmt.Fprintf(&b, "self child_subreaper: %t\n", flag)
 	}
 
-	st := readProcStatus(orphanPid)
+	// The happy-path probes first: they are the only lines here that can
+	// still distinguish "reparented elsewhere" from "reaped before we
+	// were ever a candidate", and by dump time both look like GONE.
+	fmt.Fprintf(&b, "orphan probes (%d):\n", len(o.probes))
+	for _, p := range o.probes {
+		reparented := ""
+		if p.Status.Present && p.Status.Err == nil {
+			reparented = fmt.Sprintf(" (reparented to us: %t)", p.Status.PPid == self)
+		}
+		fmt.Fprintf(&b, "  %-34s %s%s\n", p.At, p.Status, reparented)
+	}
+
+	st := readProcStatus(o.Pid)
 	switch {
 	case !st.Present:
-		fmt.Fprintf(&b, "orphan %d: GONE from /proc - reaped by somebody, not delivered to notify\n", orphanPid)
+		fmt.Fprintf(&b, "orphan %d at failure: GONE from /proc - reaped by somebody, not delivered to notify\n", o.Pid)
 	case st.Err != nil:
-		fmt.Fprintf(&b, "orphan %d: /proc/%d/stat unreadable: %v\n", orphanPid, orphanPid, st.Err)
+		fmt.Fprintf(&b, "orphan %d at failure: /proc/%d/stat unreadable: %v\n", o.Pid, o.Pid, st.Err)
 	default:
-		fmt.Fprintf(&b, "orphan %d: state=%s ppid=%d (reparented to us: %t)\n",
-			orphanPid, st.State, st.PPid, st.PPid == os.Getpid())
+		fmt.Fprintf(&b, "orphan %d at failure: %s (reparented to us: %t)\n",
+			o.Pid, st, st.PPid == self)
+	}
+
+	fmt.Fprintf(&b, "our ancestry (nearest first):\n")
+	for _, a := range ancestry(self) {
+		fmt.Fprintf(&b, "  %s\n", a)
 	}
 
 	pids := make([]int, 0, len(reaped))
