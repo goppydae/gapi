@@ -106,6 +106,47 @@ func TestKernelVersion_RejectsPlaceholders(t *testing.T) {
 	}
 }
 
+// TestKernelVersion_MatchesOnSegmentBoundary guards the module lookup,
+// which identifies the kernel as "the module containing this package"
+// rather than by name - the kernel does not spell its own name in
+// literals (GAPI-DIV-061), and a derived match also survives a rename.
+//
+// A raw string prefix is not a module match: a module whose path merely
+// starts with the same characters would otherwise be read as the one
+// that was linked, and would supply a wrong version rather than none.
+func TestKernelVersion_MatchesOnSegmentBoundary(t *testing.T) {
+	stubStamps(t, "dev", "dev", "dev")
+	// Shares a character prefix with this package's import path but is a
+	// different module.
+	stubBuildInfo(t, depInfo("github.com/goppydae/gap", "7.7.7"), true)
+
+	if got := KernelVersion(); got != "dev" {
+		t.Fatalf("a character-prefix module was accepted as the kernel: got %q", got)
+	}
+}
+
+// TestKernelVersion_LongestContainingModuleWins covers the case where
+// more than one module path contains this package. Only the innermost is
+// the module actually linked; a parent path would report some other
+// module's version as the kernel's.
+func TestKernelVersion_LongestContainingModuleWins(t *testing.T) {
+	stubStamps(t, "dev", "dev", "dev")
+	self := selfPackagePath()
+	outer := self[:strings.LastIndex(self, "/")]   // .../core
+	inner := outer[:strings.LastIndex(outer, "/")] // the real module
+	stubBuildInfo(t, &debug.BuildInfo{
+		Main: debug.Module{Path: "github.com/goppydae/goblin", Version: "(devel)"},
+		Deps: []*debug.Module{
+			{Path: inner, Version: "1.1.1"},
+			{Path: outer, Version: "2.2.2"},
+		},
+	}, true)
+
+	if got := KernelVersion(); got != "2.2.2" {
+		t.Fatalf("want the innermost containing module's version 2.2.2, got %q", got)
+	}
+}
+
 // TestSummary_RuntimeCoreReportsResolvedKernel drives the row itself,
 // not just the resolver. The existing goblin guards assert only that the
 // LABEL appears, so they pass against any value; this asserts the value.

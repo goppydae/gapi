@@ -2,6 +2,7 @@ package version
 
 import (
 	"fmt"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -23,10 +24,6 @@ var (
 // runtimeCoreLabel is the kernel's own row, and the fallback name when
 // no binary has registered an identity.
 const runtimeCoreLabel = "Runtime Core"
-
-// gapiModulePath is the kernel's module path, looked up in the build
-// info of whatever binary embeds it.
-const gapiModulePath = "github.com/goppydae/gapi"
 
 // devVersion is the unstamped placeholder. It is a value the resolution
 // must REJECT as an answer, not merely a default it happens to return.
@@ -72,25 +69,65 @@ func KernelVersion() string {
 	return devVersion
 }
 
-// gapiVersionFrom finds the kernel's module in build info. A replace
-// directive is honoured when it names a version, because the replacement
-// is what was actually linked.
+// gapiVersionFrom finds the kernel's own module in build info, without
+// ever spelling its name.
+//
+// The kernel's module is, by construction, THE MODULE THAT CONTAINS THIS
+// PACKAGE - so it is identified by asking rather than by a literal. Two
+// reasons, and the first is a rule: goblind links this code and its
+// operators have never heard of the vendor, so the kernel does not spell
+// its own name in string literals (GAPI-DIV-061, enforced by
+// core/product's scan). The second is that a derived value cannot drift
+// if the module is ever renamed, where a literal silently stops matching
+// and the version quietly reverts to the placeholder.
+//
+// The longest containing module path wins, because a parent path could
+// also prefix this package without being the module actually linked.
+//
+// A replace directive is honoured when it names a version: the
+// replacement is what was really built.
 func gapiVersionFrom(bi *debug.BuildInfo) string {
-	if bi.Main.Path == gapiModulePath && isConcreteVersion(bi.Main.Version) {
-		return bi.Main.Version
+	self := selfPackagePath()
+	bestPath, bestVersion := "", ""
+
+	consider := func(path, version string) {
+		if !moduleContains(path, self) || len(path) <= len(bestPath) {
+			return
+		}
+		bestPath, bestVersion = path, version
 	}
+
+	consider(bi.Main.Path, bi.Main.Version)
 	for _, dep := range bi.Deps {
-		if dep == nil || dep.Path != gapiModulePath {
+		if dep == nil {
 			continue
 		}
+		version := dep.Version
 		if dep.Replace != nil && isConcreteVersion(dep.Replace.Version) {
-			return dep.Replace.Version
+			version = dep.Replace.Version
 		}
-		if isConcreteVersion(dep.Version) {
-			return dep.Version
-		}
+		consider(dep.Path, version)
+	}
+
+	if isConcreteVersion(bestVersion) {
+		return bestVersion
 	}
 	return ""
+}
+
+// selfPackagePath returns this package's import path, taken from a type
+// declared in it rather than written down.
+func selfPackagePath() string {
+	return reflect.TypeOf(Info{}).PkgPath()
+}
+
+// moduleContains reports whether modulePath is the module holding pkgPath,
+// matching on path segments so a shared prefix is not mistaken for one.
+func moduleContains(modulePath, pkgPath string) bool {
+	if modulePath == "" {
+		return false
+	}
+	return pkgPath == modulePath || strings.HasPrefix(pkgPath, modulePath+"/")
 }
 
 // isConcreteVersion rejects the two ways the toolchain says "no version
