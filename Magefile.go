@@ -40,7 +40,21 @@ var toolchain = magelib.DoctorConfig{
 // go_agent_test.go 539. Test files count; the manifesto exempts
 // generated, vendored and data files, and a _test.go file is none of
 // those.
+// Magefile.go joined this list on 2026-08-02 at 518 lines, the first
+// addition since the gate landed. It sat at 496 - four lines under -
+// so it could not accept a target of any size: a bare three-line
+// function plus a blank line lands exactly on 500, and the rule is
+// LESS THAN 500. Adding CheckVersion for MAGELIB-DIV-006 was the change
+// that made the ceiling load-bearing.
+//
+// Operator decision, 2026-08-02: carry it as debt rather than split the
+// targets across a second build-tagged file. mage reads every such file
+// in the directory, so a split would have worked and passed with no
+// waiver at all; the call is that one discoverable Magefile is worth
+// more than a clean waiver list. The exit is to shorten this file, not
+// to grow the list.
 var fileLengthWaivers = []string{
+	"Magefile.go",
 	"core/agentmgr/python_agent.go",
 	"core/agentmgr/go_agent.go",
 	"core/tui/tui.go",
@@ -162,6 +176,28 @@ func Vuln() error {
 // Doctor validates the local environment against the ecosystem pins
 func Doctor() error {
 	return magelib.Doctor(toolchain)
+}
+
+// CheckVersion gates the VERSION file against the tag being cut.
+//
+// Invoked by release-guard.yml on a tag ref, and by the operator before
+// cutting one, which is the only form that PREVENTS rather than detects:
+//
+//	GITHUB_REF_TYPE=tag GITHUB_REF_NAME=v0.1.0-proto2g mage checkVersion
+//
+// Deliberately not a dependency of Lint or Build. It errors off a tag
+// ref by design, so wiring it into a target that runs on every pull
+// request would make it permanently red or - the likelier repair -
+// silence it into the no-op it must never become. See MAGELIB-DIV-006.
+//
+// gapi has a second reader of VERSION that magelib lacks:
+// nix/package.nix takes lib.fileContents ../VERSION with no ref-name
+// fallback, for both the store path and the core/version.GAPIVersion
+// ldflag, so a missed bump also shows up as a wrongly-named derivation.
+// Nothing asserts those two readers stay in agreement; that residual is
+// recorded on MAGELIB-DIV-006.
+func CheckVersion() error {
+	return magelib.CheckVersionAgainstTag()
 }
 
 // EnvCheck compares the sibling dev shells' tool inventories; skew is red
