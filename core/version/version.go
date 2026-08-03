@@ -110,7 +110,17 @@ func gapiVersionFrom(bi *debug.BuildInfo) string {
 	}
 
 	if isConcreteVersion(bestVersion) {
-		return bestVersion
+		// Go module versions are canonically "v"-prefixed and build info
+		// records them that way; the VERSION file and every stamped path
+		// spell the version without it, and cli-contract.md fixes the
+		// user-facing form as "Runtime Core: 0.1.0-proto2b". Leaving the
+		// prefix on would make goblind and gapictl print one fact two
+		// ways and put goblind in violation of that contract.
+		//
+		// Only the DERIVED value is normalised. GAPIVersion comes from the
+		// VERSION file, which carries no prefix, so trimming it there
+		// would quietly accept a malformed stamp instead of showing it.
+		return strings.TrimPrefix(bestVersion, "v")
 	}
 	return ""
 }
