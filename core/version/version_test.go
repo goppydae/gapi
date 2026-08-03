@@ -41,7 +41,7 @@ func depInfo(path, version string) *debug.BuildInfo {
 // over anything derived, so a deliberate stamp is never second-guessed.
 func TestKernelVersion_PrefersStampedVersion(t *testing.T) {
 	stubStamps(t, "1.2.3", "dev", "dev")
-	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "9.9.9"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v9.9.9"), true)
 
 	if got := KernelVersion(); got != "1.2.3" {
 		t.Fatalf("want the stamped 1.2.3, got %q", got)
@@ -53,7 +53,7 @@ func TestKernelVersion_PrefersStampedVersion(t *testing.T) {
 // must come from the module graph.
 func TestKernelVersion_FromDependency(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
-	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "0.1.0-proto2f"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
 
 	if got := KernelVersion(); got != "0.1.0-proto2f" {
 		t.Fatalf("want 0.1.0-proto2f from the dependency graph, got %q", got)
@@ -65,7 +65,7 @@ func TestKernelVersion_FromDependency(t *testing.T) {
 func TestKernelVersion_FromMainModule(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
 	stubBuildInfo(t, &debug.BuildInfo{
-		Main: debug.Module{Path: "github.com/goppydae/gapi", Version: "0.1.0-proto2f"},
+		Main: debug.Module{Path: "github.com/goppydae/gapi", Version: "v0.1.0-proto2f"},
 	}, true)
 
 	if got := KernelVersion(); got != "0.1.0-proto2f" {
@@ -90,7 +90,7 @@ func TestKernelVersion_RejectsPlaceholders(t *testing.T) {
 	}{
 		{"devel dependency", depInfo("github.com/goppydae/gapi", "(devel)"), true},
 		{"empty dependency version", depInfo("github.com/goppydae/gapi", ""), true},
-		{"gapi absent from deps", depInfo("github.com/goppydae/goblin", "1.0.0"), true},
+		{"gapi absent from deps", depInfo("github.com/goppydae/goblin", "v1.0.0"), true},
 		{"no deps at all", &debug.BuildInfo{Deps: nil}, true},
 		{"build info unavailable", nil, false},
 	}
@@ -101,6 +101,54 @@ func TestKernelVersion_RejectsPlaceholders(t *testing.T) {
 
 			if got := KernelVersion(); got != "dev" {
 				t.Fatalf("want dev when no concrete version is available, got %q", got)
+			}
+		})
+	}
+}
+
+// TestKernelVersion_StripsTheModuleVersionPrefix is the case the
+// fixtures originally hid.
+//
+// Go module versions are canonically "v"-prefixed and the toolchain
+// records them that way in build info, while the VERSION file and every
+// stamped path spell the version WITHOUT it. cli-contract.md fixes the
+// user-facing spelling at "Runtime Core: 0.1.0-proto2b", no prefix - so
+// a derived value that keeps the "v" makes goblind and gapictl print the
+// same fact two different ways, and puts goblind in violation of the
+// contract.
+//
+// This went unnoticed because the fixtures here were written with bare
+// versions like "0.1.0-proto2f", which build info never produces. A test
+// whose fixture disagrees with reality passes against both the correct
+// implementation and the broken one; only running a real binary exposed
+// it. All fixtures in this file now carry the prefix.
+func TestKernelVersion_StripsTheModuleVersionPrefix(t *testing.T) {
+	cases := []struct {
+		name string
+		bi   *debug.BuildInfo
+		want string
+	}{
+		{
+			"dependency",
+			depInfo("github.com/goppydae/gapi", "v0.1.0-proto2g"),
+			"0.1.0-proto2g",
+		},
+		{
+			"main module",
+			&debug.BuildInfo{Main: debug.Module{
+				Path:    "github.com/goppydae/gapi",
+				Version: "v0.1.0-proto2g",
+			}},
+			"0.1.0-proto2g",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stubStamps(t, "dev", "dev", "dev")
+			stubBuildInfo(t, tc.bi, true)
+
+			if got := KernelVersion(); got != tc.want {
+				t.Fatalf("KernelVersion() = %q, want %q - the module version prefix must not reach the version block", got, tc.want)
 			}
 		})
 	}
@@ -118,7 +166,7 @@ func TestKernelVersion_MatchesOnSegmentBoundary(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
 	// Shares a character prefix with this package's import path but is a
 	// different module.
-	stubBuildInfo(t, depInfo("github.com/goppydae/gap", "7.7.7"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gap", "v7.7.7"), true)
 
 	if got := KernelVersion(); got != "dev" {
 		t.Fatalf("a character-prefix module was accepted as the kernel: got %q", got)
@@ -137,8 +185,8 @@ func TestKernelVersion_LongestContainingModuleWins(t *testing.T) {
 	stubBuildInfo(t, &debug.BuildInfo{
 		Main: debug.Module{Path: "github.com/goppydae/goblin", Version: "(devel)"},
 		Deps: []*debug.Module{
-			{Path: inner, Version: "1.1.1"},
-			{Path: outer, Version: "2.2.2"},
+			{Path: inner, Version: "v1.1.1"},
+			{Path: outer, Version: "v2.2.2"},
 		},
 	}, true)
 
@@ -152,7 +200,7 @@ func TestKernelVersion_LongestContainingModuleWins(t *testing.T) {
 // LABEL appears, so they pass against any value; this asserts the value.
 func TestSummary_RuntimeCoreReportsResolvedKernel(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
-	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "0.1.0-proto2f"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
 	SetBinaryNameAndVersion("goblind", "0.1.0-proto2f")
 	t.Cleanup(func() { SetBinaryNameAndVersion("", "") })
 
@@ -175,7 +223,7 @@ func TestSummary_RuntimeCoreReportsResolvedKernel(t *testing.T) {
 // away a value we hold.
 func TestSummary_ADKRowsFallBackToKernel(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
-	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "0.1.0-proto2f"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
 
 	got := Summary()
 
@@ -216,7 +264,7 @@ func rowValue(t *testing.T, block, label string) string {
 // again.
 func TestSummary_ADKRowsKeepExplicitStamp(t *testing.T) {
 	stubStamps(t, "dev", "0.1.0-proto2f.1", "dev")
-	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "0.1.0-proto2f"), true)
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
 
 	got := Summary()
 
