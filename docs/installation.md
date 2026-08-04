@@ -124,14 +124,23 @@ nix flake show github:goppydae/gapi
 | ------ | ---------- |
 | `nixosModules.default`, `nixosModules.gapi` | the module above |
 | `packages.<system>.default`, `.gapi` | the two binaries |
-| `packages.<system>.{iso,vm,qcow,raw,docker,lxc,lxc-metadata,virtualbox,vmware}` | machine images |
+| `legacyPackages.<system>.{iso,vm,qcow,raw,docker,lxc,lxc-metadata,virtualbox,vmware}` | machine images |
 | `checks.<system>.module-boot` | a NixOS VM test that boots the module |
+| `checks.<system>.image-credentials` | asserts the images ship no default credential |
 | `devShells.<system>.default` | the pinned development toolchain |
 
 Systems are `x86_64-linux`, `aarch64-linux` and `aarch64-darwin`. The
 image outputs and the checks are Linux-only - on darwin they are absent
 rather than broken, so `nix flake check` on a Mac finds nothing to do
 instead of failing.
+
+The images sit in `legacyPackages` rather than `packages` because
+`nix flake check` names that output without traversing it, and
+evaluating seventeen NixOS image fixpoints exhausted the CI runner
+(GAPI-DIV-068). It changes nothing about how you build one: `nix build
+.#iso` resolves against `packages.<system>` and `legacyPackages.<system>`
+in that order. The one visible difference is that `nix flake show`
+prints `omitted (use '--legacy' to show)` in place of the image list.
 
 ```bash
 nix build github:goppydae/gapi
@@ -214,6 +223,23 @@ image format builds from it.
 | LXC | `nix build .#lxc` and `nix build .#lxc-metadata` |
 | VirtualBox | `nix build .#virtualbox` |
 | VMware | `nix build .#vmware` |
+
+### There is no default login
+
+Every format ships with no usable credential: no password, no
+autologin, and SSH set to `PermitRootLogin = "prohibit-password"` with
+`PasswordAuthentication = false`. An image is inert until you provision
+identity into it - an authorized key baked into your own module, or
+cloud-init on the formats that carry it.
+
+This is deliberate and it is enforced. Earlier images carried
+`users.users.root.password = "gapi"` in the clear, published in this
+repository (GAPI-DIV-069); `checks.<system>.image-credentials` now
+evaluates the generator configuration on every `nix flake check` and
+fails if any user carries a plaintext password or a hash of the empty
+string. Note the residual: any image built from a tree that predates
+this change still carries that password, and there is no revocation
+path for a baked-in credential.
 
 ```bash
 nix build .#vm
