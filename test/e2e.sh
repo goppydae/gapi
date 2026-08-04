@@ -28,8 +28,10 @@ cleanup() {
     if [ -n "$GAPID_PID" ]; then
         kill $GAPID_PID 2>/dev/null || true
     fi
-    rm -rf "$TEST_AGENTS_DIR"
-    rm -f config.yaml
+    # Both are unset if the script dies before mktemp runs, and a bare
+    # 'rm -rf ""' fails - which under set -e would turn a passing run
+    # into a nonzero exit from the trap.
+    rm -rf "${TEST_AGENTS_DIR:-}" "${WORK:-}" 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -40,69 +42,35 @@ trap cleanup EXIT
 # log "Building project..."
 # CGO_ENABLED=0 go run github.com/magefile/mage@latest buildall
 
-# 0.5 Generate Certs (Go-native)
-log "Generating certs..."
-mkdir -p config/certs
-cat <<EOF > gencert.go
-package main
-
-import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"math/big"
-	"os"
-	"time"
-)
-
-func main() {
-	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "localhost"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour * 24),
-		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-	}
-	der, _ := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
-
-	certOut, _ := os.Create("config/certs/server.crt")
-	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: der})
-	certOut.Close()
-
-	keyOut, _ := os.Create("config/certs/server.key")
-	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
-	keyOut.Close()
-}
-EOF
-CGO_ENABLED=0 go run gencert.go
-rm gencert.go
-
 # 1. Setup Test Environment
 pkill -f bin/gapid || true
+WORK=$(mktemp -d)
 TEST_AGENTS_DIR=$(mktemp -d)
 log "Created temp agents dir: $TEST_AGENTS_DIR"
 PORT=$((10000 + RANDOM % 10000))
 log "Using port: $PORT"
 
 # Generate Config
-# Certificates are generated in config/certs by 'mage tls'
-CERT_DIR="$(pwd)/config/certs"
-
-cat <<EOF > config.yaml
+#
+# No TLS material is configured, and none is generated. This script used
+# to write an RSA key and a 24-hour self-signed certificate straight into
+# the tracked config/certs directory, then name them here as certFile and
+# keyFile - a spelling viper drops silently (the loader reads tlsCert and
+# tlsKey), so the daemon never loaded them and fell back to its own
+# self-signed certificate regardless. The only durable effect was a fresh
+# private key dirtying the working tree on every run, which is how six of
+# them reached version control. Leaving the keys unset reaches the same
+# transport by the honest route: gapid warns and generates in-memory, and
+# transport.insecureSkipVerify defaults to true so the client connects.
+cat <<EOF > "$WORK/config.yaml"
 transport:
   type: "quic"
   address: "localhost:$PORT"
-  certFile: "$CERT_DIR/server.crt"
-  keyFile: "$CERT_DIR/server.key"
 agents:
   dir: "$TEST_AGENTS_DIR"
 EOF
-log "Created config.yaml"
-export GAPI_CONFIG="$(pwd)/config.yaml"
+log "Created $WORK/config.yaml"
+export GAPI_CONFIG="$WORK/config.yaml"
 
 # 2. Setup Agents
 cp agents/python/services/heartbeat.py.service $TEST_AGENTS_DIR/heartbeat.py.service
@@ -133,7 +101,9 @@ export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
 # discovers whatever agents the host has installed.
 export GAPI_AGENT_PATH_EXCLUSIVE=1
 export ADK_FORCE_DUMMY=1
-./bin/gapid > gapid.log 2>&1 &
+# GAPI-DIV-057: the daemon root refuses a bare invocation, so the
+# subcommand is mandatory - without it gapid prints usage and exits 1.
+./bin/gapid start > gapid.log 2>&1 &
 GAPID_PID=$!
 log "gapid PID: $GAPID_PID"
 

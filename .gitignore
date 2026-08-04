@@ -61,7 +61,11 @@ adk/python/gapi/native/__init__.py
 adk/python/gapi/native/_adk.*.h
 
 # --- Nix Build Outputs ---
-result/
+# No trailing slash: 'nix build' creates result as a SYMLINK to the
+# store path, and a trailing slash matches only directories, so
+# 'result/' ignored nothing that nix actually produces.
+result
+result-*
 
 # --- Temporary / Runtime State ---
 tmp/
@@ -88,6 +92,28 @@ mage_output/
 
 # --- Air Live Reload ---
 .air/
+
+# --- TLS / Private Key Material ---
+# gapi ships no key material and never should. Test and dev certificates
+# are generated at runtime into a temp directory; a release build reads
+# /etc/gapi. Six 24-hour self-signed keys were nonetheless committed over
+# the project's life, every one of them swept in alongside unrelated work
+# by a test script that wrote into a tracked path. These patterns make the
+# next one require an explicit 'git add -f' to land.
+config/certs/
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.csr
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ecdsa
+id_ed25519
 
 # --- Local Environment / Backups ---
 config/*.local.*

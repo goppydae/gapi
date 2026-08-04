@@ -3,11 +3,19 @@ transport:
   address: "localhost:14242"
   # tlsCert/tlsKey are the mapstructure tags on
   # core/config.TransportConfig. Viper drops unknown keys silently, so
-  # the previous certFile/keyFile spelling was ignored and the daemon
-  # generated a throwaway self-signed certificate instead of loading
-  # these - a silent downgrade rather than an error.
-  tlsCert: "config/certs/server.crt"
-  tlsKey: "config/certs/server.key"
+  # the certFile/keyFile spelling is ignored and the daemon generates a
+  # throwaway self-signed certificate instead of loading the files - a
+  # silent downgrade rather than an error. Spell them as below.
+  #
+  # Left unset on purpose. This repository ships no key material, and
+  # the paths these once named (config/certs/server.crt and .key) held a
+  # committed private key that has since been deleted and is now ignored.
+  # Unset means gapid logs a warning and generates an in-memory
+  # self-signed certificate, which is what a dev run wants; point these
+  # at real files outside the repository to serve a real certificate.
+  #
+  # tlsCert: "/etc/gapi/certs/server.crt"
+  # tlsKey: "/etc/gapi/certs/server.key"
 
 timeouts:
   quicStream: "10s"
