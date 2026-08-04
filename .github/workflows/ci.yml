@@ -88,6 +88,10 @@ jobs:
           token: ${{ secrets.CI_PAT }}
           repository: goppydae/goblin
           event-type: gapi-build-success
+          # The commit goblin must check out. Without it the dispatched
+          # job races main and cannot say which kernel it tested
+          # (GAPI-DIV-073).
+          client-payload: '{"sha": "${{ github.sha }}"}'
 
   execute-cross-adk-tests:
     name: Execute Cross-ADK Tests
