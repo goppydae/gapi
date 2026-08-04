@@ -189,7 +189,7 @@ func Load() (*Config, error) {
 
 	// Zero-config defaults
 	v.SetDefault("transport.type", "quic")
-	v.SetDefault("transport.address", ":14242")
+	v.SetDefault("transport.address", product.DefaultControlAddr())
 	v.SetDefault("transport.insecureSkipVerify", true)
 	v.SetDefault("metrics.enabled", false)
 	v.SetDefault("metrics.addr", "127.0.0.1:19090")
