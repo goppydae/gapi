@@ -1,4 +1,12 @@
 #! /usr/bin/env python3
+# Copyright (c) 2025 Steven Verhelle (enqack)
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# SPDX-License-Identifier: MPL-2.0
+
 import argparse, importlib.util, json, os, sys, signal, threading, time, inspect, traceback, socket
 from importlib.machinery import SourceFileLoader
 from contextlib import redirect_stdout, redirect_stderr
