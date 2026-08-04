@@ -118,3 +118,47 @@ func TestEnvKey_RefusesAnUndeclaredName(t *testing.T) {
 	}()
 	_ = product.EnvKey("NOT_A_DECLARED_NAME")
 }
+
+// The control-plane default is per product and CANNOT be composed.
+//
+// Every surface above falls out of the name by string composition; a
+// port does not. 29000 does not fall out of "goblin", which is why this
+// one value is a table rather than a rule (GAPI-DIV-071). Asserted for
+// BOTH products, because the defect was goblin silently receiving
+// gapi's port from a loader that was product-aware everywhere else.
+func TestDefaultControlAddr_IsPerProduct(t *testing.T) {
+	product.Set("goblin")
+	if got, want := product.DefaultControlAddr(), "127.0.0.1:29000"; got != want {
+		t.Errorf("goblin's default control address = %q, want %q", got, want)
+	}
+
+	product.Set("gapi")
+	if got, want := product.DefaultControlAddr(), "127.0.0.1:14242"; got != want {
+		t.Errorf("gapi's default control address = %q, want %q", got, want)
+	}
+}
+
+// An identity with no declared address FAILS rather than falling back.
+//
+// A fallback would hand an unknown embedder gapi's port, which is the
+// defect this entry removes, one level up: silently wrong beats loudly
+// wrong only for whoever wrote the fallback.
+func TestDefaultControlAddr_PanicsForAnUndeclaredProduct(t *testing.T) {
+	product.Set("acme")
+	defer func() {
+		// Restore before asserting, so a failure here does not leave a
+		// later test in this binary on an undeclared identity.
+		product.Set("gapi")
+
+		r := recover()
+		if r == nil {
+			t.Fatal("DefaultControlAddr() returned for an undeclared product instead " +
+				"of panicking - an embedder would silently adopt gapi's port")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "no default control-plane address") {
+			t.Fatalf("panicked, but not with the diagnostic an embedder needs: %v", r)
+		}
+	}()
+	_ = product.DefaultControlAddr()
+}

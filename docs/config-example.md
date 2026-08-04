@@ -8,8 +8,10 @@ change specific behaviour.
 
 ## Minimal
 
-Nothing at all. `gapid` binds `:14242`, logs JSON at info, and generates
-an ephemeral self-signed certificate.
+Nothing at all. `gapid` binds `127.0.0.1:14242`, logs JSON at info, and
+generates
+an ephemeral self-signed certificate. The default is LOOPBACK: binding
+every interface is a decision an operator makes, not one they inherit.
 
 ```bash
 gapid

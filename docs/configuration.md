@@ -63,7 +63,7 @@ Six top-level sections: `transport`, `security`, `metrics`, `logging`,
 ```yaml
 transport:
   type: quic                     # "quic" or "local" - nothing else
-  address: ":14242"
+  address: "127.0.0.1:14242"
   tlsCert: /etc/gapi/server.crt
   tlsKey: /etc/gapi/server.key
   tlsCa: /etc/gapi/ca.crt

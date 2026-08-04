@@ -77,8 +77,10 @@ in {
     
     listenAddress = mkOption {
       type = types.str;
-      # Matches the runtime default in core/config/config.go
-      # (transport.address defaults to :14242). 4242 was never the port.
+      # Matches the runtime default, which core/config takes from
+      # core/product.DefaultControlAddr (GAPI-DIV-071) rather than from a
+      # literal, so goblind does not inherit gapi's port. 4242 was never
+      # the port.
       default = "127.0.0.1:14242";
       description = "Address for GAPI to listen on";
     };

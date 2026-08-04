@@ -80,8 +80,13 @@ var allowedIn = map[string][]string{
 	},
 	"pkg/cli/gapictl.go": {"gapi", "gapictl"},
 
-	// core/product's own diagnostics quote the names as examples.
+	// core/product's own diagnostics quote the names as examples, and
+	// controlAddrDefaults is KEYED by them: an identity key is not
+	// operator-facing prose, it is the lookup that makes every other
+	// surface derivable. Same class as roots.go's bare "gapi" above -
+	// the product being named, rather than named AT an operator.
 	"core/product/product.go": {
+		"gapi",
 		"like \"gapi\" or \"goblin\" - check the argument order at the call site",
 		"path or cgroup name (GAPI-DIV-061).",
 	},
