@@ -328,7 +328,6 @@ func buildAgent(sourcePath string) error {
 func runAgentClean(cmd *cobra.Command, args []string) error {
 	buildDirs := []string{
 		"agents/build/go",
-		"agents/build/plugins",
 	}
 
 	for _, dir := range buildDirs {

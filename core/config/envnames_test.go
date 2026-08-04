@@ -57,15 +57,10 @@ var notEnvNames = map[string]bool{
 // The list can only shrink. If a waived name gains a reader the gate
 // FAILS, naming the waiver to delete - the same shape as magelib's
 // fileLengthWaivers, and for the same reason: a waiver that silently
-// stops applying is indistinguishable from one nobody needed.
-var envDocWaivers = map[string]string{
-	"GAPI_ENABLE_PLUGINS": "GAPI-DIV-060: agents/plugins/README.md " +
-		"documents shared-object plugin loading that does not exist - no " +
-		"plugin import, no plugin.Open, no .so loading anywhere in the " +
-		"tree. The name is unread because the feature is unbuilt. Resolve " +
-		"by building it or by retiring the document, not by deleting this " +
-		"line.",
-}
+// stops applying is indistinguishable from one nobody needed. It fails
+// the same way when a waived name LEAVES the documentation, which is
+// the other way a waiver stops excusing anything (GAPI-DIV-060).
+var envDocWaivers = map[string]string{}
 
 // envKnownAbsent are names documentation states do NOT exist, so that a
 // reader appearing for one is also a defect - the documentation would
@@ -307,8 +302,15 @@ func TestEnvNames_DocumentedNamesHaveReaders(t *testing.T) {
 // documented as absent must not gain one. Both lists shrink or fail.
 func TestEnvNames_DeclarationsStillApply(t *testing.T) {
 	var codeBodies []string
+	documented := map[string]bool{}
 	walkTree(t, func(rel, body string) {
-		if rel == "core/config/envnames_test.go" || filepath.Ext(rel) == ".md" {
+		if rel == "core/config/envnames_test.go" {
+			return
+		}
+		if filepath.Ext(rel) == ".md" {
+			for _, n := range envNameRe.FindAllString(body, -1) {
+				documented[n] = true
+			}
 			return
 		}
 		codeBodies = append(codeBodies, body)
@@ -332,6 +334,23 @@ func TestEnvNames_DeclarationsStillApply(t *testing.T) {
 				name, why)
 		}
 	}
+
+	// A waiver excuses a DOCUMENTED name that no code reads. When the
+	// documentation retires the name, the waiver excuses nothing and must
+	// go - otherwise it is indistinguishable from one nobody needed, which
+	// is the failure mode the waiver list exists to prevent.
+	//
+	// This is the direction this test's own comment always claimed ("Both
+	// lists shrink or fail") and the code did not implement: the loop above
+	// fires only when a waived name GAINS a reader (GAPI-DIV-060).
+	for name, why := range envDocWaivers {
+		if !documented[name] {
+			t.Errorf("%s is no longer named by any documentation, so its "+
+				"waiver excuses nothing - delete it.\nWaiver said: %s",
+				name, why)
+		}
+	}
+
 	for name := range envKnownAbsent {
 		if inCode(name) {
 			t.Errorf("%s is documented as not existing and now has a reader - "+
