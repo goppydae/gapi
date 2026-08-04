@@ -357,6 +357,28 @@ func TestEnvNames_DeclarationsStillApply(t *testing.T) {
 				"the documentation is wrong in the other direction", name)
 		}
 	}
+
+	// The same missing direction, for the mirror list. envKnownAbsent
+	// exists because documentation SAYS a name does not exist; it earns
+	// its place from that sentence. Once the documentation stops naming
+	// it, the declaration is not merely dead - it is a live false
+	// positive, because a legitimately new GAPI_ variable that happens to
+	// reuse the name would fail the loop above with nothing in the docs to
+	// justify it.
+	//
+	// The reason each name is listed lives in a trailing comment on its
+	// declaration rather than in the map's value, so this message points
+	// there instead of quoting it.
+	for name := range envKnownAbsent {
+		if !documented[name] {
+			t.Errorf("%s is no longer named by any documentation, so declaring "+
+				"it known-absent guards nothing and would fail a future reader "+
+				"for no stated reason - delete it from envKnownAbsent.\n"+
+				"See the comment on its declaration for which document listed "+
+				"it as absent, and check whether that document dropped the "+
+				"name deliberately.", name)
+		}
+	}
 }
 
 // dedupe removes repeats while preserving order.
