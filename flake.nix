@@ -177,6 +177,11 @@
         packages = pkgs.lib.optionalAttrs onLinux {
           default = pkgs.callPackage ./nix/package.nix { };
           gapi = self.packages.${system}.default;
+            # THROWAWAY. GAPI-DIV-068 gate 2's demonstration by failure.
+            # References an attribute that does not exist, so evaluation
+            # fails and the required Flake Build context must go red and
+            # block this pull request. This branch is never merged.
+            landmine = pkgs.thisAttributeDoesNotExist;
         };
 
         # THE IMAGE FORMATS LIVE HERE AND NOT IN packages, AND THAT
