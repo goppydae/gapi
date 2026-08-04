@@ -33,18 +33,30 @@
     firewall.enable = lib.mkDefault true;
   };
   
-  # Enable SSH for remote access
+  # Remote access, and NO CREDENTIAL TO REACH IT WITH. GAPI-DIV-069:
+  # this file set users.users.root.password = "gapi" in the clear, and
+  # since it is the only module every format inherits, all nine
+  # advertised images shipped a root account whose password is published
+  # in this repository. The mitigation was a comment reading "change in
+  # production!", which distinguishes nothing and warns nobody.
+  #
+  # An image built from here now has no way in until an operator
+  # provisions one - an authorized key, or cloud-init on the formats
+  # that support it. That is operator decision 2, "no usable default"
+  # for identity, and checks.<system>.image-credentials asserts it
+  # against the EVALUATED configuration rather than against this text.
+  #
+  # The two settings below are not merely inert given no password is
+  # set. They are what stops the next person who sets one from opening a
+  # password path by accident.
   services.openssh = {
     enable = true;
     settings = {
-      PermitRootLogin = "yes";
-      PasswordAuthentication = true;
+      PermitRootLogin = "prohibit-password";
+      PasswordAuthentication = false;
     };
   };
-  
-  # Set root password for testing (change in production!)
-  users.users.root.password = "gapi";
-  
+
   # Install useful packages
   environment.systemPackages = with pkgs; [
     vim
@@ -95,9 +107,14 @@
     };
   };
   
-  # Enable serial console for headless testing
+  # Serial console for headless testing. It carries boot output and a
+  # login prompt; it does NOT carry a shell, because there is no
+  # credential to answer the prompt with.
   boot.kernelParams = [ "console=ttyS0" ];
-  
-  # Automatic login on tty1 for easy testing
-  services.getty.autologinUser = "root";
+
+  # NO services.getty.autologinUser. It was set to "root", which is the
+  # same defect as the plaintext password with no string left to grep
+  # for: removing the password while keeping autologin would have left
+  # an unauthenticated root shell on tty1 and on the serial console in
+  # every one of the nine formats (GAPI-DIV-069).
 }
