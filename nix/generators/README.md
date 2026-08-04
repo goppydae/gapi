@@ -2,6 +2,24 @@
 
 This directory contains configurations for testing GAPI using [nixos-generators](https://github.com/nix-community/nixos-generators) to create various bootable images.
 
+## There is no default login
+
+`base.nix` provisions no credential: no password, no autologin, and SSH
+set to `PermitRootLogin = "prohibit-password"` with
+`PasswordAuthentication = false`. Every image below boots and runs the
+service, and none of them will let you in until you add an authorized
+key to your own module or provision through cloud-init.
+
+Earlier images set `users.users.root.password = "gapi"` in the clear
+(GAPI-DIV-069). `nix flake check` now runs
+`checks.<system>.image-credentials`, which evaluates this configuration
+and fails if any user carries a plaintext password or a hash of the
+empty string.
+
+The images live in the flake's `legacyPackages` output rather than
+`packages`, so that `nix flake check` does not evaluate them
+(GAPI-DIV-068). The commands below are unaffected.
+
 ## Quick Start
 
 ```bash

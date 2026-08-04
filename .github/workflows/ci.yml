@@ -264,7 +264,19 @@ jobs:
       # aarch64-linux where VirtualBox does not exist.
       #
       # --no-build keeps the VM checks out: it evaluates every declared
-      # output on every declared system without booting a guest.
+      # output on every declared system without booting a guest. It does
+      # NOT keep checks.<system>.image-credentials out, which is the
+      # point of that check: it asserts during evaluation, so it gates a
+      # pull request here without building anything.
+      #
+      # THIS STEP NO LONGER COVERS THE IMAGE FORMATS, and the third
+      # defect above could not be found again by running it. GAPI-DIV-068
+      # moved them to legacyPackages, the one well-known output nix does
+      # not traverse, because evaluating seventeen NixOS image fixpoints
+      # exhausted the runner - measured at a 5.44 GiB peak, OOM-killed
+      # under a 5 GiB cap, against 1.40 GiB and a 2 GiB cap without them.
+      # Images are a local concern by operator direction; what stays here
+      # is one evaluation of the configuration they are all built from.
       - name: Evaluate Every Declared System
         run: nix flake check --no-build --all-systems
 

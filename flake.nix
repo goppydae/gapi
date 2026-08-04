@@ -177,7 +177,35 @@
         packages = pkgs.lib.optionalAttrs onLinux {
           default = pkgs.callPackage ./nix/package.nix { };
           gapi = self.packages.${system}.default;
-        } // pkgs.lib.optionalAttrs onLinux (
+        };
+
+        # THE IMAGE FORMATS LIVE HERE AND NOT IN packages, AND THAT
+        # PLACEMENT IS THE ENTIRE FIX FOR GAPI-DIV-068. `nix flake
+        # check` names this output and then does not force its
+        # attributes - it is the one well-known output nix deliberately
+        # does not traverse, because nixpkgs itself is too large to
+        # check. So the seventeen NixOS image fixpoints (nine formats on
+        # x86_64-linux, eight on aarch64-linux) are no longer evaluated
+        # by CI, which is what was exhausting the runner: measured at a
+        # 5.2 GiB peak and OOM-killed under a 4 GiB cap, against 0.6 GiB
+        # without them.
+        #
+        # NOTHING ELSE CHANGES FOR AN OPERATOR. `nix build .#iso` still
+        # resolves, because the installable attribute paths nix tries
+        # are packages.<system>.<name> AND legacyPackages.<system>.<name>
+        # in that order; docs/installation.md and
+        # nix/generators/README.md keep their commands verbatim. The one
+        # visible difference is `nix flake show`, which prints
+        # "omitted (use '--legacy' to show)" for this output.
+        #
+        # The cost is real and is recorded rather than hidden: NO CI JOB
+        # EVALUATES THE IMAGE FORMATS AT ALL any more, so a format that
+        # stops evaluating is found by whoever next builds one locally.
+        # What CI keeps is checks.<system>.image-credentials below,
+        # which evaluates the same base configuration ONCE - that is the
+        # reader GAPI-DIV-069 needs, and it deliberately survives this
+        # move.
+        legacyPackages = pkgs.lib.optionalAttrs onLinux (
           # nix build .#iso, .#vm, .#qcow, ... - the targets
           # nix/generators/README.md has documented all along and the
           # flake never exposed.
@@ -188,7 +216,7 @@
 
         # VM-backed checks. Booting a guest is the only way to assert the
         # module's runtime behaviour rather than merely evaluating it.
-        checks = import ./nix/checks.nix { inherit pkgs self; };
+        checks = import ./nix/checks.nix { inherit pkgs self nixpkgs; };
       }
     );
 }
