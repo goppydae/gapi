@@ -71,6 +71,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("transport init: %w", err)
 	}
+	publishControlAddr(logger, t)
 
 	bus := eventbus.NewEventBus[*anypb.Any](t)
 	typedBus := lifecycle.TypedBus{}
@@ -201,6 +202,8 @@ func (s *Supervisor) Run(ctx context.Context) error {
 
 	// Wait for context done
 	<-ctx.Done()
+
+	unpublishControlAddr(s.logger)
 
 	s.logger.LogAttrs(context.Background(), slog.LevelWarn, "received shutdown signal via context")
 

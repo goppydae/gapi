@@ -71,6 +71,7 @@ func controlConfig() (*config.Config, error) {
 		return nil, err
 	}
 	applyControlFlags(cfg)
+	resolveControlAddr(cfg)
 	return cfg, nil
 }
 
@@ -112,7 +113,7 @@ var pingCmd = &cobra.Command{
 	Short: "Ping the daemon",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, _ := controlConfig()
-		c, err := client.New(cfg)
+		c, err := newControlClient(cfg)
 		if err != nil {
 			log.Fatalf("failed to init client: %v", err)
 		}
@@ -137,7 +138,7 @@ var agentReloadCmd = &cobra.Command{
 	Short: "Trigger a reload of registered agents",
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, _ := controlConfig()
-		c, err := client.New(cfg)
+		c, err := newControlClient(cfg)
 		if err != nil {
 			log.Fatalf("failed to init client: %v", err)
 		}
@@ -166,7 +167,7 @@ var agentStatusCmd = &cobra.Command{
 			log.Fatalf("failed to load config: %v", err)
 		}
 
-		c, err := client.New(cfg)
+		c, err := newControlClient(cfg)
 		if err != nil {
 			log.Fatalf("failed to init client: %v", err)
 		}
@@ -225,7 +226,7 @@ var tuiCmd = &cobra.Command{
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 
-		c, err := client.New(cfg)
+		c, err := newControlClient(cfg)
 		if err != nil {
 			return fmt.Errorf("failed to init client: %w", err)
 		}
