@@ -114,8 +114,8 @@ ______________________________________________________________________
 
 ## Addendum: Evolution of Terminology
 
-The GoPPydae system has undergone deliberate terminology refinements as its architecture matured. One key evolution was the shift from *Daemon Development Kits (DDKs)* to *Agent Development Kits (ADKs)*.
+The GoPPydae system has undergone deliberate terminology refinements as its architecture matured. One key evolution was the shift from *Daemon Development Kits (DDKs)* to *Agent Development Kits (ADKs)*.  <!-- terminology:allow: this addendum documents the rename and cannot record it without writing the retired name (GAPI-DIV-067) -->
 
-Originally, "DDK" was chosen to reflect the system's focus on lifecycle-managed daemons. However, as the project evolved, the term "agent" became the preferred designation for supervised processes that implement introspection and lifecycle protocols. This distinction emphasizes the intentional, compliant nature of these entities within the ecosystem.
+Originally, "DDK" was chosen to reflect the system's focus on lifecycle-managed daemons. However, as the project evolved, the term "agent" became the preferred designation for supervised processes that implement introspection and lifecycle protocols. This distinction emphasizes the intentional, compliant nature of these entities within the ecosystem.  <!-- terminology:allow: this addendum documents the rename and cannot record it without writing the retired name (GAPI-DIV-067) -->
 
 By renaming the kits to **ADKs**, GoPPydae aligns its terminology with its core philosophy: agents are not merely daemons - they are structured participants in a cooperative orchestration model.
