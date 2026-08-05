@@ -30,5 +30,6 @@
 # themselves gated off darwin.
 pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   module-boot = import ./tests/module-boot.nix { inherit pkgs self; };
+  generator-agents = import ./tests/generator-agents.nix { inherit pkgs self; };
   image-credentials = import ./tests/image-credentials.nix { inherit pkgs nixpkgs; };
 }

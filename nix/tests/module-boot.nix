@@ -28,6 +28,14 @@ pkgs.testers.runNixOSTest {
     imports = [ self.nixosModules.default ];
     services.gapi.enable = true;
     services.gapi.agentsDir = "/var/lib/gapi/agents";
+    # certFile/keyFile are null by default since GAPI-DIV-076, and the
+    # config assertions below are about the SPELLING the loader reads
+    # (tlsCert, not certFile - viper drops unknown keys silently). That
+    # question only exists when a certificate is configured at all, so
+    # this node configures one. The paths need not resolve: nothing here
+    # starts the daemon.
+    services.gapi.certFile = "/var/lib/gapi/certs/server.crt";
+    services.gapi.keyFile = "/var/lib/gapi/certs/server.key";
   };
 
   testScript = ''
