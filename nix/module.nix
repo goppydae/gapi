@@ -21,13 +21,31 @@ let
   # configured certificate and generated a throwaway self-signed one
   # instead: a silent downgrade rather than an error. This note lives
   # here rather than in the emitted YAML, which operators read.
+  # tlsCert/tlsKey appear ONLY when an operator provisioned a
+  # certificate. Emitting them unconditionally is what made every image
+  # boot into a crash loop (GAPI-DIV-076): certFile and keyFile defaulted
+  # to paths under /var/lib/gapi/certs, systemd.tmpfiles created the
+  # DIRECTORY and nothing ever created the FILES, so the daemon took
+  # transport/factory.go's "a cert is configured" branch and died on
+  # "load cert: no such file or directory". Naming a path is not
+  # provisioning one.
+  #
+  # Left out, the daemon's own fallback runs and generates a self-signed
+  # certificate, warning loudly that it is not for production - which is
+  # the honest posture for an image that also ships no credential
+  # (GAPI-DIV-069). An operator who sets certFile/keyFile gets exactly
+  # what they named.
+  tlsLines = optionalString (cfg.certFile != null && cfg.keyFile != null) ''
+      tlsCert: ${toString cfg.certFile}
+      tlsKey: ${toString cfg.keyFile}
+  '';
+
   defaultConfig = pkgs.writeText "gapi-config.yaml" ''
     transport:
       type: quic
       address: ${cfg.listenAddress}
-      tlsCert: ${cfg.certFile}
-      tlsKey: ${cfg.keyFile}
-    
+    ${tlsLines}
+
     ${optionalString (cfg.verifyKey != null) ''
     security:
       verifyKey: ${cfg.verifyKey}
@@ -85,16 +103,29 @@ in {
       description = "Address for GAPI to listen on";
     };
     
+    # NULL BY DEFAULT, like agentsDir and verifyKey below, and for the
+    # same reason: a non-null default here named a file the module never
+    # created, and the daemon cannot tell "the operator gave me this
+    # path" from "the module guessed it" (GAPI-DIV-076).
     certFile = mkOption {
-      type = types.path;
-      default = "/var/lib/gapi/certs/server.crt";
-      description = "Path to TLS certificate file";
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Path to a TLS certificate the operator has provisioned. Leave
+        null to let the daemon generate a self-signed certificate at
+        startup, which it warns about and which is not for production.
+        /var/lib/gapi/certs is created for you to put one in.
+      '';
     };
-    
+
     keyFile = mkOption {
-      type = types.path;
-      default = "/var/lib/gapi/certs/server.key";
-      description = "Path to TLS key file";
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Path to the private key for certFile. Both must be set for the
+        daemon to use them; either left null falls back to a generated
+        self-signed certificate.
+      '';
     };
     
     verifyKey = mkOption {

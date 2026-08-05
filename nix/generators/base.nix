@@ -15,10 +15,24 @@
   # Import GAPI module
   imports = [ ../module.nix ];
   
-  # Enable GAPI service
+  # Enable GAPI service.
+  #
+  # NO agentsDir. It was set to "/var/lib/gapi/agents" (GAPI-DIV-075),
+  # which the option's own documentation forbids - /var/lib is STATE,
+  # and agents are executable payload - and which is the exact value
+  # GAPI-DIV-063 was filed to remove from the module. The module was
+  # fixed and this file kept the old spelling, so every advertised image
+  # created an EMPTY /var/lib/gapi/agents, pointed GAPI_AGENT_PATH at
+  # it, and left its only real agents in /etc/gapi/agents below. Under
+  # the pre-063 replacing behaviour that made both of them
+  # undiscoverable.
+  #
+  # Unset, agentsDir defaults to null and the image searches the
+  # built-in tiers - /etc/gapi/agents among them, which is where the
+  # agents this file installs already are. The option is for agents
+  # living somewhere non-standard, and nothing here does.
   services.gapi = {
     enable = true;
-    agentsDir = "/var/lib/gapi/agents";
     logLevel = "info";
     openFirewall = false;  # Override per format if needed
   };
@@ -74,6 +88,13 @@
       # "# TYPE = timer" is silently dropped and the agent never
       # registers as a timer.
       text = ''
+        # ID is not optional in practice. Without it the ADK runner falls
+        # back to "unknown" (runner.py:338), and discovery keys its
+        # registry by id with first-occurrence-wins - so two agents that
+        # both omit it collide and the second is silently dropped. This
+        # image shipped exactly that: two agents, one registration, id
+        # "unknown" (GAPI-DIV-078).
+        ID = "heartbeat"
         ENABLED = True
         TYPE = "timer"
         SCHEDULE = "OnUnitActiveSec=30s"
@@ -89,6 +110,7 @@
     
     "gapi/agents/sysinfo.py.service" = {
       text = ''
+        ID = "sysinfo"
         ENABLED = True
         TYPE = "service"
 

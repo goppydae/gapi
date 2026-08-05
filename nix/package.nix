@@ -6,7 +6,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-{ lib, buildGoModule, gcc, python3, pkg-config, pam }:
+{ lib, buildGoModule, gcc, python3, pkg-config, pam, makeWrapper }:
 
 buildGoModule rec {
   pname = "gapi";
@@ -30,7 +30,7 @@ buildGoModule rec {
   # workspace mode, so the build could not succeed either way.
   env.GOWORK = "off";
   
-  nativeBuildInputs = [ pkg-config ];
+  nativeBuildInputs = [ pkg-config makeWrapper ];
   buildInputs = [ gcc python3 pam ];
   
   # Build both binaries
@@ -54,6 +54,38 @@ buildGoModule rec {
   checkPhase = ''
     # Skip integration tests that require binaries to be installed
     go test -v $(go list ./... | grep -v 'test/adk')
+  '';
+
+  # THE PYTHON ADK IS PART OF THE PRODUCT, NOT A DEVELOPMENT CONVENIENCE
+  # (GAPI-DIV-077). A Python agent is described by running the ADK runner
+  # against it, so a gapid with no runner cannot discover a *.py.service
+  # at all - and core/agentmgr/discovery.go SWALLOWS that failure, so the
+  # daemon reports "agent discovery complete count=0" and looks healthy.
+  # Every advertised image shipped exactly that: two Python agents in
+  # /etc/gapi/agents and nothing able to read them.
+  #
+  # resolvePyRunner (core/supervisor/lifecycle_handlers.go:200) looks in
+  # three places - GAPI_PY_RUNNER, then adk/python/agent/runner.py NEXT
+  # TO THE BINARY, then the same path RELATIVE TO THE CWD. The last is
+  # what a systemd unit gets, and it resolves against / on a booted
+  # system, which is why this was invisible in a checkout and fatal in an
+  # image: in a dev tree the cwd fallback happens to hit.
+  #
+  # Fixed in the PACKAGE rather than in module.nix so that every consumer
+  # of the derivation gets a working runner, not only NixOS. The wrapper
+  # sets the override explicitly instead of relying on the
+  # next-to-the-binary probe: $out/bin holds binaries, and burying a
+  # python tree in it to satisfy a path probe is the kind of layout that
+  # gets tidied away by someone who does not know it is load-bearing.
+  # gapid only: gapictl does not discover agents, and giving it a python
+  # on PATH it never calls would be scope the wrapper cannot justify.
+  postInstall = ''
+    mkdir -p $out/share/gapi
+    cp -r adk/python $out/share/gapi/python
+
+    wrapProgram $out/bin/gapid \
+      --set-default GAPI_PY_RUNNER $out/share/gapi/python/agent/runner.py \
+      --prefix PATH : ${lib.makeBinPath [ python3 ]}
   '';
   
   meta = with lib; {
