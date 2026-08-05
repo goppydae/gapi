@@ -243,13 +243,13 @@ func declaredID(t *testing.T, path, pattern string) string {
 func gapictlPath(t *testing.T) string {
 	t.Helper()
 
-	root, err := findProjectRoot()
+	dir, err := suiteBinDir()
 	if err != nil {
-		t.Fatalf("project root: %v", err)
+		t.Fatalf("gapictl: %v", err)
 	}
-	p := filepath.Join(root, "bin", "gapictl")
+	p := filepath.Join(dir, "gapictl")
 	if _, err := os.Stat(p); err != nil {
-		t.Fatalf("gapictl is not built (%v); run 'mage build' first", err)
+		t.Fatalf("gapictl is not built (%v)", err)
 	}
 	return p
 }
