@@ -50,12 +50,25 @@ func resolveControlAddr(cfg *config.Config) {
 		return
 	}
 	addr, from, err := config.ReadControlAddr()
-	if err != nil || addr == "" {
+	if err != nil {
+		// AMBIGUITY IS CARRIED, NOT SWALLOWED. More than one daemon is
+		// publishing, so there is no defensible automatic choice; the
+		// configured default stays in place and the reason is held for
+		// the failure message. Picking one would be a coin flip that
+		// looks like a decision.
+		controlAddrAmbiguity = err
+		return
+	}
+	if addr == "" {
 		return
 	}
 	cfg.Transport.Address = addr
 	controlAddrSource = from
 }
+
+// controlAddrAmbiguity holds the reason the published address could not
+// be used, when several daemons published one.
+var controlAddrAmbiguity error
 
 // newControlClient dials the daemon and, on failure, says where it
 // tried and why it chose there.
@@ -89,13 +102,18 @@ func describeControlTarget(cfg *config.Config) string {
 	}
 	addr := cfg.Transport.Address
 	switch {
+	case controlAddrAmbiguity != nil:
+		// The useful message names every candidate, because the
+		// operator is the only one who can say which daemon they meant.
+		return fmt.Sprintf("dialled %s, the configured default, because %v - "+
+			"pass --api-addr to say which one you mean",
+			addr, controlAddrAmbiguity)
 	case controlAddrSource != "":
 		return fmt.Sprintf("dialled %s, from the daemon's published address at %s "+
-			"(a daemon killed abruptly leaves that file naming a dead port; "+
-			"pass --api-addr to override)", addr, controlAddrSource)
+			"(pass --api-addr to override)", addr, controlAddrSource)
 	default:
-		return fmt.Sprintf("dialled %s, the configured default - no daemon has published "+
-			"an address in %s (pass --api-addr if it is listening elsewhere)",
-			addr, strings.Join(config.ControlAddrFiles(), " or "))
+		return fmt.Sprintf("dialled %s, the configured default - no live daemon has "+
+			"published an address in %s (pass --api-addr if it is listening elsewhere)",
+			addr, strings.Join(config.ControlAddrDirs(), " or "))
 	}
 }
