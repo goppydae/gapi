@@ -34,7 +34,15 @@ var toolchain = magelib.DoctorConfig{
 	ProtoPlugins:   []string{"buf", "protoc-gen-go", "protoc-gen-go-grpc"},
 	GopyVersion:    "v0.4.10",
 	RequiredEnv:    []string{"GOBIN"},
-	SharedTools:    []string{"buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports", "mkdocs", "pandoc"},
+	// gopy joined this list when it stopped being built by the shell hook
+	// and started coming from the flake (GAPI-DIV-096). It earns its place
+	// here rather than only in the binding-toolchain check because that
+	// check asks whether gopy is PRESENT at the pinned version, and this
+	// one asks where it came FROM. The old hook installed it into
+	// $GOBIN=.bin, which leads PATH and is not under /nix/store, so
+	// reintroducing that build makes hermetic-resolution fail - in doctor
+	// and in checkHermetic, which gates every real target.
+	SharedTools: []string{"buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports", "mkdocs", "pandoc", "gopy"},
 }
 
 // fileLengthWaivers is DEBT: hand-written files the 500-line rule applies
