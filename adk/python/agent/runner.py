@@ -359,8 +359,13 @@ def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
             caps.append(key)
     
     # 2. @capability decorated methods/functions
-    # Scan all module level functions
-    for name, obj in inspect.getmembers(mod):
+    # Scan all module level functions.
+    #
+    # The member name is deliberately NOT bound: this loop used to bind
+    # `name`, which is also the local holding the agent's declared name a
+    # few lines above, so every describe payload carried the last member
+    # inspect.getmembers returned instead of the name (GAPI-DIV-081).
+    for _, obj in inspect.getmembers(mod):
         if inspect.isfunction(obj) or inspect.ismethod(obj):
             declared = getattr(obj, "_gapi_capabilities", [])
             caps.extend(declared)
