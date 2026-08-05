@@ -30,19 +30,10 @@ import (
 // It avoids channels in public signatures.
 
 var (
-	mu sync.Mutex
-	// Simple command mailbox
-	cmdMailbox struct {
-		cond *sync.Cond
-		cmd  string // e.g. "START", "STOP"
-	}
+	mu         sync.Mutex
 	quicClient *transport.QUIC
 	schemaHash string
 )
-
-func init() {
-	cmdMailbox.cond = sync.NewCond(&mu)
-}
 
 // StartQUIC initializes the QUIC connection to the supervisor.
 func StartQUIC(addr string) error {
@@ -144,29 +135,23 @@ func SendEvent(jsonStr string) {
 	}
 }
 
-// AwaitCommand blocks until a command is received from the supervisor.
-// Returns the command string (e.g. "start", "stop").
-// In a real implementation, this would read from a QUIC stream or IPC socket.
-func AwaitCommand() string {
-	cmdMailbox.cond.L.Lock()
-	defer cmdMailbox.cond.L.Unlock()
-
-	// Wait for command (simulated)
-	for cmdMailbox.cmd == "" {
-		cmdMailbox.cond.Wait()
-	}
-	c := cmdMailbox.cmd
-	cmdMailbox.cmd = "" // clear after read
-	return c
-}
-
-// InjectCommand is a helper for testing/simulation to push a command into the mailbox.
-func InjectCommand(cmd string) {
-	cmdMailbox.cond.L.Lock()
-	defer cmdMailbox.cond.L.Unlock()
-	cmdMailbox.cmd = cmd
-	cmdMailbox.cond.Signal()
-}
+// A supervisor-to-agent command channel used to live here as
+// AwaitCommand and InjectCommand over an in-process mailbox. Nothing
+// drove it: InjectCommand was its only producer, described in its own
+// comment as a testing helper, and neither had a caller in either repo -
+// while AwaitCommand's comment conceded that a real implementation
+// "would read from a QUIC stream or IPC socket".
+//
+// It is removed rather than left in place because gopy binds every
+// exported symbol in this package into the Python extension, so the
+// surface here is a constraint rather than a convenience, and these two
+// spent slots of it on a mechanism that did nothing. Worse, being
+// Python-visible, an agent author could call AwaitCommand and block
+// forever (GAPI-DIV-088).
+//
+// A command channel is the inverse of the event path in SendEvent and
+// belongs on the same transport carrying the same schema. Design it;
+// do not restore this.
 
 // StartHeartbeat starts a background goroutine that sends heartbeat events.
 func StartHeartbeat(id, typeStr string) {

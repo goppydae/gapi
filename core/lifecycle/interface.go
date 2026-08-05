@@ -10,21 +10,17 @@ package lifecycle
 
 import (
 	"context"
-
-	"github.com/goppydae/gapi/core/adk/meta"
 )
 
-type Agent interface {
-	Initialize() error
-	Start() error
-	Stop() error
-	Restart() error
-	Reload() error
-	Describe() *meta.AgentInfo
-	ID() string
-	Type() string
-	Scope() string
-}
+// The agent contract this package once declared lived here as an Agent
+// interface returning *adk/meta.AgentInfo. It had no implementors and no
+// consumers in either repo, and its single reason to exist was that
+// method signature - which is why core/adk/meta was reachable from the
+// binaries at all, and why goblin vendored it (GAPI-DIV-082).
+//
+// The live agent contract is core/agentmgr.Agent. If lifecycle needs its
+// own view of an agent later, it should be written against what
+// lifecycle actually does with one rather than restored from here.
 
 type Runner interface {
 	// Start spawns the runner's process. The context bounds the start
