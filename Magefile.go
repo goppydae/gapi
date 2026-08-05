@@ -12,12 +12,14 @@
 package main
 
 import (
+	"debug/elf"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/goppydae/magelib/pkg/magelib"
 	"github.com/magefile/mage/mg"
@@ -593,25 +595,25 @@ func (Python) Build() error {
 		return fmt.Errorf("failed to get python ldflags: %w", err)
 	}
 
-	// Manually construct the gcc command line logic from Makefile
-	// $(GCC) adk.c adk_go$(LIBEXT) -o _adk$(LIBEXT) $(CFLAGS) $(LDFLAGS) -fPIC --shared -w
-
-	// We need to parse cflags/ldflags or just pass them as arguments to sh.Run
-	// Note: python3-config output might contain multiple flags separated by space.
-	// sh.Run args are individual tokens.
-
-	// A simpler way is to use bash execution for this complex command line to avoid parsing issues
-	// or reconstruct it carefully.
-
-	// Let's rely on the nix environment variables if possible, or just the output of config.
-	// The Makefile hardcoded some paths, but using python3-config is more portable.
-	// However, to match the Makefile exactly (and the fix we made), we need to ensure RPATH is there.
-
+	// NO SHELL. This used to build one string and hand it to `sh -c`,
+	// because python3-config returns several space-separated flags and
+	// that was the easy way to pass them. The shell then expanded
+	// $ORIGIN in -Wl,-rpath,$ORIGIN as an undefined variable, so gcc
+	// received -Wl,-rpath, and the extension shipped an EMPTY rpath
+	// entry instead of the ecosystem manifesto's load-bearing one
+	// (GAPI-DIV-098). Splitting the flags here and exec'ing gcc
+	// directly removes the interpolation, and with it the whole class:
+	// nothing between this line and the linker can reinterpret an
+	// argument.
+	//
 	// -std=gnu17: gopy-generated C assumes the pre-C23 'bool'; see the
 	// CGO_CFLAGS pin in the shell hook.
-	linkCmdStr := fmt.Sprintf("gcc -std=gnu17 adk.c adk_go.so -o _adk.so %s %s -fPIC --shared -w -Wl,-rpath,$ORIGIN", cflags, ldflags)
+	linkArgs := []string{"-std=gnu17", "adk.c", "adk_go.so", "-o", "_adk.so"}
+	linkArgs = append(linkArgs, strings.Fields(cflags)...)
+	linkArgs = append(linkArgs, strings.Fields(ldflags)...)
+	linkArgs = append(linkArgs, "-fPIC", "--shared", "-w", "-Wl,-rpath,$ORIGIN")
 
-	linkCmd := exec.Command("sh", "-c", linkCmdStr)
+	linkCmd := exec.Command("gcc", linkArgs...)
 	linkCmd.Dir = nativeDir
 	linkCmd.Stdout = os.Stdout
 	linkCmd.Stderr = os.Stderr
@@ -619,6 +621,54 @@ func (Python) Build() error {
 		return fmt.Errorf("gcc link failed: %w", err)
 	}
 
+	if err := assertOriginRunpath(filepath.Join(nativeDir, "_adk.so")); err != nil {
+		return err
+	}
+
 	fmt.Println("Python bindings built successfully")
 	return nil
+}
+
+// assertOriginRunpath fails unless the linked extension carries $ORIGIN in
+// its RUNPATH or RPATH.
+//
+// THE INVARIANT WAS PRESENT IN THE COMMAND AND ABSENT FROM THE ARTIFACT
+// for as long as anyone had looked, so this checks the artifact. It reads
+// the ELF with the standard library rather than shelling out to patchelf
+// or readelf: a gate that needs a tool the build does not already require
+// is a gate that gets skipped on the machine where it matters.
+//
+// Why it is load-bearing at all: _adk.so links adk_go.so by bare soname,
+// so the loader must find it beside the extension. The build appeared to
+// work without it only because gopy's generated adk.py chdirs the process
+// into the native directory around the import, which the empty rpath
+// entry then resolved as the current directory. That is not a mechanism
+// this repo controls, and Nix's fixupPhase strips the empty entry while
+// preserving $ORIGIN - so packaging the extension needs the real thing.
+func assertOriginRunpath(path string) error {
+	f, err := elf.Open(path)
+	if err != nil {
+		return fmt.Errorf("read linked extension: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	var found []string
+	for _, tag := range []elf.DynTag{elf.DT_RUNPATH, elf.DT_RPATH} {
+		vals, err := f.DynString(tag)
+		if err != nil {
+			continue
+		}
+		found = append(found, vals...)
+		for _, v := range vals {
+			for _, entry := range strings.Split(v, ":") {
+				if strings.Contains(entry, "$ORIGIN") {
+					return nil
+				}
+			}
+		}
+	}
+
+	return fmt.Errorf("%s carries no $ORIGIN run path (found %q): the extension "+
+		"links adk_go.so by soname and will not find it once the build "+
+		"directory is not the working directory", filepath.Base(path), found)
 }
