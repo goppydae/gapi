@@ -256,7 +256,10 @@ func (q *QUIC) PublishRemote(ctx context.Context, e eventbus.Event[*anypb.Any]) 
 	conn := q.conn
 	q.mu.Unlock()
 	if conn == nil {
-		return io.ErrUnexpectedEOF
+		// NOT io.ErrUnexpectedEOF, which asserts that a read ended before
+		// it should have. Nothing was read and nothing went wrong: there
+		// is simply nobody to send to (GAPI-DIV-095).
+		return eventbus.ErrNoPeer
 	}
 
 	// Capture values for async closure
