@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/goppydae/gapi/core/client"
 )
 
 var (
@@ -42,7 +40,7 @@ var shutdownCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("load config: %w", err)
 		}
-		c, err := client.New(cfg)
+		c, err := newControlClient(cfg)
 		if err != nil {
 			return fmt.Errorf("init client: %w", err)
 		}
