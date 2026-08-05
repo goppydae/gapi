@@ -216,7 +216,20 @@ func (am *AgentManager) discoverFromSinglePath(root string, pathType config.Path
 			// Handle Python Agent
 			desc, err := am.pythonDescribe(p)
 			if err != nil {
-				// println(err.Error()) // quiet for mixed folders
+				// WARN, because the NAME is an explicit declaration of
+				// intent: once a file matches *.py.<type> it is not a stray
+				// README, it is a broken agent, and the operator is the
+				// person who can fix it.
+				//
+				// The comment this replaced ("quiet for mixed folders")
+				// named a real concern that the name check above already
+				// serves - a non-agent file never reaches this branch. What
+				// the silence actually bought was GAPI-DIV-077 presenting as
+				// "agent discovery complete count=0", indistinguishable from
+				// an empty directory (GAPI-DIV-079).
+				slog.Default().LogAttrs(context.Background(), slog.LevelWarn,
+					"agent failed to describe; not registered",
+					logattr.Module("discovery"), logattr.Path(p), logattr.Err(err))
 				return nil
 			}
 			return am.processDiscovered(p, desc.Describe, &agents)
@@ -235,7 +248,19 @@ func (am *AgentManager) discoverFromSinglePath(root string, pathType config.Path
 			// Executable
 			desc, err := am.binaryDescribe(p)
 			if err != nil {
-				// Not a GAPI agent binary
+				// DEBUG rather than WARN, unlike the python branch above,
+				// and the difference is the declaration: an executable on a
+				// search path has declared nothing, so it may legitimately
+				// be an unrelated program and warning on it would be noise
+				// an operator cannot act on.
+				//
+				// It is still REPORTED, with the path and the reason,
+				// because the cost of being wrong here is a real agent
+				// binary skipped in silence - which is the same failure the
+				// python branch had, just less likely.
+				slog.Default().LogAttrs(context.Background(), slog.LevelDebug,
+					"executable did not describe as an agent; not registered",
+					logattr.Module("discovery"), logattr.Path(p), logattr.Err(err))
 				return nil
 			}
 			return am.processDiscovered(p, desc.Describe, &agents)
