@@ -99,6 +99,44 @@ func TestBuildGoAgentOutsideAnyModule(t *testing.T) {
 	}
 }
 
+// TestResolveGoADKFindsTheCheckoutFromASubdirectory is the regression
+// gate for a real CI failure: the checkout tier was written as a bare
+// "adk/go" relative to the working directory, which silently assumes the
+// caller stands in the repository root. The ADK harness runs gapictl from
+// test/adk, so every Go case in the cross-language parity suite failed
+// with "cannot locate the Go ADK source".
+//
+// This test is worth more than it looks. Its own package directory,
+// pkg/cli, is TWO LEVELS DOWN, so a resolver that only checks the
+// working directory fails it - which is exactly what the unit tests could
+// not catch before, because they all named the ADK explicitly.
+func TestResolveGoADKFindsTheCheckoutFromASubdirectory(t *testing.T) {
+	product.Set("gapi")
+
+	// No override: the checkout tier is the one under test.
+	t.Setenv(product.EnvKey("GO_ADK"), "")
+
+	adk, err := resolveGoADK()
+	if err != nil {
+		t.Fatalf("resolveGoADK from %s: %v", mustGetwd(t), err)
+	}
+	if _, err := os.Stat(filepath.Join(adk.Dir, "agent", "run.go")); err != nil {
+		t.Fatalf("resolved ADK at %s does not hold agent/run.go: %v", adk.Dir, err)
+	}
+	if adk.GoDirective == "" {
+		t.Fatal("resolved ADK carries no go directive")
+	}
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	return wd
+}
+
 // TestStagedADKIsCoveredByTheProvenanceHash guards the constraint
 // GAPI-DIV-092 said the fix must not walk past: the stamp claims to cover
 // what was compiled, and the ADK is compiled in. If the ADK source

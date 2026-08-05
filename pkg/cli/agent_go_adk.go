@@ -46,11 +46,13 @@ type goADK struct {
 //
 // THREE TIERS, IN THE SAME ORDER AND FOR THE SAME REASONS AS
 // resolvePyRunner (core/supervisor/lifecycle_handlers.go): an explicit
-// override, then the install layout, then the checkout. Deliberately
-// unlike resolvePyRunner in one respect - the last tier is CHECKED rather
-// than returned on faith. A path that does not exist produces a clear
-// error here instead of a `go build` failure whose message is about
-// modules and says nothing about the ADK.
+// override, then the install layout, then the checkout. It differs from
+// resolvePyRunner in two respects, both deliberate: the last tier is
+// CHECKED rather than returned on faith, so a path that does not exist
+// produces a clear error here instead of a `go build` failure whose
+// message is about modules and says nothing about the ADK; and that tier
+// WALKS UP rather than trusting the working directory to be the
+// repository root.
 //
 // GAPI-DIV-092: before this existed, a Go agent could only be built from
 // inside a checkout, while the CLI told every operator otherwise.
@@ -81,12 +83,32 @@ func resolveGoADK() (goADK, error) {
 		tried = append(tried, cand)
 	}
 
-	// The checkout: adk/go relative to the working directory, which is
-	// what a developer running from the repo root gets.
-	if adk, err := loadGoADK(filepath.Join("adk", "go"), "checkout"); err == nil {
-		return adk, nil
+	// The checkout: adk/go at or ABOVE the working directory.
+	//
+	// Not a bare "adk/go" relative to the cwd, which assumes the caller
+	// stands in the repository root - and nothing makes that true. The
+	// ADK harness runs gapictl from test/adk, and a developer building an
+	// agent has no reason to be at the top of the tree either.
+	//
+	// This is where resolvePyRunner's third tier is copied in SHAPE but
+	// not in weakness. That tier returns a cwd-relative path on faith; it
+	// happens to hit in a dev tree and resolved against / on a booted
+	// system, which is how GAPI-DIV-077 stayed invisible in a checkout and
+	// was fatal in an image. Walking up removes the assumption instead of
+	// relying on where the caller happened to stand.
+	if wd, err := os.Getwd(); err == nil {
+		for d := wd; ; {
+			if adk, err := loadGoADK(filepath.Join(d, "adk", "go"), "checkout"); err == nil {
+				return adk, nil
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				break
+			}
+			d = parent
+		}
+		tried = append(tried, filepath.Join(wd, "adk", "go")+" (and every parent)")
 	}
-	tried = append(tried, filepath.Join("adk", "go"))
 
 	return goADK{}, fmt.Errorf(
 		"cannot locate the Go ADK source (looked in: %s); set %s to the directory holding agent/*.go",
