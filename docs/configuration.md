@@ -289,6 +289,7 @@ table below is `gapid`'s view of it.
 | `GAPI_SKIP_SYSTEM_AGENTS` | Drop the package-owned agent tiers (`/usr/lib`, `/usr/local/lib`); `/etc` and `/run` survive |
 | `GAPI_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
 | `GAPI_PY_RUNNER` | Override the Python runner path |
+| `GAPI_GO_ADK` | Override the Go ADK source tree used by `gapictl agent build` |
 | `GAPI_CGROUPS_DISABLE` | Disable cgroup setup |
 | `GAPI_KMSG_PATH` | Override the kmsg device (PID 1 mode) |
 

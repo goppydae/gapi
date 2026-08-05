@@ -317,37 +317,6 @@ func (d *goAgentDecls) needsFmtImport() bool {
 	return false
 }
 
-// adkImportPath is the Go ADK runtime's import path. It is adk/go/AGENT,
-// never adk/go: gopy binds every exported symbol in adk/go into the
-// Python ADK's native module, so importing the runtime from there would
-// leak it into Python's C bindings.
-const adkImportPath = "github.com/goppydae/gapi/adk/go/agent"
-
-// assembleGoAgent writes the author's file and the generated main into
-// dir, ready to build.
-//
-// dir MUST be inside this module's tree. The assembled package imports the
-// ADK by module path, so a directory outside the module would need its own
-// go.mod and a resolvable version of the kernel - which turns an offline
-// build into one that reaches the module proxy. Nesting it keeps the
-// build hermetic and makes vendor-mode resolution work unchanged.
-func assembleGoAgent(srcPath, dir string) error {
-	d, err := scanGoAgent(srcPath)
-	if err != nil {
-		return err
-	}
-
-	// The author's file becomes agent.go. Its name no longer carries the
-	// type because the type has already been read out of it.
-	if err := os.WriteFile(filepath.Join(dir, "agent.go"), d.sourceAsMain(), 0600); err != nil {
-		return fmt.Errorf("write agent source: %w", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), d.generateMain(adkImportPath), 0600); err != nil {
-		return fmt.Errorf("write generated main: %w", err)
-	}
-	return nil
-}
-
 // goAgentTypes are the type suffixes a Go agent file may carry. They are
 // the same three the Python side uses, because discovery routes on the
 // declared type rather than on the language.
@@ -395,34 +364,47 @@ func goAgentArtifact(srcPath string) string {
 	return filepath.Base(srcPath)
 }
 
-// buildGoAgent assembles the agent beside its source, compiles it into
-// outDir, and returns the binary path and the hash of what was compiled.
+// buildGoAgent assembles the agent into a self-contained stage, compiles
+// it into outDir, and returns the binary path and the hash of what was
+// compiled.
 //
-// The staging directory sits next to the AUTHOR'S FILE rather than in a
-// system temp dir, because the assembled package imports the ADK by
-// module path: staging outside the module tree would need a generated
-// go.mod and a resolvable kernel version, turning an offline build into
-// one that reaches the module proxy. Staging next to the source keeps it
-// inside whatever module the agent already lives in.
-//
-// KNOWN LIMIT, recorded rather than hidden: this therefore assumes the
-// agent lives inside a checkout that can resolve the kernel. A standalone
-// gapictl building an agent in an unrelated directory needs a generated
-// go.mod, which this does not do.
+// The stage is a SYSTEM temp directory. It used to sit beside the
+// author's file, because the assembled package imported the ADK by module
+// path and staging outside the module tree would have needed a resolvable
+// kernel version. assembleGoAgent now brings the ADK with it, so the
+// stage no longer needs to be inside anything - which is what makes this
+// work for an operator who installed gapi rather than cloning it
+// (GAPI-DIV-092), and stops the build writing scratch directories into
+// the author's source tree on the way.
 func buildGoAgent(srcPath, outDir string) (string, string, error) {
-	stage, err := os.MkdirTemp(filepath.Dir(srcPath), ".agent-build-")
+	// Checked before any staging so the message names the missing thing.
+	// The package ships the ADK but deliberately not a compiler, so this
+	// is the one prerequisite an installed operator has to supply, and it
+	// should say so rather than arrive as a failed `go build`.
+	if _, err := exec.LookPath("go"); err != nil {
+		return "", "", fmt.Errorf("building a Go agent needs the go toolchain on PATH: %w", err)
+	}
+
+	adk, err := resolveGoADK()
+	if err != nil {
+		return "", "", err
+	}
+
+	stage, err := os.MkdirTemp("", "agent-build-")
 	if err != nil {
 		return "", "", fmt.Errorf("stage dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(stage) }()
 
-	if err := assembleGoAgent(srcPath, stage); err != nil {
+	if err := assembleGoAgent(srcPath, stage, adk); err != nil {
 		return "", "", err
 	}
 
 	// Hash the STAGED package, not the author's file alone: the generated
-	// main is compiled into the binary too, so a provenance hash that
-	// ignored it would certify an input that is not the whole input.
+	// main and the staged ADK are compiled into the binary too, so a
+	// provenance hash that ignored them would certify an input that is not
+	// the whole input. HashDirectory walks recursively, so the ADK copy
+	// under adk/agent is covered without a second call.
 	sourceHash, err := crypto.HashDirectory(stage, "*.go")
 	if err != nil {
 		return "", "", fmt.Errorf("hash assembled package: %w", err)
@@ -441,6 +423,15 @@ func buildGoAgent(srcPath, outDir string) (string, string, error) {
 
 	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", outBinary, ".")
 	build.Dir = stage
+	// The stage resolves everything locally, so the build is pinned to say
+	// so. GOPROXY=off turns "this needed the network" from a slow success
+	// on a connected host into an immediate, legible failure everywhere -
+	// which is the property GAPI-DIV-092 chose this route for, and it is
+	// worth nothing if it is only true on the machines that test it.
+	// GOWORK=off and -mod=mod stop an inherited workspace or vendor mode
+	// from reaching in; the stage belongs to no workspace and has no
+	// vendor directory.
+	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off")
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {

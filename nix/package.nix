@@ -79,13 +79,111 @@ buildGoModule rec {
   # gets tidied away by someone who does not know it is load-bearing.
   # gapid only: gapictl does not discover agents, and giving it a python
   # on PATH it never calls would be scope the wrapper cannot justify.
+  # THE GO ADK IS PART OF THE PRODUCT TOO, FOR THE SAME REASON
+  # (GAPI-DIV-092). `gapictl agent build` assembles the author's file with
+  # a generated main and compiles the result, and the generated main
+  # imports the ADK runtime. Before this, that import could only resolve
+  # inside a checkout, so an operator who INSTALLED gapi got
+  # `go: go.mod file not found` from the exact command `agent new` had
+  # just told them to run.
+  #
+  # The staged build takes this tree as a local `replace` target, so
+  # nothing here is fetched and the whole build works air-gapped. That is
+  # why the SOURCE ships rather than a version to resolve: an installed
+  # host may have no proxy, and a Go agent is the form this architecture
+  # treats as canonical.
+  #
+  # adk/go/agent only - NOT adk/go, whose exported surface gopy binds into
+  # the Python extension and which pulls in the kernel. The runtime is
+  # stdlib-only, which is what makes a five-file module enough.
+  #
+  # The go directive is copied from the kernel's own go.mod rather than
+  # written here, so the shipped module cannot claim a toolchain the
+  # source was not written against.
+  #
+  # gapictl is wrapped, unlike for the Python runner: gapictl is the
+  # binary that reads this, and setting the override explicitly beats
+  # relying on the ../share path probe surviving someone's tidy-up. The
+  # probe stays in resolveGoADK for installs that are not this derivation.
+  # No Go toolchain is added to PATH: pinning the compiler an operator
+  # builds their agents with is not this package's decision, and it would
+  # put the whole toolchain in gapi's runtime closure.
   postInstall = ''
     mkdir -p $out/share/gapi
     cp -r adk/python $out/share/gapi/python
 
+    mkdir -p $out/share/gapi/go/agent
+    for f in adk/go/agent/*.go; do
+      case "$f" in
+        *_test.go) continue ;;
+      esac
+      cp "$f" $out/share/gapi/go/agent/
+    done
+    goDirective=$(sed -n 's/^go \(.*\)$/\1/p' go.mod | head -n 1)
+    if [ -z "$goDirective" ]; then
+      echo "go.mod declares no go directive; the shipped ADK module would be invalid" >&2
+      exit 1
+    fi
+    printf 'module github.com/goppydae/gapi/adk/go\n\ngo %s\n' "$goDirective" \
+      > $out/share/gapi/go/go.mod
+
     wrapProgram $out/bin/gapid \
       --set-default GAPI_PY_RUNNER $out/share/gapi/python/agent/runner.py \
       --prefix PATH : ${lib.makeBinPath [ python3 ]}
+
+    wrapProgram $out/bin/gapictl \
+      --set-default GAPI_GO_ADK $out/share/gapi/go
+  '';
+
+  # THE PACKAGING HALF OF GAPI-DIV-092 NEEDS ITS OWN GATE.
+  #
+  # pkg/cli's tests point GAPI_GO_ADK at the checkout, so they prove the
+  # CODE works and say nothing about whether this derivation SHIPS what
+  # that code looks for. Delete the postInstall lines above and every Go
+  # test still passes while an installed operator is broken again - which
+  # is exactly the shape of GAPI-DIV-085, where a packaged daemon
+  # advertised Python agents it had no runner to start.
+  #
+  # So the assertion lives where the artifact is built. It runs in the
+  # Flake Build job, and it fails the derivation rather than a test that
+  # was never looking.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+
+    for required in \
+      share/gapi/go/go.mod \
+      share/gapi/go/agent/run.go \
+      share/gapi/python/agent/runner.py
+    do
+      if [ ! -f "$out/$required" ]; then
+        echo "packaged tree is missing $required - an installed operator cannot build or run an agent" >&2
+        exit 1
+      fi
+    done
+
+    # A go.mod naming the wrong module compiles to a confusing import
+    # error at agent-build time, on the operator's machine, not here.
+    if ! grep -qx 'module github.com/goppydae/gapi/adk/go' $out/share/gapi/go/go.mod; then
+      echo "shipped ADK go.mod does not declare the ADK module path:" >&2
+      cat $out/share/gapi/go/go.mod >&2
+      exit 1
+    fi
+
+    # Tests are not compiled into an agent, and shipping them would make
+    # the provenance hash move for edits that cannot change a binary.
+    #
+    # find, not `ls <glob>`: the stdenv sets nullglob, so a glob that
+    # matches nothing expands to NOTHING and `ls` then lists the current
+    # directory and succeeds. The first version of this check was written
+    # that way and reported a leak on a clean tree.
+    leaked=$(find $out/share/gapi/go/agent -name '*_test.go' -print -quit)
+    if [ -n "$leaked" ]; then
+      echo "ADK test files leaked into the packaged tree: $leaked" >&2
+      exit 1
+    fi
+
+    runHook postInstallCheck
   '';
   
   meta = with lib; {

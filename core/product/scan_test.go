@@ -41,10 +41,12 @@ var scanRoots = []string{"core", "pkg/cli"}
 var wireLiterals = map[string]string{
 	"gapi-quic": "core/transport: the QUIC ALPN. A protocol constant - " +
 		"renaming it breaks every peer, and no operator reads it off a terminal.",
-	"github.com/goppydae/gapi/adk/go/agent": "pkg/cli: the Go ADK's import " +
-		"path, written into a generated main. A Go MODULE path, which is the " +
-		"module's identity and not the product's - it stays the same string " +
-		"whichever binary does the generating, and no operator reads it.",
+	"github.com/goppydae/gapi/adk/go": "pkg/cli: the Go ADK's MODULE path, " +
+		"written into a generated main's import and into the go.mod of the " +
+		"staged build. A Go module path is the module's identity and not the " +
+		"product's - it stays the same string whichever binary does the " +
+		"generating, and no operator reads it. The import path is composed " +
+		"from this rather than spelled a second time.",
 }
 
 // wirePrefixes are literal prefixes that must keep the gapi spelling.

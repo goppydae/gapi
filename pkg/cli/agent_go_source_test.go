@@ -102,10 +102,12 @@ func writeAgent(t *testing.T, dir, name, body string) string {
 
 // buildAssembled assembles and compiles the agent, returning the binary.
 //
-// The staging directory is created INSIDE the module tree on purpose: the
-// assembled package imports the ADK by module path, so a /tmp directory
-// would need its own go.mod and a resolvable kernel version, turning an
-// offline build into one that reaches the module proxy.
+// The staging directory is now a plain t.TempDir(): assembleGoAgent
+// brings the ADK with it and writes the module files, so the stage
+// resolves everything locally and does not have to live inside the kernel
+// module (GAPI-DIV-092). The build asserts that by running with
+// GOPROXY=off - if the stage ever stops being self-contained, this fails
+// rather than quietly reaching the proxy on a connected machine.
 func buildAssembled(t *testing.T, srcPath string) string {
 	t.Helper()
 
@@ -114,25 +116,34 @@ func buildAssembled(t *testing.T, srcPath string) string {
 	// undeclared identity panics by design (GAPI-DIV-061).
 	product.Set("gapi")
 
-	stage, err := os.MkdirTemp(".", ".agentbuild-test-")
-	if err != nil {
-		t.Fatalf("stage dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(stage) })
+	adk := testADKSource(t)
+	stage := t.TempDir()
 
-	if err := assembleGoAgent(srcPath, stage); err != nil {
+	if err := assembleGoAgent(srcPath, stage, adk); err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
 
 	bin := filepath.Join(t.TempDir(), "agent")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = stage
+	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off")
 	if out, err := build.CombinedOutput(); err != nil {
 		gen, _ := os.ReadFile(filepath.Join(stage, "main.go"))
 		t.Fatalf("the assembled package does not compile: %v\n%s\n--- generated main ---\n%s",
 			err, out, gen)
 	}
 	return bin
+}
+
+// testADKSource resolves the ADK out of the checkout these tests run in.
+// pkg/cli is two directories below the repository root.
+func testADKSource(t *testing.T) goADK {
+	t.Helper()
+	adk, err := loadGoADK(filepath.Join("..", "..", "adk", "go"), "test checkout")
+	if err != nil {
+		t.Fatalf("locate ADK source: %v", err)
+	}
+	return adk
 }
 
 // TestAssembledAgent_BuildsAndDescribes is the end-to-end proof that a
