@@ -64,7 +64,7 @@ func NewGapictlRoot() (*cobra.Command, *ControlFlags) {
 // through here for that reason.
 //
 // Flags override config; empty means "leave config alone", which is why
-// --api-addr carries no default in the registrar.
+// --control-addr carries no default in the registrar.
 func controlConfig() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -81,8 +81,8 @@ func applyControlFlags(cfg *config.Config) {
 	if cfg == nil || controlFlags == nil {
 		return
 	}
-	if controlFlags.APIAddr != "" {
-		cfg.Transport.Address = controlFlags.APIAddr
+	if controlFlags.ControlAddr != "" {
+		cfg.Transport.Address = controlFlags.ControlAddr
 	}
 	if controlFlags.LogLevel != "" {
 		cfg.Logging.Level = controlFlags.LogLevel

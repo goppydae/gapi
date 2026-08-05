@@ -46,9 +46,17 @@ func resolveControlAddr(cfg *config.Config) {
 		return
 	}
 	if cfg.Transport.Address != product.DefaultControlAddr() {
-		controlAddrSource = "" // explicitly configured; nothing to explain
+		// Someone SAID where to look - a flag, an environment variable
+		// or a config file. Recorded rather than merely returned: an
+		// earlier version fell through to the default branch of
+		// describeControlTarget and reported an explicitly-passed
+		// address as "the configured default", which is the same
+		// misattribution this entry exists to remove.
+		controlAddrExplicit = true
+		controlAddrSource = ""
 		return
 	}
+	controlAddrExplicit = false
 	addr, from, err := config.ReadControlAddr()
 	if err != nil {
 		// AMBIGUITY IS CARRIED, NOT SWALLOWED. More than one daemon is
@@ -69,6 +77,13 @@ func resolveControlAddr(cfg *config.Config) {
 // controlAddrAmbiguity holds the reason the published address could not
 // be used, when several daemons published one.
 var controlAddrAmbiguity error
+
+// controlAddrExplicit records that something OTHER than the compiled-in
+// default supplied the address - a flag, an environment variable or a
+// config file. Which of the three cannot be recovered by the time
+// config.Load returns, but that they disagree with the default can, and
+// that is the distinction an error message needs.
+var controlAddrExplicit bool
 
 // newControlClient dials the daemon and, on failure, says where it
 // tried and why it chose there.
@@ -106,14 +121,18 @@ func describeControlTarget(cfg *config.Config) string {
 		// The useful message names every candidate, because the
 		// operator is the only one who can say which daemon they meant.
 		return fmt.Sprintf("dialled %s, the configured default, because %v - "+
-			"pass --api-addr to say which one you mean",
+			"pass --control-addr to say which one you mean",
 			addr, controlAddrAmbiguity)
+	case controlAddrExplicit:
+		return fmt.Sprintf("dialled %s, as configured - nothing is listening there "+
+			"(this address came from a flag, the environment or a config file, "+
+			"not from a running daemon)", addr)
 	case controlAddrSource != "":
 		return fmt.Sprintf("dialled %s, from the daemon's published address at %s "+
-			"(pass --api-addr to override)", addr, controlAddrSource)
+			"(pass --control-addr to override)", addr, controlAddrSource)
 	default:
 		return fmt.Sprintf("dialled %s, the configured default - no live daemon has "+
-			"published an address in %s (pass --api-addr if it is listening elsewhere)",
+			"published an address in %s (pass --control-addr if it is listening elsewhere)",
 			addr, strings.Join(config.ControlAddrDirs(), " or "))
 	}
 }
