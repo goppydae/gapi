@@ -32,9 +32,9 @@ func stubBuildInfo(t *testing.T, bi *debug.BuildInfo, ok bool) {
 // stubStamps sets the linker-injected globals and restores them.
 func stubStamps(t *testing.T, gapi, goADK, pyADK string) {
 	t.Helper()
-	pg, pgo, ppy := GAPIVersion, GoDDKVersion, PythonDDKVersion
-	GAPIVersion, GoDDKVersion, PythonDDKVersion = gapi, goADK, pyADK
-	t.Cleanup(func() { GAPIVersion, GoDDKVersion, PythonDDKVersion = pg, pgo, ppy })
+	pg, pgo, ppy := GAPIVersion, GoADKVersion, PythonADKVersion
+	GAPIVersion, GoADKVersion, PythonADKVersion = gapi, goADK, pyADK
+	t.Cleanup(func() { GAPIVersion, GoADKVersion, PythonADKVersion = pg, pgo, ppy })
 }
 
 func depInfo(path, version string) *debug.BuildInfo {
@@ -240,7 +240,7 @@ func TestSummary_ADKRowsFallBackToKernel(t *testing.T) {
 	// a recorded residual of GAPI-DIV-066, so a blanket search fails on
 	// something this test is not about - and would keep failing after the
 	// behaviour under test was correct.
-	for _, label := range []string{"Go DDK", "Python DDK"} {
+	for _, label := range []string{"Go ADK", "Python ADK"} {
 		row := rowValue(t, got, label)
 		if row == devVersion {
 			t.Errorf("%s still reports %q while the kernel is known:\n%s", label, devVersion, got)
