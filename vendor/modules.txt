@@ -51,6 +51,7 @@ github.com/fsnotify/fsnotify/internal
 ## explicit; go 1.19
 github.com/go-python/gopy
 github.com/go-python/gopy/bind
+github.com/go-python/gopy/gopyh
 # github.com/go-viper/mapstructure/v2 v2.4.0
 ## explicit; go 1.18
 github.com/go-viper/mapstructure/v2
