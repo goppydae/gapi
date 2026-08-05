@@ -10,6 +10,7 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -414,7 +415,15 @@ func (b *EventBus[T]) Publish(e Event[T]) error {
 		} else {
 			terr = b.transport.PublishRemote(context.Background(), e)
 		}
-		if terr != nil {
+		// Having no peer is not a publish failure (GAPI-DIV-095). Only
+		// this ONE sentinel is demoted, and only by matching it: lowering
+		// the level for every transport error would hide a real one
+		// behind the same treatment, which is the inversion this fix
+		// exists to avoid.
+		switch {
+		case errors.Is(terr, ErrNoPeer):
+			slog.Default().LogAttrs(context.Background(), slog.LevelDebug, "no peer for remote publish", logattr.EventID(e.ID), logattr.Topic(e.Topic))
+		case terr != nil:
 			slog.Default().LogAttrs(context.Background(), slog.LevelError, "transport publish failed", logattr.Err(terr), logattr.EventID(e.ID), logattr.Topic(e.Topic))
 		}
 	}
