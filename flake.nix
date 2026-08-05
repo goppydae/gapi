@@ -61,6 +61,11 @@
           inherit system format;
           modules = [ ./nix/generators/base.nix ];
         };
+
+        # Bound once so the shell and the packages output are the same
+        # derivation rather than two evaluations that happen to agree
+        # (GAPI-DIV-096).
+        gopy = pkgs.callPackage ./nix/gopy.nix { };
       in
       {
         devShells.default = pkgs.mkShell {
@@ -87,6 +92,13 @@
             # only the error branch. libseccomp is criu's own pkg-config
             # dependency. Kept in step with goblin's shell, which
             # 'mage envcheck' compares against.
+
+            # Binding codegen. FROM THE FLAKE, not from a shell hook
+            # that compiled it against whoever's module cache was warm
+            # (GAPI-DIV-096) - which is why a Nix sandbox, having
+            # neither network nor cache, could not build the Python
+            # extension at all.
+            gopy
 
             # Lint and security gate
             golangci-lint
@@ -144,9 +156,19 @@
             # C17. Pin the dialect until gopy emits C23-safe code.
             export CGO_CFLAGS=-std=gnu17
 
-            if [ ! -x "$GOBIN/gopy" ]; then
-              echo "Building pinned gopy from tools/gopy..."
-              (cd tools/gopy && GOWORK=off go build -o "$GOBIN/gopy" github.com/go-python/gopy)
+            # gopy comes from the flake now (GAPI-DIV-096). This used
+            # to build it here against the module cache, which a Nix
+            # sandbox does not have.
+            #
+            # GOBIN LEADS PATH, so a gopy left in .bin by the old hook
+            # would silently shadow the packaged one - an older binary
+            # winning quietly is precisely the failure this repo keeps
+            # finding (GAPI-DIV-097). .bin is gitignored build state, so
+            # the stale copy is removed rather than warned about, and it
+            # says so.
+            if [ -e "$GOBIN/gopy" ]; then
+              echo "Removing $GOBIN/gopy: gopy is supplied by the flake and GOBIN precedes it on PATH."
+              rm -f "$GOBIN/gopy"
             fi
 
             echo "GAPI (GoPPydae Agent Process Infrastructure) - Agent Supervision Framework"
@@ -174,7 +196,14 @@
         # tests and lint. gapictl cross-compiles to darwin/arm64 today; a
         # packaged cross-platform client would be an additive output here,
         # not a change to this one.
-        packages = pkgs.lib.optionalAttrs onLinux {
+        packages = {
+          # gopy is NOT gated on onLinux with the rest. It is a Go code
+          # generator, not the daemon: the darwin dev shell needs it for
+          # the same reason the Linux one does, and gating it here would
+          # reintroduce the shell-hook build on exactly the platform
+          # that has no packaged alternative (GAPI-DIV-096).
+          inherit gopy;
+        } // pkgs.lib.optionalAttrs onLinux {
           default = pkgs.callPackage ./nix/package.nix { };
           gapi = self.packages.${system}.default;
         };
