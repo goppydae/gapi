@@ -248,7 +248,7 @@ ______________________________________________________________________
 Protobuf defines the lifecycle and IPC surface: `LifecycleControl`,
 `LifecycleStatus` and `Envelope` are the core messages. Schema evolution
 is gated by `buf breaking` - see
-[protobuf_compatibility.md](protobuf_compatibility.md), including what
+the protobuf compatibility contract in goppydae-docs, including what
 that gate does *not* catch.
 
 ______________________________________________________________________

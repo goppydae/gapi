@@ -85,7 +85,7 @@ imported module, so it must be a real assignment - a commented
 - **[Getting started](docs/getting-started.md)** - first agent, end to end
 - **[Installation](docs/installation.md)** - NixOS module, images, systemd
 - **[Configuration](docs/configuration.md)** - every key and metadata field
-- **[Development](docs/development.md)** - building and testing GAPI itself
+- **Development** - building and testing GAPI itself is documented in the goppydae-docs repository
 - **[Features](docs/features.md)** - security, timers, cgroups, sockets
 - **[Design document](docs/gapi-design-document.md)** - architecture and philosophy
 - **[Agent development](agents/README.md)** - writing agents

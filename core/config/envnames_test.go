@@ -68,8 +68,8 @@ var envDocWaivers = map[string]string{}
 // waiver list and it fails the same way.
 var envKnownAbsent = map[string]bool{
 	"GAPI_AGENTS_DIR":   true, // docs/configuration.md, nix/tests/module-boot.nix
-	"GAPI_LOG_LEVEL":    true, // docs/development.md
-	"GAPI_TRACE_EVENTS": true, // docs/development.md
+	"GAPI_LOG_LEVEL":    true, // goppydae-docs, develop section
+	"GAPI_TRACE_EVENTS": true, // goppydae-docs, develop section
 	"GAPI_SOCKET":       true, // docs/configuration.md
 }
 

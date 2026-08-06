@@ -341,7 +341,7 @@ between nodes; the kernel supplies no policy of its own.
 Opt-in, with `--pid1` or `supervisor.pid1Mode: true`. There is no
 autodetection - `gapid` does not check its own pid. In PID 1 mode it
 takes on subreaper duty, the early mount table, watchdog petting and
-ordered shutdown. See [pid1-testing.md](pid1-testing.md).
+ordered shutdown. See the PID 1 testing guide in goppydae-docs.
 
 ## Transport
 

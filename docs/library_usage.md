@@ -107,8 +107,9 @@ complete(shutdown.PowerOff)
 ```
 
 `EnablePid1` installs the signal handlers, the subreaper and the early
-mount phase; `complete` runs the sync, unmount and reboot sequence. See
-[pid1-testing.md](pid1-testing.md).
+mount phase; `complete` runs the sync, unmount and reboot sequence. Testing
+this without booting a machine into it is documented in the goppydae-docs
+repository.
 
 ## Building against it
 
