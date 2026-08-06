@@ -64,6 +64,13 @@ type statusPublisher interface {
 	// the exit watcher can tell an orderly finish from an unowned death.
 	// Neither component could answer that alone: this is the seam.
 	noteAnnouncedState(state, runID string)
+	// noteFrameSeen records that the child has spoken at all, which is
+	// what tells a silent agent from a slow one when the start deadline
+	// expires (GAPI-DIV-104). Separate from noteAnnouncedState because
+	// the question is different: a heartbeat is speech but announces no
+	// state, and a status frame this build refuses is still evidence
+	// that the descriptor was opened and written to.
+	noteFrameSeen()
 }
 
 // maxBadControlFrames bounds what one broken agent can cost.
@@ -146,6 +153,15 @@ func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 			}
 			return
 		}
+
+		// SPEECH IS RECORDED BEFORE THE FRAME IS JUDGED (GAPI-DIV-104).
+		// The question this answers is whether the child opened its
+		// descriptor and wrote to it, and a frame this build refuses -
+		// wrong schema version, unknown arm - answers it just as well as
+		// one it acts on. Recording only acceptable frames would report
+		// a version-skewed agent as SILENT, which is a different defect
+		// with a different fix.
+		a.noteFrameSeen()
 
 		if frame.GetSchemaVersion() != controlSchemaVersion {
 			if !refuse("refusing agent control frame of unknown schema version") {
@@ -230,6 +246,39 @@ func (a *GoAgent) noteAnnouncedState(state, runID string) {
 	a.announcedState, a.announcedRunID = state, runID
 }
 
+// noteFrameSeen records the first frame of this run and when it arrived.
+// FIRST, not last: the interval that matters is exec to first speech,
+// and a later frame overwriting it would measure the most recent
+// heartbeat instead.
+func (a *GoAgent) noteFrameSeen() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.spoke {
+		a.spoke = true
+		a.firstFrameAt = time.Now()
+	}
+}
+
+// HasSpoken implements lifecycle.SpeechReporter.
+func (a *GoAgent) HasSpoken() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.spoke
+}
+
+// FirstFrameLatency reports exec to first control frame for the current
+// run, or 0 if the child has not spoken. It exists to be MEASURED: the
+// start deadline is 10s by default while the test harness allows 120s,
+// and nothing in the tree records which is right (GAPI-DIV-104).
+func (a *GoAgent) FirstFrameLatency() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if !a.spoke || a.spawnedAt.IsZero() {
+		return 0
+	}
+	return a.firstFrameAt.Sub(a.spawnedAt)
+}
+
 // announcedOwnExit reports whether the agent classified this run's exit
 // itself. Caller holds mu.
 func (a *GoAgent) announcedOwnExitLocked(runID string) bool {
@@ -240,6 +289,34 @@ func (a *PythonAgent) noteAnnouncedState(state, runID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.announcedState, a.announcedRunID = state, runID
+}
+
+// noteFrameSeen is GoAgent's, for the other runner.
+func (a *PythonAgent) noteFrameSeen() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.spoke {
+		a.spoke = true
+		a.firstFrameAt = time.Now()
+	}
+}
+
+// HasSpoken implements lifecycle.SpeechReporter.
+func (a *PythonAgent) HasSpoken() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.spoke
+}
+
+// FirstFrameLatency is GoAgent's, for the other runner. The two
+// languages are exactly what the measurement needs to compare.
+func (a *PythonAgent) FirstFrameLatency() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if !a.spoke || a.spawnedAt.IsZero() {
+		return 0
+	}
+	return a.firstFrameAt.Sub(a.spawnedAt)
 }
 
 // announcedOwnExitLocked is GoAgent's, for the other runner. Caller holds mu.

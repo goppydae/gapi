@@ -40,6 +40,28 @@ type RunIDSetter interface {
 	SetRunID(string)
 }
 
+// SpeechReporter answers whether the current run's child has written any
+// control frame at all (GAPI-DIV-104).
+//
+// A START DEADLINE THAT EXPIRES HAS TWO CAUSES AND THEY NEED DIFFERENT
+// ANSWERS. A child that spoke and has not yet reached RUNNING is slow;
+// a child that has said nothing is either hung before its first report
+// or built against an ADK that never opened the descriptor. Since
+// GAPI-DIV-099 the supervisor learns state only from frames the agent
+// writes, so silence is the sole evidence for the second case - and
+// without this the timeout names neither, reporting only that the wait
+// ended.
+//
+// Optional, on the same terms as RunIDSetter: an in-process runner has
+// no control channel and simply does not implement it, which is
+// distinct from implementing it and answering false.
+type SpeechReporter interface {
+	// HasSpoken reports whether any valid control frame has arrived
+	// since the current run was started. It is reset by Start, so it
+	// answers about this run and not the agent's history.
+	HasSpoken() bool
+}
+
 // Checkpointer is an optional capability for runners whose process can
 // be checkpointed and restored with CRIU (GOBLIN-DIV-018). Runners that
 // cannot be dumped - anything running in-process rather than as a

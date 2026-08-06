@@ -104,6 +104,18 @@ type GoAgent struct {
 	controlDone    chan struct{}
 	announcedState string
 	announcedRunID string
+
+	// spoke records whether this run's child has written ANY control
+	// frame, and firstFrameAt when the first one arrived; spawnedAt is
+	// taken the instant cmd.Start returns. Together they answer the two
+	// questions GAPI-DIV-104 needs and startTime cannot: whether a
+	// child that missed its deadline was silent or merely slow, and how
+	// long exec-to-first-speech actually takes. startTime is set before
+	// the pipes are built and is the agent's uptime clock, not a
+	// measurement of the spawn. Guarded by mu.
+	spoke        bool
+	spawnedAt    time.Time
+	firstFrameAt time.Time
 }
 
 func NewGoAgent(
@@ -446,6 +458,7 @@ func (a *GoAgent) Start(ctx context.Context) error {
 	ctlDone := make(chan struct{})
 	a.controlDone = ctlDone
 	a.announcedState, a.announcedRunID = "", ""
+	a.spoke, a.spawnedAt, a.firstFrameAt = false, time.Time{}, time.Time{}
 	go func() {
 		defer close(ctlDone)
 		readControl(ctlPipe.r, a, a.id, slog.Default())
@@ -459,8 +472,24 @@ func (a *GoAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("cmd.Start: %w", err)
 	}
 	_ = ctlPipe.w.Close()
+	a.spawnedAt = time.Now()
 
 	attachCgroup(a.id, limits, a.cmd.Process.Pid)
+
+	// STARTING IS AN OBSERVATION, AND THIS IS WHERE IT BECOMES TRUE
+	// (operator decision 42, GAPI-DIV-104). A child exists and its pid
+	// is known; before cmd.Start returned there was nothing to report.
+	//
+	// The supervisor publishes what it OBSERVES and the agent announces
+	// what it decides - the split GAPI-DIV-099 established, whose
+	// announcement half landed and whose observation half did not.
+	// Spawning is squarely an observation, and it carries the run id so
+	// a consumer can tell this attempt from the restart behind it.
+	//
+	// It replaces the transition-time announcement the controller used
+	// to make before walking the dependency tree, which claimed STARTING
+	// while nothing had been spawned yet.
+	a.publishStatusWithRunID("STARTING", "process spawned", a.nextRunID)
 
 	// Oneshot behavior: wait for completion. Mirrors PythonAgent.Start -
 	// the lock is released around Wait so the stream handlers (which take
@@ -468,7 +497,6 @@ func (a *GoAgent) Start(ctx context.Context) error {
 	// publishStatusWithRunID is used while the lock is held.
 	if a.typ == "oneshot" {
 		rid := a.nextRunID
-		a.publishStatusWithRunID("STARTING", "oneshot running", rid)
 
 		a.mu.Unlock()
 		err := a.cmd.Wait()

@@ -129,6 +129,9 @@ type recordingPublisher struct {
 	lastHeartbeat *gapiv1.Heartbeat
 	pendingRun    string
 	pending       string
+	// frames counts every frame readControl decoded, including ones it
+	// went on to refuse - which is what noteFrameSeen records.
+	frames int
 }
 
 type recordedState struct {
@@ -138,6 +141,8 @@ type recordedState struct {
 func (r *recordingPublisher) noteAnnouncedState(state, runID string) {
 	r.pending, r.pendingRun = state, runID
 }
+
+func (r *recordingPublisher) noteFrameSeen() { r.frames++ }
 
 func (r *recordingPublisher) publishStatusWithRunID(state, _, runID string) {
 	r.states = append(r.states, recordedState{state: state, runID: runID, noted: r.pending})
