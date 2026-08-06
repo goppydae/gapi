@@ -485,9 +485,24 @@ def main():
 
 
     def on_sigterm(signum, frame):
+        # NO FLUSH WINDOW, AND THERE NEVER WAS ONE HERE (GAPI-DIV-108).
+        #
+        # This slept 5 seconds "to give time for events to flush
+        # (especially over stdout/QUIC)". Operator decision 37 made the
+        # control channel an inherited descriptor: _notify calls
+        # adk.SendEvent, which writes the frame synchronously, and
+        # agent.stop() emits STOPPED before returning. Nothing is in
+        # flight by the time this line is reached.
+        #
+        # MEASURED cost of the sleep: the supervisor's GraceStop is 3s,
+        # so the 5s could never fit inside it. Every Python agent stop
+        # spent the whole grace period and ended in SIGKILL, with Stop
+        # returning context.DeadlineExceeded and the supervisor
+        # publishing STOPPED "killed after timeout" over the agent's own
+        # clean STOPPED. A graceful stop was unreachable by
+        # construction, and the Go ADK - which has no such sleep - did
+        # not share the behaviour, so this was a parity break too.
         agent.stop()
-        # Give time for events to flush (especially over stdout/QUIC)
-        time.sleep(5.0)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, on_sigterm)
