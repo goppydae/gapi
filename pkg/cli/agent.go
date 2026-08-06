@@ -76,10 +76,26 @@ var (
 	agentLang   string
 	agentType   string
 	agentOutput string
+
+	// cgoFlag backs --cgo. THREE STATES, NOT TWO: a plain bool cannot
+	// distinguish "the operator asked for cgo off" from "the operator said
+	// nothing", and those defer to different things - see stagedCGOEnv.
+	// Cobra's Changed() supplies the third state at parse time and this
+	// pointer carries it to the builder, which has six callers and no
+	// access to the command.
+	cgoFlag *bool
 )
 
 func init() {
 	agentBuildCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch for changes and rebuild")
+	// GAPI-DIV-105. The staged build defaults to CGO_ENABLED=0 because
+	// nothing in the ADK runtime needs cgo - `net` is the only thing that
+	// engages it - and the pure-Go resolver is the right one for a process
+	// the supervisor manages. This flag is the way back for an author who
+	// does want cgo, so the default removes an unstated host requirement
+	// without removing the choice.
+	agentBuildCmd.Flags().Bool("cgo", false,
+		"Build the agent with cgo enabled (default: disabled, so no C compiler is needed)")
 	agentBuildCmd.Flags().BoolVar(&signBuild, "sign", false, "Sign the built binary with ED25519")
 	agentBuildCmd.Flags().StringVar(&keyPath, "key", "", "Path to ED25519 signing key")
 	// Built agents land in the DEPLOY payload, not a build sub-tree.
@@ -106,6 +122,18 @@ func init() {
 
 func runAgentBuild(cmd *cobra.Command, args []string) error {
 	sourcePath := args[0]
+
+	// Resolve --cgo here, where the command is in scope. Changed() is the
+	// distinction that matters: an unset flag leaves cgoFlag nil so the
+	// environment gets its say, while `--cgo=false` is an explicit choice
+	// that beats an inherited CGO_ENABLED=1.
+	if cmd.Flags().Changed("cgo") {
+		v, err := cmd.Flags().GetBool("cgo")
+		if err != nil {
+			return fmt.Errorf("read --cgo: %w", err)
+		}
+		cgoFlag = &v
+	}
 
 	// Validate source path
 	info, err := os.Stat(sourcePath)

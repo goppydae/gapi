@@ -441,7 +441,11 @@ func buildGoAgent(srcPath, outDir string) (string, string, error) {
 	// GOWORK=off and -mod=mod stop an inherited workspace or vendor mode
 	// from reaching in; the stage belongs to no workspace and has no
 	// vendor directory.
-	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off")
+	cgo := stagedCGOEnv()
+	if err := preflightCGO(cgo); err != nil {
+		return "", "", err
+	}
+	build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOPROXY=off", cgo)
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
