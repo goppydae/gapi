@@ -51,8 +51,18 @@ func TestLoad_DefaultAddressFollowsTheProduct(t *testing.T) {
 		t.Fatalf("Load with no config file: %v", err)
 	}
 
-	if got, want := cfg.Transport.Address, "127.0.0.1:29000"; got != want {
+	if got, want := cfg.Transport.Address, "127.0.0.1:31415"; got != want {
 		t.Errorf("goblind's zero-config control address = %q, want %q "+
 			"(a goblin daemon must not default to gapi's port)", got, want)
+	}
+
+	// The metrics default is the same claim one line further down the
+	// loader, and it was the line GAPI-DIV-111 found unfixed: a shared
+	// literal made both daemons default to one listener. Asserted here
+	// too, because this test is the one that measures what Load actually
+	// produces rather than what the table declares.
+	if got, want := cfg.Metrics.Addr, "127.0.0.1:13703"; got != want {
+		t.Errorf("goblind's zero-config metrics address = %q, want %q "+
+			"(a goblin daemon must not default to gapi's metrics port)", got, want)
 	}
 }

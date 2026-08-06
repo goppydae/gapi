@@ -6,7 +6,7 @@ transport:
   # places (GAPI-DIV-112) - and localhost is not a synonym here: it can
   # resolve to ::1, so the example could bind a different address than
   # the default it claimed to show.
-  address: "127.0.0.1:14242"
+  address: "127.0.0.1:29979"
   # tlsCert/tlsKey are the mapstructure tags on
   # core/config.TransportConfig. Viper drops unknown keys silently, so
   # the certFile/keyFile spelling is ignored and the daemon generates a

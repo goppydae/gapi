@@ -99,7 +99,7 @@ in {
       # core/product.DefaultControlAddr (GAPI-DIV-071) rather than from a
       # literal, so goblind does not inherit gapi's port. 4242 was never
       # the port.
-      default = "127.0.0.1:14242";
+      default = "127.0.0.1:29979";
       description = "Address for GAPI to listen on";
     };
     
