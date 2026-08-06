@@ -100,7 +100,10 @@ export GAPI_AGENT_PATH="$TEST_AGENTS_DIR"
 # Without this the built-in tiers come back underneath and this run
 # discovers whatever agents the host has installed.
 export GAPI_AGENT_PATH_EXCLUSIVE=1
-export ADK_FORCE_DUMMY=1
+# NO ADK_FORCE_DUMMY: the variable is gone, and this script no longer
+# needs it. TestE2E declares mg.Deps(Build, Python{}.Build), so the native
+# extension exists by the time this runs - which is what made forcing the
+# stub unnecessary rather than merely undesirable (GAPI-DIV-085/-086).
 # GAPI-DIV-057: the daemon root refuses a bare invocation, so the
 # subcommand is mandatory - without it gapid prints usage and exits 1.
 ./bin/gapid start > gapid.log 2>&1 &

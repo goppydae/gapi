@@ -516,6 +516,21 @@ func (am *AgentManager) pythonDescribe(modulePath string) (*pyDescribe, error) {
 
 	cmd := exec.CommandContext(ctx, pythonBin, runnerAbs, "--module", modAbs, "--describe")
 
+	// DISCOVERY REFUSES THE STUB EXACTLY AS THE RUN PATH DOES
+	// (GAPI-DIV-086). This invocation used to set no environment at all,
+	// so a runner with no native binding fell back to the stub and
+	// described the agent successfully - while python_agent.go refused
+	// that same runner at start. The node then enumerated an agent it
+	// could not run, and reported both truthfully.
+	//
+	// Gated on productionMode for the same reason the run path is: the
+	// two must answer the question identically, and an answer that
+	// differs by code path is the defect itself. A developer without a
+	// built extension still gets the stub, with the runner's warning.
+	if am.productionMode {
+		cmd.Env = append(os.Environ(), EnvRejectDummy+"=1")
+	}
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
