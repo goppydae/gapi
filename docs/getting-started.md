@@ -38,7 +38,17 @@ mage doctor
 
 That writes `src/agents/my_service.go.service` - one file, no main.
 Build it with `gapictl agent build` and the artifact lands in
-`agents/`. For Python, ask for
+`agents/`.
+
+**`agent build` needs a Go toolchain and nothing else.** The compiler is
+not shipped - pinning the one you build your agents with is not the
+package's decision - but the staged build sets `CGO_ENABLED=0`, so no C
+compiler is required. If your agent needs cgo, pass `--cgo`; the command
+then checks for a C compiler and names it if one is missing, rather than
+letting the toolchain say so obscurely. An explicit `CGO_ENABLED` in your
+environment is honoured, and `--cgo` beats it.
+
+For Python, ask for
 it explicitly:
 
 ```bash

@@ -304,6 +304,7 @@ table below is `gapid`'s view of it.
 | `GAPI_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
 | `GAPI_PY_RUNNER` | Override the Python runner path |
 | `GAPI_GO_ADK` | Override the Go ADK source tree used by `gapictl agent build` |
+| `CGO_ENABLED` | Honoured by `gapictl agent build`'s staged build, which otherwise sets `0`. `--cgo` beats it |
 | `GAPI_CGROUPS_DISABLE` | Disable cgroup setup |
 | `GAPI_KMSG_PATH` | Override the kmsg device (PID 1 mode) |
 
