@@ -22,4 +22,12 @@ message Envelope {
   string namespace = 5;
   google.protobuf.Any payload = 6;
   repeated string tags = 7;
+
+  // scope is routing, not decoration, and it travels as a field
+  // (GAPI-DIV-102). It was previously packed into topic as a
+  // '/'-delimited prefix and recovered by splitting on the first '/',
+  // an encoding with no unique inverse: scope "system" topic "agent/x"
+  // and scope "" topic "system/agent/x" are the same bytes. topic is
+  // opaque to the transport; nothing splits it.
+  string scope = 8;
 }
