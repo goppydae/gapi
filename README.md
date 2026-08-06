@@ -86,8 +86,8 @@ imported module, so it must be a real assignment - a commented
 - **[Installation](docs/installation.md)** - NixOS module, images, systemd
 - **[Configuration](docs/configuration.md)** - every key and metadata field
 - **Development** - building and testing GAPI itself is documented in the goppydae-docs repository
-- **[Features](docs/features.md)** - security, timers, cgroups, sockets
-- **[Design document](docs/gapi-design-document.md)** - architecture and philosophy
+- **Architecture and features** - the kernel's target design, and an as-built
+  account of what it does, are documented in the goppydae-docs repository
 - **[Agent development](agents/README.md)** - writing agents
   ([Python](agents/python/README.md), [Go](agents/go/README.md))
 

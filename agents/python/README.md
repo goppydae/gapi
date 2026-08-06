@@ -192,6 +192,6 @@ python adk/python/agent/runner.py --module agents/python/services/my_service.py 
 
 ## See Also
 
-- [GAPI Design Document](../../docs/gapi-design-document.md)
+- GAPI's architecture, in the goppydae-docs repository
 - [Agent Directory Structure](../README.md)
 - [Go ADK Guide](../go/README.md)

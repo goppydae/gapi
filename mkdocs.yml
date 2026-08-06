@@ -18,8 +18,6 @@ nav:
     - Configuration: configuration.md
     - Configuration Examples: config-example.md
   - Design:
-    - Architecture: gapi-design-document.md
-    - Features: features.md
     - Library Usage: library_usage.md
   - Agents:
     - Agent Examples: agent-examples.md

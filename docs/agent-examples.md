@@ -310,8 +310,8 @@ def start():
 OOM kill.
 
 Without cgroup delegation the supervisor logs the failure and runs the
-agent **unconstrained** rather than refusing to start it. See
-[features.md](features.md) for the delegation setup.
+agent **unconstrained** rather than refusing to start it. The delegation
+setup is documented in the goppydae-docs repository.
 
 ## Go agents
 

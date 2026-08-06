@@ -33,10 +33,11 @@ separate `gapid`.
 
 ## Reference
 
-- [Features](features.md) - what the kernel does, in detail
 - [Agent examples](agent-examples.md) - services, timers, sockets, Go agents
-- [Design document](gapi-design-document.md) - architecture and philosophy
 - [Library usage](library_usage.md) - embedding the kernel in your own binary
+
+The kernel's architecture, and an as-built account of its features, are
+documented in the goppydae-docs repository.
 
 ## Working on GAPI
 

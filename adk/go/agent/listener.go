@@ -28,9 +28,9 @@ var ErrNoInheritedListener = errors.New("adk/agent: no inherited listener")
 // plus LISTEN_PID=self).
 //
 // LISTEN_FDS is a count, not a descriptor number. 'fd + 3' is correct
-// only for the accidental single-socket case, which is exactly why
-// docs/features.md warns about it and why this arithmetic lives here once
-// instead of in every agent.
+// only for the accidental single-socket case, which is exactly why the
+// ecosystem documentation warns about it and why this arithmetic lives
+// here once instead of in every agent.
 const listenFDsBase = 3
 
 // Listener returns the listener the supervisor bound and passed down.
