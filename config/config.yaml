@@ -1,6 +1,12 @@
 transport:
   type: quic
-  address: "localhost:14242"
+  # Spelled exactly as core/product.DefaultControlAddr resolves it, and
+  # asserted equal to it by pkg/cli.TestControlAddrSitesAgree. This read
+  # "localhost:14242" - a third spelling of a value declared in four
+  # places (GAPI-DIV-112) - and localhost is not a synonym here: it can
+  # resolve to ::1, so the example could bind a different address than
+  # the default it claimed to show.
+  address: "127.0.0.1:14242"
   # tlsCert/tlsKey are the mapstructure tags on
   # core/config.TransportConfig. Viper drops unknown keys silently, so
   # the certFile/keyFile spelling is ignored and the daemon generates a
