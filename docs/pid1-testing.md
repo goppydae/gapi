@@ -209,11 +209,11 @@ mounted by something that lied about it, or you are in a container and
 want `--no-early-mounts`.
 
 **`gapictl` cannot reach the daemon.** The default address is
-`127.0.0.1:14242` and the transport is QUIC over **UDP**. A TCP-only
+`127.0.0.1:29979` and the transport is QUIC over **UDP**. A TCP-only
 firewall rule blackholes it silently.
 
 ```bash
-ss -ulnp | grep 14242
+ss -ulnp | grep 29979
 ```
 
 **Agents are present but never start.** Check `ENABLED`, then check the

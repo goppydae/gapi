@@ -96,7 +96,7 @@ def stop():
 ./bin/gapid
 ```
 
-`gapid` binds `127.0.0.1:14242` and discovers agents from its search
+`gapid` binds `127.0.0.1:29979` and discovers agents from its search
 paths. To point it at a specific directory:
 
 ```bash

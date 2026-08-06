@@ -13,8 +13,7 @@ signature must verify over that digest.
 
 Both are signed and verified over the **canonical hex digest**, not over
 the sidecar file's bytes. The sidecar is written with a trailing
-newline; treating those bytes as the signed message is what made
-verification impossible before GAPI-DIV-032.
+newline, so treating those bytes as the signed message fails to verify.
 
 Ed25519 gives 64-byte signatures and constant-time verification.
 BLAKE3 is used for the digest.
@@ -95,9 +94,7 @@ cancels a fire already in flight.
 Timers work in both ADKs. A Go agent declaring `TYPE = "timer"` in its
 `--describe` output is scheduled exactly as a Python one is; a fire runs
 the binary directly, which is what its `main` does when not asked to
-describe itself. That parity is recent - discovery used to route
-`TYPE=timer` to the scheduler only for Python paths, so a Go timer ran
-once at discovery and its `SCHEDULE` was discarded (GAPI-DIV-037).
+describe itself.
 
 ### Schedule syntax
 
@@ -122,10 +119,6 @@ starts, `OnBootSec` from the system's boot. On a host that has been up
 longer than the declared duration, an `OnBootSec` timer has missed its
 elapse point and fires immediately, once - late rather than cancelled,
 which is what systemd does.
-
-The three prefixes used to be aliases: whichever one matched was
-stripped and the duration became a repeating interval, so `OnBootSec=1m`
-ran every minute forever (GAPI-DIV-036).
 
 A timer with no `SCHEDULE` gets `OnUnitActiveSec=60s`.
 

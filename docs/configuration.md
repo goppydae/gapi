@@ -13,9 +13,12 @@ A release build of `gapid` reads `config.yaml` from **`/etc/gapi`** and
 nowhere else (`core/config/loader_prod.go`). A build tagged `dev` also
 searches `config/` and the current directory (`loader_dev.go`).
 
-There is **no `--config` flag**. `gapid` defines only `--runtime-addr`,
-`--log-level`, `--pid1` and `--no-early-mounts`, and cobra rejects
-anything else. To point at a specific file, set an environment variable:
+There is **no `--config` flag**. `gapid`'s root defines `--id`,
+`--log-level`, `--log-format`, `--log-file`, `--log-loki-url`,
+`--metrics-addr`, `--tls-ca`, `--tls-cert` and `--tls-key`, and
+`gapid start` adds `--listen-addr`, `--pid1` and `--no-early-mounts`.
+Cobra rejects anything else. To point at a specific file, set an
+environment variable:
 
 ```bash
 GAPI_CONFIG=/path/to/config.yaml gapid
@@ -47,13 +50,9 @@ config file over default.
 The one shape with no variable is a map: `logging.loki.labels` is
 config-file only.
 
-> This used to cover only the keys that happened to carry a registered
-> default - the whole `supervisor` section, `security.verifyKey` and the
-> TLS paths were dropped in silence, so
-> `GAPI_SUPERVISOR_PRODUCTIONMODE=true` produced a daemon with
-> signature enforcement off and no error (GAPI-DIV-038). Bindings are now
-> derived from the config struct itself, and a test walks every field to
-> keep it that way.
+> Bindings are derived from the config struct itself, so every field is
+> settable by environment variable, and a test walks the struct to keep
+> it that way.
 
 ### The complete file
 
@@ -63,7 +62,7 @@ Six top-level sections: `transport`, `security`, `metrics`, `logging`,
 ```yaml
 transport:
   type: quic                     # "quic" or "local" - nothing else
-  address: "127.0.0.1:14242"
+  address: "127.0.0.1:29979"
   tlsCert: /etc/gapi/server.crt
   tlsKey: /etc/gapi/server.key
   tlsCa: /etc/gapi/ca.crt
@@ -74,7 +73,7 @@ security:
 
 metrics:
   enabled: false
-  addr: 127.0.0.1:19090
+  addr: 127.0.0.1:10973
 
 logging:
   level: info                    # trace, debug, info, warn, error
@@ -291,8 +290,8 @@ The `GAPI_` prefix belongs to the PRODUCT, not to the kernel. The kernel
 is a library: `goblind` links the same code and reads `GOBLIN_` names,
 searches `/etc/goblin`, and tags dmesg with `goblind:`. Every name in
 this table is composed from that one identity at startup, so under
-another product each row reads `<PREFIX>_` instead (GAPI-DIV-061). The
-table below is `gapid`'s view of it.
+another product each row reads `<PREFIX>_` instead. The table below is
+`gapid`'s view of it.
 
 | Variable | Purpose |
 | -------- | ------- |
@@ -310,6 +309,4 @@ table below is `gapid`'s view of it.
 
 There is no `GAPI_AGENTS_DIR`, `GAPI_LOG_LEVEL` or `GAPI_TRACE_EVENTS`.
 Those names appear in older documentation and are read by nothing.
-`GAPI_AGENT_PATH` is real and listed above. It carried the old
-namespace prefix until GAPI-DIV-059, and this paragraph went on denying
-it under the new spelling - see the release notes for the rename.
+`GAPI_AGENT_PATH` is real and listed above.
