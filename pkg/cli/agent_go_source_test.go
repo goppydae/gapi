@@ -136,10 +136,11 @@ func buildAssembled(t *testing.T, srcPath string) string {
 }
 
 // testADKSource resolves the ADK out of the checkout these tests run in.
-// pkg/cli is two directories below the repository root.
+// pkg/cli is two directories below the repository root, and the root IS
+// the shared module the ADK ships as (decision 38).
 func testADKSource(t *testing.T) goADK {
 	t.Helper()
-	adk, err := loadGoADK(filepath.Join("..", "..", "adk", "go"), "test checkout")
+	adk, err := loadGoADK(filepath.Join("..", ".."), "test checkout")
 	if err != nil {
 		t.Fatalf("locate ADK source: %v", err)
 	}

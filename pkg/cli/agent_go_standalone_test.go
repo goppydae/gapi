@@ -120,8 +120,14 @@ func TestResolveGoADKFindsTheCheckoutFromASubdirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveGoADK from %s: %v", mustGetwd(t), err)
 	}
-	if _, err := os.Stat(filepath.Join(adk.Dir, "agent", "run.go")); err != nil {
-		t.Fatalf("resolved ADK at %s does not hold agent/run.go: %v", adk.Dir, err)
+	if _, err := os.Stat(filepath.Join(adk.Dir, adkRelDir, "run.go")); err != nil {
+		t.Fatalf("resolved ADK at %s does not hold %s/run.go: %v", adk.Dir, adkRelDir, err)
+	}
+	// The shared module carries the protobuf runtime too (decision 38).
+	// Resolving a tree without it resolves something unbuildable, which
+	// is the failure loadGoADK now exists to report at the boundary.
+	if _, err := os.Stat(filepath.Join(adk.Dir, protobufRelDir, "proto", "proto.go")); err != nil {
+		t.Fatalf("resolved ADK at %s ships no protobuf runtime: %v", adk.Dir, err)
 	}
 	if adk.GoDirective == "" {
 		t.Fatal("resolved ADK carries no go directive")
@@ -173,18 +179,25 @@ func TestStagedADKIsCoveredByTheProvenanceHash(t *testing.T) {
 	}
 }
 
-// copyADKWithMarker duplicates the ADK source tree and appends a comment
-// to one file.
+// copyADKWithMarker duplicates the shared module and appends a comment
+// to one ADK file.
+//
+// It reproduces the WHOLE module, not just the ADK package, because
+// decision 38 made the shipped tree the kernel's own module: a copy
+// carrying only adk/go/agent is not something loadGoADK will accept, and
+// should not be - that shape is exactly the half-finished install the
+// resolver exists to reject.
 func copyADKWithMarker(t *testing.T, from goADK) goADK {
 	t.Helper()
 
 	root := t.TempDir()
-	dst := filepath.Join(root, "agent")
+
+	dst := filepath.Join(root, adkRelDir)
 	if err := os.MkdirAll(dst, 0750); err != nil {
 		t.Fatalf("create ADK copy: %v", err)
 	}
 
-	entries, err := os.ReadDir(filepath.Join(from.Dir, "agent"))
+	entries, err := os.ReadDir(filepath.Join(from.Dir, adkRelDir))
 	if err != nil {
 		t.Fatalf("read ADK source: %v", err)
 	}
@@ -193,7 +206,7 @@ func copyADKWithMarker(t *testing.T, from goADK) goADK {
 		if e.IsDir() || !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(from.Dir, "agent", name))
+		data, err := os.ReadFile(filepath.Join(from.Dir, adkRelDir, name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
@@ -205,9 +218,18 @@ func copyADKWithMarker(t *testing.T, from goADK) goADK {
 		}
 	}
 
-	mod := "module " + adkModulePath + "\n\ngo " + from.GoDirective + "\n"
+	if err := copyGoPackage(filepath.Join(from.Dir, protoRelDir),
+		filepath.Join(root, protoRelDir), from.Dir); err != nil {
+		t.Fatalf("copy generated types: %v", err)
+	}
+	if err := copyTree(filepath.Join(from.Dir, protobufRelDir),
+		filepath.Join(root, protobufRelDir)); err != nil {
+		t.Fatalf("copy protobuf runtime: %v", err)
+	}
+
+	mod := "module " + sharedModulePath + "\n\ngo " + from.GoDirective + "\n"
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(mod), 0600); err != nil {
-		t.Fatalf("write ADK go.mod: %v", err)
+		t.Fatalf("write go.mod: %v", err)
 	}
 
 	adk, err := loadGoADK(root, "test copy")
