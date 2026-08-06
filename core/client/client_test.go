@@ -38,7 +38,7 @@ func newTestDaemon(t *testing.T) *eventbus.EventBus[*anypb.Any] {
 			t.Errorf("marshal pong: %v", err)
 			return
 		}
-		reply := eventbus.NewEvent("system", "", "pong", "test-daemon", payload, false)
+		reply := eventbus.NewEvent("system", "", "pong", "test-daemon", payload)
 		reply.ID = e.ID // correlate reply to the originating request
 		if err := bus.Publish(reply); err != nil {
 			t.Errorf("publish pong: %v", err)
@@ -55,7 +55,7 @@ func newTestDaemon(t *testing.T) *eventbus.EventBus[*anypb.Any] {
 			t.Errorf("marshal agents reply: %v", err)
 			return
 		}
-		reply := eventbus.NewEvent("system", "", "agents.reply", "test-daemon", payload, false)
+		reply := eventbus.NewEvent("system", "", "agents.reply", "test-daemon", payload)
 		reply.ID = e.ID
 		if err := bus.Publish(reply); err != nil {
 			t.Errorf("publish agents reply: %v", err)
@@ -78,7 +78,7 @@ func newTestDaemon(t *testing.T) *eventbus.EventBus[*anypb.Any] {
 			t.Errorf("marshal lifecycle status: %v", err)
 			return
 		}
-		status := eventbus.NewEvent("system", "", "agent/lifecycle.status", "test-daemon", payload, false)
+		status := eventbus.NewEvent("system", "", "agent/lifecycle.status", "test-daemon", payload)
 		if err := bus.Publish(status); err != nil {
 			t.Errorf("publish lifecycle status: %v", err)
 		}

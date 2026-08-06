@@ -398,7 +398,7 @@ func (s *Supervisor) registerHandlers() {
 			return
 		}
 
-		response := eventbus.NewEvent("system", "", "pong", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "", "pong", "gapid", anyPayload)
 		response.ID = e.ID // correlate reply to the originating request
 		_ = s.bus.Publish(response)
 	})
@@ -464,7 +464,7 @@ func (s *Supervisor) registerHandlers() {
 			return
 		}
 
-		response := eventbus.NewEvent("system", "", "agents.reply", "gapid", anyPayload, true)
+		response := eventbus.NewEvent("system", "", "agents.reply", "gapid", anyPayload)
 		response.ID = e.ID // correlate reply to the originating request
 		_ = s.bus.Publish(response)
 	})

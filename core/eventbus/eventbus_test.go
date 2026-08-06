@@ -41,7 +41,7 @@ func TestUnsubscribePrefix(t *testing.T) {
 	}
 
 	// Publish an event - should be received
-	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil, false)
+	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil)
 	if err := bus.Publish(ev); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestUnsubscribePrefix(t *testing.T) {
 	bus.UnsubscribePrefix("system", "", "test", handler)
 
 	// Publish another event - should NOT be received
-	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil, false)
+	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil)
 	if err := bus.Publish(ev2); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestSubscribePrefixWithContext_Cleanup(t *testing.T) {
 	}
 
 	// Publish an event - should be received
-	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil, false)
+	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil)
 	if err := bus.Publish(ev); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestSubscribePrefixWithContext_Cleanup(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish another event - should NOT be received
-	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil, false)
+	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil)
 	if err := bus.Publish(ev2); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestSubscribePrefixWithContext_MultipleSubscribers(t *testing.T) {
 	}
 
 	// Publish - both should receive
-	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil, false)
+	ev := NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil)
 	if err := bus.Publish(ev); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestSubscribePrefixWithContext_MultipleSubscribers(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Publish again - only handler2 should receive
-	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil, false)
+	ev2 := NewEvent[*anypb.Any]("system", "", "test.msg2", "test", nil)
 	if err := bus.Publish(ev2); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}

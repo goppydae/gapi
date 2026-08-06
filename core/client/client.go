@@ -60,7 +60,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal ping: %w", err)
 	}
-	req := eventbus.NewEvent("system", "", "ping", "client", payload, true)
+	req := eventbus.NewEvent("system", "", "ping", "client", payload)
 
 	// Correlate the reply to this request's ID so concurrent Ping callers don't
 	// steal each other's pong. The daemon echoes the request ID onto the reply.
@@ -91,7 +91,7 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 
 // ReloadAgents triggers a reload of the agent registry on the daemon.
 func (c *Client) ReloadAgents(ctx context.Context) error {
-	evt := eventbus.NewEvent[*anypb.Any]("system", "", "agent.reload", "client", nil, true)
+	evt := eventbus.NewEvent[*anypb.Any]("system", "", "agent.reload", "client", nil)
 	if err := c.bus.Publish(evt); err != nil {
 		return fmt.Errorf("failed to publish reload: %w", err)
 	}
@@ -107,7 +107,7 @@ func (c *Client) Shutdown(ctx context.Context, action string) error {
 	if err != nil {
 		return fmt.Errorf("encode shutdown action: %w", err)
 	}
-	evt := eventbus.NewEvent[*anypb.Any]("system", "", eventbus.TopicSystemShutdown, "client", payload, true)
+	evt := eventbus.NewEvent[*anypb.Any]("system", "", eventbus.TopicSystemShutdown, "client", payload)
 	if err := c.bus.Publish(evt); err != nil {
 		return fmt.Errorf("failed to publish shutdown: %w", err)
 	}
@@ -124,7 +124,7 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal status request: %w", err)
 	}
-	req := eventbus.NewEvent("system", "", "agents/", "client", packed, true)
+	req := eventbus.NewEvent("system", "", "agents/", "client", packed)
 
 	// Correlate the reply to this request's ID so concurrent status callers don't
 	// steal each other's reply. The daemon echoes the request ID onto the reply.
@@ -183,7 +183,7 @@ func (c *Client) LifecycleWithOpts(ctx context.Context, agentIDs []string, actio
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("marshal request: %w", err)}
 				return
 			}
-			ev := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleAction, "client", packed, true)
+			ev := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleAction, "client", packed)
 			if err := c.bus.Publish(ev); err != nil {
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("publish control: %w", err)}
 				return

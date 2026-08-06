@@ -30,7 +30,6 @@ type stubTransport struct {
 }
 
 func (t *stubTransport) PublishRemote(context.Context, Event[*anypb.Any]) error { return t.err }
-func (t *stubTransport) Broadcast(Event[*anypb.Any]) error                      { return t.err }
 func (t *stubTransport) OnRemoteEvent(func(Event[*anypb.Any]))                  {}
 func (t *stubTransport) Close() error                                           { return nil }
 
@@ -85,7 +84,7 @@ func publishOnce(t *testing.T, terr error) *levelRecorder {
 			t.Errorf("close bus: %v", err)
 		}
 	})
-	if err := bus.Publish(NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil, false)); err != nil {
+	if err := bus.Publish(NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil)); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
 	return rec

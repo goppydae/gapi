@@ -45,7 +45,7 @@ func TestWaitForTopic_EventArrives(t *testing.T) {
 		case <-deadline:
 			t.Fatal("WaitForTopic did not observe the published event")
 		default:
-			ev := NewEvent[*anypb.Any]("system", "", TopicAgentNetworkRunning, "test", nil, false)
+			ev := NewEvent[*anypb.Any]("system", "", TopicAgentNetworkRunning, "test", nil)
 			if err := bus.Publish(ev); err != nil {
 				t.Fatalf("Publish: %v", err)
 			}

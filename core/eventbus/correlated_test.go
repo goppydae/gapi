@@ -32,12 +32,12 @@ func TestSubscribeCorrelated_FiltersByID(t *testing.T) {
 	}
 
 	// Publish B's reply first, then A's - each waiter must receive only its own.
-	evB := NewEvent("system", "", "reply", "srv", "payloadB", false)
+	evB := NewEvent("system", "", "reply", "srv", "payloadB")
 	evB.ID = "corr-B"
 	if err := bus.Publish(evB); err != nil {
 		t.Fatalf("publish B: %v", err)
 	}
-	evA := NewEvent("system", "", "reply", "srv", "payloadA", false)
+	evA := NewEvent("system", "", "reply", "srv", "payloadA")
 	evA.ID = "corr-A"
 	if err := bus.Publish(evA); err != nil {
 		t.Fatalf("publish A: %v", err)
@@ -92,7 +92,7 @@ func TestSubscribeCorrelated_SameCallsiteCallersKeepOwnSubscriptions(t *testing.
 	subscribe("id-B", gotB) // registered second
 
 	// Fire B first: B's self-unsubscribe runs while A is still waiting.
-	evB := NewEvent[string]("system", "", "reply", "test", "pong", false)
+	evB := NewEvent[string]("system", "", "reply", "test", "pong")
 	evB.ID = "id-B"
 	if err := bus.Publish(evB); err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestSubscribeCorrelated_SameCallsiteCallersKeepOwnSubscriptions(t *testing.
 	}
 	time.Sleep(50 * time.Millisecond) // let B's self-unsubscribe land
 
-	evA := NewEvent[string]("system", "", "reply", "test", "pong", false)
+	evA := NewEvent[string]("system", "", "reply", "test", "pong")
 	evA.ID = "id-A"
 	if err := bus.Publish(evA); err != nil {
 		t.Fatal(err)
