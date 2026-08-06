@@ -97,6 +97,13 @@ type PythonAgent struct {
 	controlDone    chan struct{}
 	announcedState string
 	announcedRunID string
+
+	// spoke/spawnedAt/firstFrameAt answer whether this run's child was
+	// silent or slow, and how long exec-to-first-speech takes (parity
+	// with GoAgent, GAPI-DIV-104). Guarded by mu.
+	spoke        bool
+	spawnedAt    time.Time
+	firstFrameAt time.Time
 }
 
 // Pid returns the running agent process id, or false when no process
@@ -480,6 +487,7 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	ctlDone := make(chan struct{})
 	a.controlDone = ctlDone
 	a.announcedState, a.announcedRunID = "", ""
+	a.spoke, a.spawnedAt, a.firstFrameAt = false, time.Time{}, time.Time{}
 	go func() {
 		defer close(ctlDone)
 		readControl(ctlPipe.r, a, a.id, slog.Default())
@@ -493,13 +501,18 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		return fmt.Errorf("cmd.Start: %w", err)
 	}
 	_ = ctlPipe.w.Close()
+	a.spawnedAt = time.Now()
 
 	attachCgroup(a.id, limits, a.cmd.Process.Pid)
+
+	// STARTING at exec, parity with GoAgent (operator decision 42,
+	// GAPI-DIV-104). The child exists; before this line there was
+	// nothing to observe.
+	a.publishStatusWithRunID("STARTING", "process spawned", a.nextRunID)
 
 	// Oneshot behavior: Wait for completion
 	if a.typ == "oneshot" {
 		rid := a.nextRunID
-		a.publishStatusWithRunID("STARTING", "oneshot running", rid)
 
 		// Release lock while waiting for exit to avoid deadlock with stream handlers
 		a.mu.Unlock()
