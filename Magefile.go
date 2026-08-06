@@ -382,7 +382,7 @@ func Fmt() error {
 //     audited chokepoint (clean + absolute, root-confined where a root
 //     exists); the rule now only fires inside that package.
 func Lint() error {
-	mg.Deps(checkHermetic, checkTerminology, checkFileLength, LicenseCheck)
+	mg.Deps(checkHermetic, checkTerminology, checkFileLength, checkLedger, LicenseCheck)
 	return magelib.Lint("G204", "G304")
 }
 
@@ -596,6 +596,19 @@ func checkTerminology() error {
 // list function as a burndown rather than a permanent carve-out.
 func checkFileLength() error {
 	return magelib.CheckFileLength(fileLengthWaivers, fileLengthSkips...)
+}
+
+// checkLedger gates the divergence ledger's STRUCTURE, not its content.
+//
+// The ledger is this project's honesty layer and nothing checked its
+// shape: `jq -e .` proves each line is JSON and says nothing about which
+// keys it carries. Two entries were filed without an `opened` date and
+// nothing noticed until one was rendered by hand to read it.
+func checkLedger() error {
+	if err := magelib.CheckDivergence("divergence.jsonl"); err != nil {
+		return err
+	}
+	return magelib.CheckDeprecation("deprecation.jsonl")
 }
 
 // Python namespace for python-related tasks
