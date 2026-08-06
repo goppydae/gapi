@@ -72,6 +72,36 @@ jobs:
       - name: Execute System Tests
         run: nix develop -c mage -v test
 
+      # GAPI-DIV-110. Both suites were repaired in #116 and neither had a
+      # caller, which is the state that filed the entry rather than a
+      # detail of it: a suite nothing invokes cannot report that it
+      # stopped working. Both were red on main for four days and nothing
+      # said so - the daemon root became subcommand-only at e72f348 (#56)
+      # and both scripts kept starting a bare `gapid`, so every assertion
+      # they make was being evaluated against cobra's help text. e2e.sh
+      # was corrected two days later; these two were not, because e2e.sh
+      # has a caller and these did not.
+      #
+      # They run HERE rather than in a job of their own because this job
+      # already carries every prerequisite - both binaries, the python
+      # extension and the raised UDP buffers the QUIC control plane needs
+      # - and it is a required check, so a red suite blocks the merge. A
+      # separate job would buy a second runner and a second nix install to
+      # assert the same thing. The cost of the placement is that a failure
+      # reads as this job's rather than its own, and that the goblin
+      # dispatch below now waits on them too - which is the intended
+      # reading: the kernel should not report a good build to goblin when
+      # its only end-to-end check of signed discovery failed.
+      #
+      # test_integrity is the ONLY end-to-end check that production mode
+      # refuses an unsigned agent and registers a signed one; test_timer
+      # the only check that timers fire in BOTH languages.
+      - name: Verify Signed Agent Discovery End to End
+        run: nix develop -c mage -v testIntegrity
+
+      - name: Verify Timers Fire in Both Languages
+        run: nix develop -c mage -v testTimer
+
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
