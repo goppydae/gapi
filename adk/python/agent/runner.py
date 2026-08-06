@@ -24,12 +24,22 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 # it restores it here rather than trusting generated code to unwind.
 _entry_cwd = os.getcwd()
 try:
-    if os.getenv("ADK_FORCE_DUMMY"):
-        raise ImportError("Forced Dummy ADK")
     from gapi.native import adk
 except ImportError as e:
+    # ADK_FORCE_DUMMY IS GONE (operator decision, 2026-08-06). It raised
+    # this ImportError deliberately, which meant the stub could be
+    # selected on a host that HAD a working binding - and setting it
+    # together with ADK_REJECT_DUMMY killed the process, since REJECT
+    # caught the exception FORCE had just raised. That read as a
+    # precedence question. It was not one: the stub was only ever
+    # load-bearing because it was the sole Python ADK whose events the
+    # supervisor could hear (GAPI-DIV-099), and once that stopped being
+    # true nothing legitimate needed to force it. The stub is still
+    # reachable the honest way, by not having built the extension.
     if os.getenv("ADK_REJECT_DUMMY"):
-        print(f"[FATAL] Failed to import gapi.native.adk and ADK_REJECT_DUMMY is set: {e}", file=sys.stderr)
+        print(f"[FATAL] the native ADK extension is not importable and "
+              f"ADK_REJECT_DUMMY is set, so the stub is refused: {e}",
+              file=sys.stderr)
         sys.exit(1)
     
     print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
@@ -51,12 +61,18 @@ except ImportError as e:
     # Instantiate the dummy ADK
     adk = DummyAdk()
     
-    # Warn if not explicitly forced
-    if not os.getenv("ADK_FORCE_DUMMY"):
-        print("[WARNING] Running with DummyAdk (stdout fallback mode). "
-              "This should only be used for development/testing. "
-              "Set ADK_FORCE_DUMMY=1 to suppress this warning.",
-              file=sys.stderr)
+    # ALWAYS WARN. There is no longer a flag that says "I meant this",
+    # so there is no case in which the warning is noise.
+    #
+    # NOT "stdout fallback mode" - the stub DISCARDS control events now
+    # (GAPI-DIV-099). The message named a mechanism that had already been
+    # deleted, which is the class of claim this project keeps paying for.
+    print("[WARNING] the native ADK extension is missing, so this agent is "
+          "running on the stub: every lifecycle event it reports is "
+          "discarded and every capability it declares is backed by a "
+          "no-op. Build it with 'mage python:build'; a packaged install "
+          "ships it already.",
+          file=sys.stderr)
 finally:
     # Unconditional: this block never leaves the process somewhere the
     # caller did not put it, whatever the generated importer did.

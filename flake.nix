@@ -204,7 +204,11 @@
           # that has no packaged alternative (GAPI-DIV-096).
           inherit gopy;
         } // pkgs.lib.optionalAttrs onLinux {
-          default = pkgs.callPackage ./nix/package.nix { };
+          # gopy is a let-binding here, not a pkgs attribute, so it must
+          # be passed explicitly. The package builds the Python extension
+          # with the same generator the dev shell uses (GAPI-DIV-085);
+          # passing pkgs.gopy would silently be a different one.
+          default = pkgs.callPackage ./nix/package.nix { inherit gopy; };
           gapi = self.packages.${system}.default;
         };
 

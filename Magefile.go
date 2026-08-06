@@ -481,6 +481,27 @@ func checkHermetic() error {
 	return magelib.CheckHermetic(toolchain.SharedTools...)
 }
 
+// checkHermeticPython gates the Python extension build on the tools THAT
+// TARGET RUNS, rather than on the repo-wide set.
+//
+// GAPI-DIV-085: the derivation has to build the extension wherever it
+// installs the runner, and decision 35 says it does that by calling
+// `mage python:build` rather than reimplementing its four steps in Nix -
+// because the invariant lived in one place and was still wrong for
+// months, and two places is worse. The obstacle was this gate: inheriting
+// SharedTools made building a C extension require mkdocs, pandoc, gosec,
+// golangci-lint and buf to be present, so satisfying it in a sandbox
+// meant making a documentation toolchain a build input of the package.
+//
+// Narrowing it is not a weakening. A gate that demands tools its target
+// never executes is not asserting hermeticity, it is asserting that you
+// are standing in the dev shell - a different and weaker claim, since it
+// passes for a target whose actual tools came from somewhere else. These
+// four are what python:build execs; magelib adds go, gcc and protoc.
+func checkHermeticPython() error {
+	return magelib.CheckHermetic("gopy", "goimports")
+}
+
 // checkTerminology enforces the silo's naming rules through magelib.
 // The rules themselves live there, not here: a Magefile sits at the
 // repo root and is walked, so declaring the phrases inline would trip
@@ -523,7 +544,7 @@ type Python mg.Namespace
 
 // Build builds the Python bindings (replaces Makefile)
 func (Python) Build() error {
-	mg.Deps(checkHermetic)
+	mg.Deps(checkHermeticPython)
 	fmt.Println("Building Python ADK bindings...")
 
 	cwd, err := os.Getwd()

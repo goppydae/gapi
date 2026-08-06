@@ -6,7 +6,17 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-{ lib, buildGoModule, gcc, python3, pkg-config, pam, makeWrapper }:
+{ lib, buildGoModule, gcc, python3, pkg-config, pam, makeWrapper
+, gopy, gotools, mage, protobuf }:
+
+let
+  # The build-time interpreter needs pybindgen, which is what gopy's
+  # generated build.py imports. The RUNTIME interpreter below is the plain
+  # python3: an installed agent runs the extension, it does not regenerate
+  # it, so dragging pybindgen into the runtime closure would ship a code
+  # generator to every host that starts an agent.
+  pythonForBuild = python3.withPackages (ps: with ps; [ pybindgen setuptools ]);
+in
 
 buildGoModule rec {
   pname = "gapi";
@@ -30,7 +40,19 @@ buildGoModule rec {
   # workspace mode, so the build could not succeed either way.
   env.GOWORK = "off";
   
-  nativeBuildInputs = [ pkg-config makeWrapper ];
+  # THE EXTENSION IS BUILT HERE, BY THE SAME TARGET A DEVELOPER RUNS
+  # (GAPI-DIV-085, operator decision 35). These five inputs exist for that
+  # one call and appear nowhere in the runtime closure: mage to invoke the
+  # target, gopy and gotools for its first two steps, protobuf because
+  # magelib's hermetic check names protoc in its base set, and a python
+  # carrying pybindgen for the generated build.py.
+  #
+  # Reimplementing python:build's four steps in Nix was rejected
+  # deliberately. The $ORIGIN rpath invariant (GAPI-DIV-098) lived in ONE
+  # place and was still wrong for months; a second copy of these steps
+  # would be a second place for it to be wrong, and the two would drift
+  # silently because only one of them runs on any given day.
+  nativeBuildInputs = [ pkg-config makeWrapper mage gopy gotools protobuf pythonForBuild ];
   buildInputs = [ gcc python3 pam ];
   
   # Build both binaries
@@ -50,6 +72,38 @@ buildGoModule rec {
     "-X github.com/goppydae/gapi/core/version.GAPIVersion=${version}"
   ];
   
+  # BUILD THE EXTENSION BEFORE ANYTHING COPIES adk/python.
+  #
+  # GAPI-DIV-085: postInstall copied the runner wholesale and nothing in
+  # this derivation ever ran gopy, so every packaged install carried a
+  # Python runner with no binding beneath it. CONFIRMED against a store
+  # path, not inferred: share/gapi/python held the runner, the gapi
+  # package and even tests/, with no gapi/native directory and no .so
+  # anywhere below it. runner.py then fell back to the stub, and
+  # python_agent.go turns that fallback into a hard failure in production
+  # mode - so the package shipped an agent runtime that could not start.
+  #
+  # This runs the same target a developer runs. The generated tree lands
+  # in adk/python/gapi/native, which the existing postInstall copy then
+  # picks up without knowing it is there.
+  postBuild = ''
+    # mage compiles the Magefile into a cache under HOME, and the sandbox
+    # HOME is not writable by default.
+    export HOME=$TMPDIR
+
+    # gcc 15 defaults to C23, where 'bool' is a keyword; the pinned gopy's
+    # generated cgo preamble writes `typedef uint8_t bool` and assumes
+    # C17 (GAPI-DIV-019). The dev shell pins the dialect in its shellHook
+    # and this derivation did not - which is the same one-place/two-places
+    # argument as above, arriving from the other direction: the pin was in
+    # the only environment that ever ran gopy, so nothing revealed that it
+    # was environment-scoped rather than build-scoped until the build
+    # moved. Pin it until gopy emits C23-safe code.
+    export CGO_CFLAGS=-std=gnu17
+
+    mage python:build
+  '';
+
   # Run tests
   checkPhase = ''
     # Skip integration tests that require binaries to be installed
@@ -111,6 +165,14 @@ buildGoModule rec {
   postInstall = ''
     mkdir -p $out/share/gapi
     cp -r adk/python $out/share/gapi/python
+
+    # __pycache__ is build output, not product. The .pyc files embed the
+    # absolute source path and an mtime, so shipping them makes the store
+    # contents depend on which interpreter imported what during the build
+    # - and they are stale the moment the store path is read-only anyway.
+    # CPython regenerates them where it can write and skips them silently
+    # where it cannot, which is the case here.
+    find $out/share/gapi/python -name '__pycache__' -type d -prune -exec rm -rf {} +
 
     # THE SHIPPED TREE IS THE KERNEL'S OWN MODULE, laid out exactly as
     # the checkout is (operator decision 38). Not a flattened
@@ -188,7 +250,9 @@ buildGoModule rec {
       share/gapi/go/vendor/google.golang.org/protobuf/proto/proto.go \
       share/gapi/go/vendor/google.golang.org/protobuf/internal/editiondefaults/editions_defaults.binpb \
       share/gapi/go/vendor/google.golang.org/protobuf/LICENSE \
-      share/gapi/python/agent/runner.py
+      share/gapi/python/agent/runner.py \
+      share/gapi/python/gapi/native/_adk.so \
+      share/gapi/python/gapi/native/adk_go.so
     do
       if [ ! -f "$out/$required" ]; then
         echo "packaged tree is missing $required - an installed operator cannot build or run an agent" >&2
@@ -214,6 +278,33 @@ buildGoModule rec {
     leaked=$(find $out/share/gapi/go/adk $out/share/gapi/go/pkg -name '*_test.go' -print -quit)
     if [ -n "$leaked" ]; then
       echo "ADK test files leaked into the packaged tree: $leaked" >&2
+      exit 1
+    fi
+
+    # THE FILE EXISTING IS NOT THE PROPERTY, AND THAT IS EXACTLY HOW
+    # GAPI-DIV-085 HID. The packaged tree looked complete: gapi/native was
+    # there, carrying __init__.py, and only the extension beneath it was
+    # missing - so an operator got `cannot import name '_adk'` at agent
+    # start and this build saw nothing wrong. A path check would have
+    # passed on the broken package. Import it instead.
+    #
+    # The runtime interpreter, not the build one: what matters is that the
+    # python this package puts on an agent's PATH can load the extension
+    # this package built, and a check that used the build interpreter
+    # would be asserting a different pairing than the one that ships.
+    # PYTHONDONTWRITEBYTECODE, and it is not incidental: installCheckPhase
+    # runs AFTER fixupPhase, so $out is still writable here, and importing
+    # gapi.native.adk pulls gapi/__init__.py which imports its siblings -
+    # so an unguarded check WRITES __pycache__ into the store path it is
+    # checking, undoing the postInstall cleanup and leaving build-machine
+    # paths in the output. A gate must not mutate its subject.
+    pyimport() {
+      env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=$out/share/gapi/python \
+        ${python3.interpreter} -c 'import gapi.native.adk'
+    }
+    if ! pyimport 2>/dev/null; then
+      echo "the packaged Python ADK does not import; a Python agent would fall back to the stub" >&2
+      pyimport >&2 || true
       exit 1
     fi
 
