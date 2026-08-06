@@ -302,7 +302,7 @@ table below is `gapid`'s view of it.
 | `GAPI_DEV_AGENTS` | Highest-priority agent directory, in either scope |
 | `GAPI_SKIP_SYSTEM_AGENTS` | Drop the package-owned agent tiers (`/usr/lib`, `/usr/local/lib`); `/etc` and `/run` survive |
 | `GAPI_VERIFY_KEY` | Agent signing public key (fallback for `security.verifyKey`) |
-| `GAPI_PY_RUNNER` | Override the Python runner path |
+| `GAPI_PY_ADK` | Override the Python ADK source tree (the directory holding `agent/` and `gapi/`) |
 | `GAPI_GO_ADK` | Override the Go ADK source tree used by `gapictl agent build` |
 | `CGO_ENABLED` | Honoured by `gapictl agent build`'s staged build, which otherwise sets `0`. `--cgo` beats it |
 | `GAPI_CGROUPS_DISABLE` | Disable cgroup setup |

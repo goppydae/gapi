@@ -121,10 +121,10 @@ export GAPI_AGENT_PATH="$WORK/agents"
 # discovers whatever agents the host has installed.
 export GAPI_AGENT_PATH_EXCLUSIVE=1
 export GAPI_SKIP_SYSTEM_AGENTS=1
-export GAPI_PY_RUNNER="$ROOT/adk/python/agent/runner.py"
+export GAPI_PY_ADK="$ROOT/adk/python"
 
 echo "[TEST] Starting gapid on 127.0.0.1:$PORT..."
-./bin/gapid > "$WORK/gapid.log" 2>&1 &
+./bin/gapid start > "$WORK/gapid.log" 2>&1 &
 GAPID_PID=$!
 
 echo "[TEST] Observing for ${WINDOW}s (schedule ${INTERVAL}s, expecting at least $EXPECT_MIN fires)..."
