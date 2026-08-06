@@ -38,4 +38,15 @@ const (
 	// EnvRejectDummy makes falling back to the stub ADK a hard failure.
 	// Set by the supervisor in production mode.
 	EnvRejectDummy = "ADK_REJECT_DUMMY"
+
+	// EnvControlFD names the inherited descriptor an agent writes its
+	// typed lifecycle frames to (operator decisions 37 and 38).
+	//
+	// THE VALUE IS A DESCRIPTOR NUMBER, not a count - unlike LISTEN_FDS,
+	// which is a count whose descriptors start at 3. The control
+	// descriptor is passed AFTER any listeners precisely so systemd's
+	// convention is left alone: an agent that also has sockets finds
+	// them exactly where it always did, and finds this one wherever this
+	// variable says.
+	EnvControlFD = "ADK_CONTROL_FD"
 )

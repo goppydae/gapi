@@ -47,6 +47,15 @@ var wireLiterals = map[string]string{
 		"product's - it stays the same string whichever binary does the " +
 		"generating, and no operator reads it. The import path is composed " +
 		"from this rather than spelled a second time.",
+	"github.com/goppydae/gapi": "pkg/cli: the SHARED module the ADK ships " +
+		"as, and the module the staged build resolves the ADK's import path " +
+		"inside (operator decision 38). Same reasoning as the entry above - " +
+		"a module path is an identity, not prose - with one addition: it MUST " +
+		"be this exact string. The ADK's control channel carries protobuf and " +
+		"so needs the generated types; a module under any other name would be " +
+		"a SECOND copy of them, registering the same gapi/v1/*.proto into the " +
+		"global protoregistry twice and panicking at init. Renaming it is not " +
+		"a cosmetic change, it is a crash.",
 }
 
 // wirePrefixes are literal prefixes that must keep the gapi spelling.

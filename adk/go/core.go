@@ -10,20 +10,21 @@ package adk
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/goppydae/gapi/core/eventbus"
-	"github.com/goppydae/gapi/core/transport"
 	"github.com/goppydae/gapi/internal/logattr"
 	"github.com/goppydae/gapi/internal/safeio"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 	"github.com/zeebo/blake3"
-	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/encoding/protodelim"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // This package is designed to be bound to Python via gopy.
@@ -31,29 +32,62 @@ import (
 
 var (
 	mu         sync.Mutex
-	quicClient *transport.QUIC
+	writeMu    sync.Mutex
+	controlW   io.Writer
 	schemaHash string
 )
 
-// StartQUIC initializes the QUIC connection to the supervisor.
-func StartQUIC(addr string) error {
+// envControlFD names the inherited descriptor the supervisor passes.
+// Spelled as a literal for the same reason ADK_RUN_ID is: this package
+// is the Python ADK's backend and imports nothing from the kernel.
+const envControlFD = "ADK_CONTROL_FD"
+
+// controlSchemaVersion is the frame contract's version.
+const controlSchemaVersion = 1
+
+// openControl opens the inherited control descriptor, once.
+//
+// StartQUIC used to live here, and it is GONE. Operator decision 37 puts
+// the agent's control channel on a descriptor the supervisor passes at
+// exec, so an agent neither dials nor needs an address - which is also
+// why the hardcoded "127.0.0.1:14242" the runner fell back to has no
+// successor. gopy binds every exported symbol in this package, so a
+// symbol removed is a permanent cost removed.
+func openControl() (io.Writer, error) {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if quicClient != nil {
-		return nil
+	if controlW != nil {
+		return controlW, nil
+	}
+	raw, ok := os.LookupEnv(envControlFD)
+	if !ok {
+		return nil, fmt.Errorf("%s is unset, so this process was not started by a "+
+			"supervisor that can hear it", envControlFD)
+	}
+	fd, err := strconv.Atoi(raw)
+	if err != nil || fd < 0 {
+		return nil, fmt.Errorf("%s=%q is not a descriptor number", envControlFD, raw)
+	}
+	controlW = os.NewFile(uintptr(fd), "control")
+	return controlW, nil
+}
+
+// writeControl frames one message onto the channel.
+func writeControl(msg *protopkg.AgentControl) {
+	w, err := openControl()
+	if err != nil {
+		slog.Default().LogAttrs(context.Background(), slog.LevelError,
+			"control channel unavailable", logattr.Component("gapi-adk"), logattr.Err(err))
+		return
 	}
 
-	// Connect to local GAPI server
-	// TODO: Support secure connections for remote agents
-	tlsCfg := transport.TLSConfig{InsecureSkipVerify: true}
-	agent, err := transport.NewQUICClient(addr, nil, tlsCfg)
-	if err != nil {
-		return fmt.Errorf("failed to start QUIC client: %w", err)
+	writeMu.Lock()
+	defer writeMu.Unlock()
+	if _, err := protodelim.MarshalTo(w, msg); err != nil {
+		slog.Default().LogAttrs(context.Background(), slog.LevelError,
+			"control write failed", logattr.Component("gapi-adk"), logattr.Err(err))
 	}
-	quicClient = agent
-	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "connected to supervisor", logattr.Component("gapi-adk"), logattr.Addr(addr))
-	return nil
 }
 
 // Initialize sets up the agent identity.
@@ -81,65 +115,31 @@ func ComputeSchemaHash(path string) string {
 	return fmt.Sprintf("%x", hash)
 }
 
-// SendEvent sends a generic event to the supervisor via QUIC.
-func SendEvent(jsonStr string) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	// If no QUIC client, fall back to stdout for debugging/bootstrap
-	if quicClient == nil {
-		fmt.Println(jsonStr)
-		return
-	}
-
-	// Parse JSON to extract topic/id/type
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
-		slog.Default().LogAttrs(context.Background(), slog.LevelError, "sendevent json marshal failed", logattr.Component("gapi-adk"), logattr.Err(err))
-		return
-	}
-
-	event, _ := data["event"].(string)
-	_ = event // Topic logic uses fixed string for now
-	id, _ := data["id"].(string)
-	stateRaw, _ := data["state"].(string)
-	runID, _ := data["run_id"].(string)
-
-	// Map to LifecycleStatus. run_id travels as the structural field,
-	// never inside the message text (R16).
-	stat := &protopkg.LifecycleStatus{
-		AgentId:    id,
-		State:      strings.ToUpper(stateRaw),
-		Message:    jsonStr,
-		SchemaHash: schemaHash,
-		RunId:      runID,
-	}
-
-	anyStat, err := anypb.New(stat)
-	if err != nil {
-		slog.Default().LogAttrs(context.Background(), slog.LevelError, "proto marshal failed", logattr.Component("gapi-adk"), logattr.Err(err))
-		return
-	}
-
-	// Through NewEvent, not a struct literal (GAPI-DIV-100). This was
-	// the only publisher in the tree that built an Event by hand, and
-	// so the only one that could omit the scope - which it did. A
-	// scopeless event goes on the wire as the bare topic, the receiver
-	// splits "agent/lifecycle.status" on the first '/' and manufactures
-	// scope "agent", and nothing can be subscribed there: the scope is
-	// not even one of the three the bus accepts. The event arrived at
-	// the daemon intact and was discarded at the key lookup.
-	//
-	// NewEvent puts scope in argument position 1, which is why the
-	// other nineteen publishers never had this defect.
-	ev := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleStatus, "agent:"+id, anyStat, false)
-	ev.ID = id
-
-	if err := quicClient.PublishRemote(context.Background(), ev); err != nil {
-		slog.Default().LogAttrs(context.Background(), slog.LevelError, "quic publish failed", logattr.Component("gapi-adk"), logattr.Err(err))
-		// Fallback
-		fmt.Println(jsonStr)
-	}
+// SendEvent reports one lifecycle transition.
+//
+// TYPED, and that is GAPI-DIV-087's whole content. It used to take a
+// JSON STRING, unmarshal it into a map, pluck event/id/state/run_id by
+// key and rebuild a LifecycleStatus - a value encoded, decoded and
+// re-encoded before it left the process, with the event name extracted
+// and then discarded. The caller now passes what it means.
+//
+// THE CALLER SETS THE STATE. The Python runner used to pass one on two
+// of its eight notifications, so six transitions reached the supervisor
+// with an empty state and were dropped on arrival.
+func SendEvent(agentID, state, message string) {
+	writeControl(&protopkg.AgentControl{
+		SchemaVersion: controlSchemaVersion,
+		Event: &protopkg.AgentControl_Status{
+			Status: &protopkg.LifecycleStatus{
+				AgentId:    agentID,
+				State:      strings.ToUpper(strings.TrimSpace(state)),
+				Message:    message,
+				Time:       timestamppb.Now(),
+				SchemaHash: schemaHash,
+				RunId:      os.Getenv("ADK_RUN_ID"),
+			},
+		},
+	})
 }
 
 // A supervisor-to-agent command channel used to live here as
@@ -160,14 +160,27 @@ func SendEvent(jsonStr string) {
 // belongs on the same transport carrying the same schema. Design it;
 // do not restore this.
 
-// StartHeartbeat starts a background goroutine that sends heartbeat events.
-func StartHeartbeat(id, typeStr string) {
+// StartHeartbeat reports liveness on a fixed cadence.
+//
+// The JSON this used to build with fmt.Sprintf had NO ESCAPING, so an
+// agent id containing a quote emitted malformed JSON every five seconds
+// (GAPI-DIV-087). A typed message cannot be malformed by its own
+// contents, which is the point: the defect class disappears rather than
+// being fixed case by case.
+func StartHeartbeat(agentID string) {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			jsonStr := fmt.Sprintf(`{"event":"heartbeat","id":"%s","type":"%s"}`, id, typeStr)
-			SendEvent(jsonStr)
+			writeControl(&protopkg.AgentControl{
+				SchemaVersion: controlSchemaVersion,
+				Event: &protopkg.AgentControl_Heartbeat{
+					Heartbeat: &protopkg.Heartbeat{
+						AgentId: agentID,
+						RunId:   os.Getenv("ADK_RUN_ID"),
+					},
+				},
+			})
 		}
 	}()
 }

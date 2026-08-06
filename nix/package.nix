@@ -112,19 +112,48 @@ buildGoModule rec {
     mkdir -p $out/share/gapi
     cp -r adk/python $out/share/gapi/python
 
-    mkdir -p $out/share/gapi/go/agent
+    # THE SHIPPED TREE IS THE KERNEL'S OWN MODULE, laid out exactly as
+    # the checkout is (operator decision 38). Not a flattened
+    # adk/go module: the ADK's control channel carries protobuf, so it
+    # needs pkg/proto, and a renamed module cannot import
+    # github.com/goppydae/gapi/pkg/proto at all. Shipping the real layout
+    # means the install tier and the checkout tier resolve IDENTICAL
+    # import paths, so the generated gapi types are one package and
+    # cannot register into the global protoregistry twice.
+    mkdir -p $out/share/gapi/go/adk/go/agent
     for f in adk/go/agent/*.go; do
       case "$f" in
         *_test.go) continue ;;
       esac
-      cp "$f" $out/share/gapi/go/agent/
+      cp "$f" $out/share/gapi/go/adk/go/agent/
     done
+
+    mkdir -p $out/share/gapi/go/pkg/proto
+    for f in pkg/proto/*.go; do
+      case "$f" in
+        *_test.go) continue ;;
+      esac
+      cp "$f" $out/share/gapi/go/pkg/proto/
+    done
+
+    # The protobuf runtime, from this repo's own tracked vendor tree, so
+    # the runtime an agent compiles against is by construction the one
+    # the kernel was built against.
+    #
+    # cp -r, NOT a *.go filter: internal/editiondefaults go:embeds
+    # editions_defaults.binpb, and a Go-only copy fails the operator's
+    # build with "pattern editions_defaults.binpb: no matching files
+    # found". LICENSE and PATENTS travel for the usual reason.
+    mkdir -p $out/share/gapi/go/vendor/google.golang.org
+    cp -r vendor/google.golang.org/protobuf \
+      $out/share/gapi/go/vendor/google.golang.org/protobuf
+
     goDirective=$(sed -n 's/^go \(.*\)$/\1/p' go.mod | head -n 1)
     if [ -z "$goDirective" ]; then
       echo "go.mod declares no go directive; the shipped ADK module would be invalid" >&2
       exit 1
     fi
-    printf 'module github.com/goppydae/gapi/adk/go\n\ngo %s\n' "$goDirective" \
+    printf 'module github.com/goppydae/gapi\n\ngo %s\n' "$goDirective" \
       > $out/share/gapi/go/go.mod
 
     wrapProgram $out/bin/gapid \
@@ -153,7 +182,12 @@ buildGoModule rec {
 
     for required in \
       share/gapi/go/go.mod \
-      share/gapi/go/agent/run.go \
+      share/gapi/go/adk/go/agent/run.go \
+      share/gapi/go/pkg/proto/agent_status.pb.go \
+      share/gapi/go/pkg/proto/agent_control.pb.go \
+      share/gapi/go/vendor/google.golang.org/protobuf/proto/proto.go \
+      share/gapi/go/vendor/google.golang.org/protobuf/internal/editiondefaults/editions_defaults.binpb \
+      share/gapi/go/vendor/google.golang.org/protobuf/LICENSE \
       share/gapi/python/agent/runner.py
     do
       if [ ! -f "$out/$required" ]; then
@@ -164,8 +198,8 @@ buildGoModule rec {
 
     # A go.mod naming the wrong module compiles to a confusing import
     # error at agent-build time, on the operator's machine, not here.
-    if ! grep -qx 'module github.com/goppydae/gapi/adk/go' $out/share/gapi/go/go.mod; then
-      echo "shipped ADK go.mod does not declare the ADK module path:" >&2
+    if ! grep -qx 'module github.com/goppydae/gapi' $out/share/gapi/go/go.mod; then
+      echo "shipped ADK go.mod does not declare the shared module path:" >&2
       cat $out/share/gapi/go/go.mod >&2
       exit 1
     fi
@@ -177,7 +211,7 @@ buildGoModule rec {
     # matches nothing expands to NOTHING and `ls` then lists the current
     # directory and succeeds. The first version of this check was written
     # that way and reported a leak on a clean tree.
-    leaked=$(find $out/share/gapi/go/agent -name '*_test.go' -print -quit)
+    leaked=$(find $out/share/gapi/go/adk $out/share/gapi/go/pkg -name '*_test.go' -print -quit)
     if [ -n "$leaked" ]; then
       echo "ADK test files leaked into the packaged tree: $leaked" >&2
       exit 1

@@ -30,10 +30,55 @@ const adkModulePath = "github.com/goppydae/gapi/adk/go"
 // adkImportPath is the Go ADK runtime's import path.
 const adkImportPath = adkModulePath + "/agent"
 
-// goADK is a located copy of the Go ADK runtime's source.
+// sharedModulePath is the module the ADK ships AS, and the module the
+// generated code resolves adkImportPath inside.
 //
-// Dir holds the .go files of package agent. GoDirective is the `go` line
-// to write into the generated module files, taken from wherever the
+// It is the kernel's own module path, not a synthesized one, and that is
+// operator decision 38's "share one package" made mechanical. The ADK's
+// control channel carries protobuf, so it needs the generated gapi types
+// - and a synthesized `adk/go` module cannot import
+// github.com/goppydae/gapi/pkg/proto at all. Shipping under a different
+// path would leave the checkout tier and the install tier resolving
+// DIFFERENT copies of the same generated package, which is a duplicate
+// registration into the global protoregistry and a panic at init.
+//
+// One consequence worth stating because it looks like an omission:
+// adkImportPath is UNCHANGED. It always named a path inside this module;
+// only the module that owns it stopped being synthesized.
+const sharedModulePath = "github.com/goppydae/gapi"
+
+// protobufModulePath is the ADK runtime's one genuine third-party
+// dependency, and the only module the stage resolves that this silo does
+// not write.
+const protobufModulePath = "google.golang.org/protobuf"
+
+// The staged subdirectory names. Named by ROLE, never by the vendor
+// (operator decision 2): goblind links this code and its operators have
+// never heard of gapi, so a directory called "gapi" would put the
+// vendor's name in the kernel's literals for no reader's benefit. The
+// module path INSIDE sdk/ is necessarily the real one - that is an
+// identity, not prose - and is declared as a wire literal.
+const (
+	sharedStageDir   = "sdk"
+	protobufStageDir = "protobuf"
+)
+
+// The three trees inside a shared module root. They are the SAME in a
+// checkout and in an install tree, which is the property that removes
+// the two-tier asymmetry: an install ships the kernel's layout rather
+// than a flattened one, so there is a single set of paths to reason
+// about and no tier-specific resolution.
+var (
+	adkRelDir      = filepath.Join("adk", "go", "agent")
+	protoRelDir    = filepath.Join("pkg", "proto")
+	protobufRelDir = filepath.Join("vendor", "google.golang.org", "protobuf")
+)
+
+// goADK is a located shared module root holding the Go ADK runtime.
+//
+// Dir is the MODULE ROOT, not the package directory: adkRelDir,
+// protoRelDir and protobufRelDir hang off it. GoDirective is the `go`
+// line to write into the generated module files, taken from wherever the
 // source was found rather than from a constant here: a toolchain version
 // hard-coded in the CLI is one that drifts from the source it compiles.
 type goADK struct {
@@ -98,7 +143,7 @@ func resolveGoADK() (goADK, error) {
 	// relying on where the caller happened to stand.
 	if wd, err := os.Getwd(); err == nil {
 		for d := wd; ; {
-			if adk, err := loadGoADK(filepath.Join(d, "adk", "go"), "checkout"); err == nil {
+			if adk, err := loadGoADK(d, "checkout"); err == nil {
 				return adk, nil
 			}
 			parent := filepath.Dir(d)
@@ -107,7 +152,7 @@ func resolveGoADK() (goADK, error) {
 			}
 			d = parent
 		}
-		tried = append(tried, filepath.Join(wd, "adk", "go")+" (and every parent)")
+		tried = append(tried, filepath.Join(wd, adkRelDir)+" (and every parent)")
 	}
 
 	return goADK{}, fmt.Errorf(
@@ -127,8 +172,20 @@ func loadGoADK(dir, origin string) (goADK, error) {
 	if err != nil {
 		return goADK{}, fmt.Errorf("resolve ADK path %s: %w", dir, err)
 	}
-	if _, err := os.Stat(filepath.Join(abs, "agent", "run.go")); err != nil {
+
+	if _, err := os.Stat(filepath.Join(abs, adkRelDir, "run.go")); err != nil {
 		return goADK{}, fmt.Errorf("%s is not a Go ADK source tree (%s): %w", abs, origin, err)
+	}
+
+	// The protobuf runtime is validated as a FILE for the same reason the
+	// ADK is: an install that shipped the directory and not its contents
+	// would otherwise be accepted here and fail later as a module
+	// resolution error in generated code, which names neither the package
+	// that is missing nor the install that is incomplete.
+	if _, err := os.Stat(filepath.Join(abs, protobufRelDir, "proto", "proto.go")); err != nil {
+		return goADK{}, fmt.Errorf(
+			"%s ships no protobuf runtime at %s (%s); the ADK's control channel needs it: %w",
+			abs, protobufRelDir, origin, err)
 	}
 
 	directive, err := goDirectiveFrom(abs)
@@ -171,11 +228,17 @@ func goDirectiveFrom(dir string) (string, error) {
 // target rather than as a version to resolve, so `go build` in it touches
 // no module proxy and needs no go.sum. The layout:
 //
-//	dir/go.mod        module agentbuild.local/agent, replace ADK => ./adk
+//	dir/go.mod        module agentbuild.local/agent, both replaces
 //	dir/agent.go      the author's file
 //	dir/main.go       the generated main
-//	dir/adk/go.mod    module github.com/goppydae/gapi/adk/go
-//	dir/adk/agent/    the ADK runtime's sources
+//	dir/sdk/          the kernel's module - stageADK owns its interior
+//	dir/protobuf/     the protobuf runtime
+//
+// THE INTERIOR IS stageADK's, NOT THIS FUNCTION'S, and this comment named
+// a shape that no longer exists: decision 38 put protobuf on the control
+// channel, so the ADK stopped being its own module at dir/adk and became
+// the kernel's module under sharedStageDir. A comment describing a
+// deleted layout is a claim, and it was false.
 //
 // This replaced staging the package beside the author's source, which
 // worked only inside a checkout that could already resolve the kernel.
@@ -199,81 +262,163 @@ func assembleGoAgent(srcPath, dir string, adk goADK) error {
 	return stageADK(dir, adk)
 }
 
-// stageADK copies the ADK runtime into dir/adk and writes both go.mod
-// files.
+// stageADK copies the shared module and the protobuf runtime into dir,
+// and writes the three go.mod files the staged build resolves.
 //
 // The copy is what makes the provenance stamp cover the whole input.
 // HashDirectory walks recursively and mixes each file's relative path in,
-// so hashing the stage after this hashes the EXACT ADK bytes that get
+// so hashing the stage after this hashes the EXACT bytes that get
 // compiled - not a version string that names them, which is all a
 // generated `require` would have given. That was the constraint
 // GAPI-DIV-092 said routes 1 and 2 must not walk past, and copying
 // discharges it without any change to the hashing call.
 //
-// Only *.go is copied. Tests are excluded because they are not compiled
-// into the agent, and including them would make the provenance hash
-// change for edits that cannot affect the binary.
+// THE LAYOUT, and every path in it is the kernel's own (decision 38):
+//
+//	dir/go.mod              module agentbuild.local/agent, both replaces
+//	dir/agent.go            the author's file
+//	dir/main.go             the generated main
+//	dir/sdk/go.mod          module github.com/goppydae/gapi
+//	dir/sdk/adk/go/agent/   the ADK runtime
+//	dir/sdk/pkg/proto/      the generated types, SHARED with the kernel
+//	dir/protobuf/           the protobuf runtime
+//
+// The directory is sharedStageDir, spelled once as a constant. This
+// comment said "gapi" while the code said "sdk" - a doc naming the
+// vendor where the code names the role, which is the shape core/product's
+// scan exists to catch and does not reach comments.
+//
+// The stage stays self-contained: `go build` in it resolves both
+// replaces locally, touches no proxy, and needs no go.sum. The protobuf
+// runtime is COPIED rather than referenced in place, because a replace
+// pointing outside the stage would make the stage depend on a path that
+// outlives it and would drop the runtime out of the provenance hash.
 func stageADK(dir string, adk goADK) error {
-	dst := filepath.Join(dir, "adk", "agent")
-	if err := os.MkdirAll(dst, 0750); err != nil {
-		return fmt.Errorf("create ADK stage: %w", err)
+	sharedRoot := filepath.Join(dir, sharedStageDir)
+
+	if err := copyGoPackage(filepath.Join(adk.Dir, adkRelDir),
+		filepath.Join(sharedRoot, adkRelDir), adk.Dir); err != nil {
+		return err
+	}
+	if err := copyGoPackage(filepath.Join(adk.Dir, protoRelDir),
+		filepath.Join(sharedRoot, protoRelDir), adk.Dir); err != nil {
+		return err
+	}
+	if err := copyTree(filepath.Join(adk.Dir, protobufRelDir),
+		filepath.Join(dir, protobufStageDir)); err != nil {
+		return err
 	}
 
-	entries, err := os.ReadDir(filepath.Join(adk.Dir, "agent"))
-	if err != nil {
-		return fmt.Errorf("read ADK source: %w", err)
+	// v0.0.0 is the conventional placeholder for a requirement that a
+	// local replace always satisfies. Nothing resolves it, so no version
+	// here can be wrong - and none can be silently right either, which is
+	// why identity is carried by the provenance hash and not by this line.
+	//
+	// The stage's own module path names no product. It is a scratch module
+	// that exists for one `go build` and is deleted after, so borrowing the
+	// vendor's name for it would put that name in the kernel's literals to
+	// no reader's benefit.
+	mods := map[string]string{
+		filepath.Join(dir, "go.mod"): fmt.Sprintf(
+			"module agentbuild.local/agent\n\ngo %s\n\nrequire (\n\t%s v0.0.0\n\t%s v0.0.0\n)\n\nreplace %s => ./%s\n\nreplace %s => ./%s\n",
+			adk.GoDirective, sharedModulePath, protobufModulePath,
+			sharedModulePath, sharedStageDir, protobufModulePath, protobufStageDir),
+
+		filepath.Join(sharedRoot, "go.mod"): fmt.Sprintf(
+			"module %s\n\ngo %s\n\nrequire %s v0.0.0\n",
+			sharedModulePath, adk.GoDirective, protobufModulePath),
+
+		filepath.Join(dir, protobufStageDir, "go.mod"): fmt.Sprintf(
+			"module %s\n\ngo %s\n",
+			protobufModulePath, adk.GoDirective),
 	}
+	for path, body := range mods {
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// copyGoPackage stages one directory of compilable Go source.
+//
+// Only *.go, and no tests: tests are not compiled into the agent, and
+// including them would move the provenance hash for edits that cannot
+// affect the binary. An empty result is an error rather than an empty
+// package, because a half-finished install is exactly what produces one.
+func copyGoPackage(src, dst, origin string) error {
+	if err := os.MkdirAll(dst, 0750); err != nil {
+		return fmt.Errorf("create stage %s: %w", dst, err)
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", src, err)
+	}
+
 	var copied int
 	for _, e := range entries {
-		// The ADK directory is resolved from an environment variable, so
+		// The source directory is resolved from an environment variable, so
 		// its listing is an untrusted input even though a directory entry
 		// cannot contain a separator today. Reducing each name to its base
 		// and refusing anything that changes under that leaves no path for
 		// an entry to write outside dst.
 		name := filepath.Base(e.Name())
 		if name != e.Name() {
-			return fmt.Errorf("ADK source at %s contains a suspicious entry: %q", adk.Dir, e.Name())
+			return fmt.Errorf("source at %s contains a suspicious entry: %q", src, e.Name())
 		}
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-
-		data, err := safeio.ReadFileUnder(filepath.Join(adk.Dir, "agent"), filepath.Join(adk.Dir, "agent", name))
+		data, err := safeio.ReadFileUnder(src, filepath.Join(src, name))
 		if err != nil {
-			return fmt.Errorf("read ADK source %s: %w", name, err)
+			return fmt.Errorf("read %s: %w", name, err)
 		}
 		out, err := safeio.ResolveUnder(dst, filepath.Join(dst, name))
 		if err != nil {
-			return fmt.Errorf("stage ADK source %s: %w", name, err)
+			return fmt.Errorf("stage %s: %w", name, err)
 		}
 		if err := os.WriteFile(out, data, 0600); err != nil {
-			return fmt.Errorf("stage ADK source %s: %w", name, err)
+			return fmt.Errorf("stage %s: %w", name, err)
 		}
 		copied++
 	}
 	if copied == 0 {
-		return fmt.Errorf("ADK source at %s contains no .go files", adk.Dir)
-	}
-
-	adkMod := fmt.Sprintf("module %s\n\ngo %s\n", adkModulePath, adk.GoDirective)
-	if err := os.WriteFile(filepath.Join(dir, "adk", "go.mod"), []byte(adkMod), 0600); err != nil {
-		return fmt.Errorf("write ADK go.mod: %w", err)
-	}
-
-	// v0.0.0 is the conventional placeholder for a requirement that a
-	// local replace always satisfies. Nothing resolves it, so no version
-	// here can be wrong - and none can be silently right either, which is
-	// why the ADK's identity is carried by the hash and not by this line.
-	//
-	// The stage's own module path names no product. It is a scratch
-	// module that exists for one `go build` and is deleted after, so
-	// borrowing the vendor's name for it would put that name in the
-	// kernel's literals to no reader's benefit.
-	stageMod := fmt.Sprintf(
-		"module agentbuild.local/agent\n\ngo %s\n\nrequire %s v0.0.0\n\nreplace %s => ./adk\n",
-		adk.GoDirective, adkModulePath, adkModulePath)
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(stageMod), 0600); err != nil {
-		return fmt.Errorf("write stage go.mod: %w", err)
+		return fmt.Errorf("%s contains no .go files (from %s)", src, origin)
 	}
 	return nil
+}
+
+// copyTree stages a whole dependency tree, every file, recursively.
+//
+// NOT filtered to *.go, and that is load-bearing rather than lazy: the
+// protobuf runtime go:embeds internal/editiondefaults/editions_defaults.binpb,
+// so a *.go-only copy fails the build with "pattern
+// editions_defaults.binpb: no matching files found". LICENSE and PATENTS
+// travel for the same reason any redistributed source carries them.
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, rerr := filepath.Rel(src, path)
+		if rerr != nil {
+			return rerr
+		}
+		target, terr := safeio.ResolveUnder(dst, filepath.Join(dst, rel))
+		if terr != nil {
+			return fmt.Errorf("stage %s: %w", rel, terr)
+		}
+		if d.IsDir() {
+			return os.MkdirAll(target, 0750)
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		data, derr := safeio.ReadFileUnder(src, path)
+		if derr != nil {
+			return fmt.Errorf("read %s: %w", rel, derr)
+		}
+		return os.WriteFile(target, data, 0600)
+	})
 }

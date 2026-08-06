@@ -18,8 +18,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/goppydae/gapi/core/agentmgr"
 )
 
 // TestHarness provides utilities for ADK integration testing
@@ -101,7 +99,21 @@ func (h *TestHarness) Start() error {
 		// discovery starts whatever agents the checkout happens to hold.
 		"GAPI_AGENT_PATH_EXCLUSIVE=1",
 		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
-		agentmgr.EnvForceDummy+"=1",
+		// NO ADK_FORCE_DUMMY. GAPI-DIV-099's gate is this suite passing
+		// with it REMOVED, and it was set here because the stub was the
+		// only Python ADK whose events the supervisor could see. The
+		// control channel is a descriptor now, so the real binding
+		// reports through the same path the Go ADK does and the stub has
+		// nothing left to be load-bearing about.
+		//
+		// REJECT IT INSTEAD. Removing FORCE is not the same as refusing
+		// the stub: productionMode defaults false, so the DummyAdk stayed
+		// REACHABLE here, and this change made it DISCARD control events.
+		// An unbuilt extension then degraded into 150-second timeouts
+		// naming no cause - the cost of a suite that cannot tell "the
+		// binding is missing" from "the agent is slow". With this set,
+		// that state is a one-line failure at import instead.
+		"ADK_REJECT_DUMMY=1",
 		"GAPI_CGROUPS_DISABLE=1",
 	)
 

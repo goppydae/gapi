@@ -9,7 +9,9 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,7 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protodelim"
+
 	"github.com/goppydae/gapi/core/product"
+	gapiv1 "github.com/goppydae/gapi/pkg/proto"
 )
 
 // TestGeneratedMain_NamesTheEmbeddingProduct pins the kernel's
@@ -136,10 +141,11 @@ func buildAssembled(t *testing.T, srcPath string) string {
 }
 
 // testADKSource resolves the ADK out of the checkout these tests run in.
-// pkg/cli is two directories below the repository root.
+// pkg/cli is two directories below the repository root, and the root IS
+// the shared module the ADK ships as (decision 38).
 func testADKSource(t *testing.T) goADK {
 	t.Helper()
-	adk, err := loadGoADK(filepath.Join("..", "..", "adk", "go"), "test checkout")
+	adk, err := loadGoADK(filepath.Join("..", ".."), "test checkout")
 	if err != nil {
 		t.Fatalf("locate ADK source: %v", err)
 	}
@@ -213,32 +219,62 @@ func TestAssembledAgent_AcceptsTheSupervisorsStartVerb(t *testing.T) {
 	src := writeAgent(t, t.TempDir(), "probe_service.go.service", serviceAgent)
 	bin := buildAssembled(t, src)
 
-	cmd := exec.Command(bin, "--start")
-	stdout, err := cmd.StdoutPipe()
+	// The control channel is an inherited descriptor, so this test now
+	// passes one exactly as the supervisor does (operator decision 37).
+	// It used to read control events off the child's STDOUT, which is
+	// what GAPI-DIV-099 removed - stdout carries logs and only logs.
+	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatalf("pipe: %v", err)
+		t.Fatalf("control pipe: %v", err)
 	}
+	t.Cleanup(func() { _ = r.Close() })
+
+	cmd := exec.Command(bin, "--start")
+	cmd.ExtraFiles = []*os.File{w}
+	cmd.Env = append(os.Environ(), "ADK_CONTROL_FD=3")
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
+	// The parent's copy must close, or the reader never sees EOF.
+	_ = w.Close()
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
-	// The supervisor reads control events off the child's stdout and
-	// turns "ready" into RUNNING. Waiting for it is what distinguishes a
-	// process that started from one that exited 2 in milliseconds.
+	// Waiting for RUNNING is what distinguishes a process that started
+	// from one that exited 2 in milliseconds.
 	got := make(chan []string, 1)
-	go func() { got <- readEventsUntil(stdout, "ready") }()
+	go func() { got <- readStatesUntil(r, "RUNNING") }()
 
 	select {
-	case events := <-got:
-		if len(events) == 0 || events[0] != "starting" {
-			t.Errorf("events %v, want them to open with starting", events)
+	case states := <-got:
+		if len(states) == 0 || states[0] != "PENDING" {
+			t.Errorf("states %v, want them to open with PENDING", states)
 		}
-		if events[len(events)-1] != "ready" {
-			t.Errorf("events %v, want them to reach ready", events)
+		if states[len(states)-1] != "RUNNING" {
+			t.Errorf("states %v, want them to reach RUNNING", states)
 		}
 	case <-time.After(20 * time.Second):
-		t.Fatal("the agent never reported ready")
+		t.Fatal("the agent never reported running")
+	}
+}
+
+// readStatesUntil collects lifecycle states from a control channel until
+// want is seen or the stream ends.
+func readStatesUntil(r io.Reader, want string) []string {
+	var out []string
+	br := bufio.NewReader(r)
+	for {
+		var frame gapiv1.AgentControl
+		if err := protodelim.UnmarshalFrom(br, &frame); err != nil {
+			return out
+		}
+		st := frame.GetStatus()
+		if st == nil {
+			continue
+		}
+		out = append(out, st.GetState())
+		if st.GetState() == want {
+			return out
+		}
 	}
 }
 
@@ -305,23 +341,5 @@ func Start() error {
 	}
 	if _, ok := d.declared["Version"]; ok {
 		t.Error("a Version declared inside a function was scanned as metadata")
-	}
-}
-
-// readEventsUntil collects control events until want appears or the
-// stream ends.
-func readEventsUntil(r interface{ Read([]byte) (int, error) }, want string) []string {
-	dec := json.NewDecoder(r)
-	var out []string
-	for {
-		var m map[string]any
-		if err := dec.Decode(&m); err != nil {
-			return out
-		}
-		ev, _ := m["event"].(string)
-		out = append(out, ev)
-		if ev == want {
-			return out
-		}
 	}
 }
