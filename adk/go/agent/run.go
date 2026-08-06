@@ -49,6 +49,9 @@ func run(args []string) int {
 		stop     = fs.Bool("stop", false, "invoke the agent's Stop function and exit")
 		reload   = fs.Bool("reload", false, "invoke the agent's Reload function and exit")
 		restart  = fs.Bool("restart", false, "invoke the agent's Restart function and exit")
+		// The reader for the stamp. A provenance value nothing can be
+		// asked for is the same defect as one nothing carries.
+		provenance = fs.Bool("provenance", false, "print the source hash this binary was built from and exit")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -57,6 +60,8 @@ func run(args []string) int {
 	switch {
 	case *describe:
 		return emitDescribe(spec)
+	case *provenance:
+		return emitProvenance()
 	case *start:
 		ctl, cerr := newControl(spec.ID)
 		if cerr != nil {
