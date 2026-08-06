@@ -429,6 +429,65 @@ func All() error {
 	return nil
 }
 
+// CI reproduces ci.yml's pull-request jobs locally, in CI's order.
+//
+// NOT `All`. All runs Fmt and Tidy, which REPAIR the tree, so it cannot
+// fail the way CI fails: an unformatted file is fixed by All and
+// REJECTED by lint. An audit against the workflows found All covering
+// two of the sixteen things CI runs.
+func CI() error {
+	return magelib.RunCI(magelib.CIConfig{
+		Steps: []magelib.Step{
+			// Environment first. A wrong toolchain makes every result
+			// below meaningless rather than wrong.
+			magelib.Target("doctor", Doctor),
+			magelib.Target("envcheck", EnvCheck),
+			magelib.Target("lint", Lint),
+
+			magelib.Target("build", Build),
+			magelib.Target("vuln", Vuln),
+
+			// python:build before anything that loads the binding, or
+			// the suites run against a stub and pass.
+			magelib.Target("python:build", Python{}.Build),
+			magelib.Target("test", Test),
+			magelib.Target("testIntegrity", TestIntegrity),
+			magelib.Target("testTimer", TestTimer),
+
+			magelib.Cmd("cross-ADK parity", "go", "test", "-v", "./test/adk/",
+				"-run", "TestCrossADKParity|TestADKIntegration"),
+
+			// Regenerating proves the generator runs; only the diff
+			// proves the COMMITTED output is what the pinned plugins
+			// produce. The baseline matters as much: Proto's own default
+			// compares the tree against itself and can never fail.
+			magelib.Step{Name: "proto (breaking against the merge base)", Run: func() error {
+				if err := magelib.WithProtoBaseline(magelib.ProtoBaseline(), Proto); err != nil {
+					return err
+				}
+				return magelib.AssertClean("pkg/proto")
+			}},
+
+			magelib.Step{Name: "nix build", Run: func() error { return magelib.NixBuild(".#") }},
+			magelib.Step{Name: "nix flake check --all-systems", Run: magelib.NixFlakeCheckAllSystems},
+		},
+		Excluded: []string{
+			"No-Replace Module Resolution - runs `rm -rf vendor` and resolves " +
+				"from the module proxy under a read token; this repo COMMITS vendor/",
+			"VM Checks - deliberately off the pull-request path (vm-checks.yml); " +
+				"run `mage ciVM`",
+			"release-guard checkVersion - fires on a tag push, not a pull request",
+		},
+	})
+}
+
+// CIVM runs vm-checks.yml: the guest-booting gate, which needs KVM and
+// minutes and is deliberately NOT on the pull-request path.
+func CIVM() error {
+	return sh.RunV("nix", "flake", "check", "--print-build-logs",
+		"--max-jobs", "1", "--keep-going")
+}
+
 // Documentation tasks
 type Docs mg.Namespace
 
