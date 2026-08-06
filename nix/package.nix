@@ -6,8 +6,21 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-{ lib, buildGoModule, gcc, python3, pkg-config, pam, makeWrapper
-, gopy, gotools, mage, protobuf }:
+{ lib, buildGoModule, gcc, python3, pkg-config, pam, makeWrapper, callPackage
+, gotools, mage, protobuf
+  # gopy DEFAULTS rather than being required, because this file has more
+  # than one caller and only one of them is the flake. nix/module.nix does
+  # `pkgs.callPackage ./package.nix {}` for services.gapi.package, and a
+  # required argument there is an EVALUATION failure of the NixOS module -
+  # which `nix build .#default` does not reach, so it surfaced only in the
+  # flake check. A default keeps every caller working, including any
+  # consumer who imports this file directly.
+  #
+  # Same expression the dev shell uses, so the generator that builds the
+  # packaged extension and the one a developer runs are one derivation
+  # rather than two that happen to agree.
+, gopy ? callPackage ./gopy.nix { }
+}:
 
 let
   # The build-time interpreter needs pybindgen, which is what gopy's
