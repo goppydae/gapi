@@ -56,11 +56,16 @@ func NewHarnessAt(agentsDir string) (*TestHarness, error) {
 		return nil, fmt.Errorf("failed to find project root: %w", err)
 	}
 
+	binDir, err := suiteBinDir()
+	if err != nil {
+		return nil, err
+	}
+
 	return &TestHarness{
-		gapictl:   filepath.Join(root, "bin", "gapictl"),
+		gapictl:   filepath.Join(binDir, "gapictl"),
 		agentsDir: agentsDir,
 		configDir: filepath.Join(root, "config"),
-		binDir:    filepath.Join(root, "bin"),
+		binDir:    binDir,
 	}, nil
 }
 
