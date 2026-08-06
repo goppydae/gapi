@@ -412,6 +412,18 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		cmd.Env = append(cmd.Env, EnvRejectDummy+"=1")
 	}
 
+	// THE CONTROL CHANNEL (operator decisions 37 and 38; GAPI-DIV-099).
+	// The descriptor goes AFTER any listeners so systemd's LISTEN_FDS
+	// convention keeps its base of 3, and its number is named
+	// explicitly rather than derived by the agent.
+	ctlPipe, cerr := newControlPipe()
+	if cerr != nil {
+		return cerr
+	}
+	controlFD := 3 + len(extraFiles)
+	extraFiles = append(extraFiles, ctlPipe.w)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", EnvControlFD, controlFD))
+
 	if len(extraFiles) > 0 {
 		cmd.ExtraFiles = extraFiles
 		cmd.Env = append(cmd.Env,
@@ -447,12 +459,19 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		return err
 	}
 
-	go a.streamControl(a.stdout)
+	// The reader owns the read end; the write end is closed as soon as
+	// the child has inherited it, or the reader never sees EOF when the
+	// child dies and the goroutine outlives the daemon's interest in it.
+	go readControl(ctlPipe.r, a, a.id, slog.Default())
+	go a.streamLogs(a.stdout)
 	go a.streamStderr(a.stderr)
 
 	if err := a.cmd.Start(); err != nil {
+		_ = ctlPipe.w.Close()
+		_ = ctlPipe.r.Close()
 		return fmt.Errorf("cmd.Start: %w", err)
 	}
+	_ = ctlPipe.w.Close()
 
 	attachCgroup(a.id, limits, a.cmd.Process.Pid)
 
@@ -622,7 +641,19 @@ func (a *PythonAgent) Reset() {
 	w.stop()
 }
 
-func (a *PythonAgent) streamControl(r io.Reader) {
+// streamLogs forwards the child's stdout as log lines.
+//
+// STDOUT CARRIES LOGS AND ONLY LOGS (operator decision 33). This
+// function used to unmarshal every line and switch on an "event" key,
+// driving the per-agent state machine from whatever the child happened
+// to print - so one stream carried both a protocol and arbitrary program
+// output, and which one a line WAS depended on whether it parsed
+// (GAPI-DIV-099). Lifecycle frames now arrive on their own descriptor,
+// typed, so there is no guess left to make and no reason to parse here.
+//
+// The JSON-decode-then-re-encode this used to do for the log payload
+// went with the switch: a line is forwarded as the line it was.
+func (a *PythonAgent) streamLogs(r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
@@ -630,39 +661,7 @@ func (a *PythonAgent) streamControl(r io.Reader) {
 		if line == "" {
 			continue
 		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-
-			a.publishLog("stdout", line)
-			continue
-		}
-		a.publishLog("stdout", m)
-
-		ev, _ := getString(m, "event")
-		switch ev {
-		case "starting":
-			a.publishStatus("PENDING", "agent starting")
-		case "start_pending":
-			a.publishStatus("PENDING", "awaiting readiness")
-		case "ready":
-			a.publishStatus("RUNNING", "agent reported ready")
-		case "stopping":
-			a.publishStatus("PENDING", "agent stopping")
-		case "stopped":
-			a.publishStatus("STOPPED", "agent stopped")
-		case "reloaded":
-			a.publishStatus("RUNNING", "agent reloaded")
-		case "error":
-			msg, _ := getString(m, "error")
-			if msg == "" {
-				msg = "agent error"
-			}
-			a.publishStatus("FAILED", msg)
-		case "heartbeat":
-			a.publishHeartbeat()
-		default:
-			// no control topic publications from agents - by design
-		}
+		a.publishLog("stdout", line)
 	}
 }
 
@@ -754,19 +753,6 @@ func (a *PythonAgent) publishLog(stream string, data any) {
 	anyp, _ := anypb.New(logMsg)
 	ev := eventbus.NewEvent[*anypb.Any]("system", "", "logs", a.id, anyp, false)
 	_ = a.bus.Publish(ev)
-}
-
-func getString(m map[string]any, key string) (string, bool) {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return "", false
-	}
-	switch t := v.(type) {
-	case string:
-		return t, true
-	default:
-		return "", false
-	}
 }
 
 // attachCgroup places pid under the agent's cgroup with spec applied.

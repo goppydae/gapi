@@ -199,55 +199,6 @@ func TestPythonAgent_EnsureListener(t *testing.T) {
 	}
 }
 
-func TestPythonAgent_GetString(t *testing.T) {
-	tests := []struct {
-		name     string
-		m        map[string]any
-		key      string
-		wantVal  string
-		wantBool bool
-	}{
-		{
-			name:     "Key exists",
-			m:        map[string]any{"foo": "bar"},
-			key:      "foo",
-			wantVal:  "bar",
-			wantBool: true,
-		},
-		{
-			name:     "Key missing",
-			m:        map[string]any{"foo": "bar"},
-			key:      "baz",
-			wantVal:  "",
-			wantBool: false,
-		},
-		{
-			name:     "Wrong type",
-			m:        map[string]any{"foo": 123},
-			key:      "foo",
-			wantVal:  "",
-			wantBool: false,
-		},
-		{
-			name:     "Empty map",
-			m:        map[string]any{},
-			key:      "foo",
-			wantVal:  "",
-			wantBool: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotVal, gotBool := getString(tt.m, tt.key)
-			if gotVal != tt.wantVal || gotBool != tt.wantBool {
-				t.Errorf("getString() = (%q, %v), want (%q, %v)",
-					gotVal, gotBool, tt.wantVal, tt.wantBool)
-			}
-		})
-	}
-}
-
 func TestPythonAgent_PublishStatus(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 	depResolver := NewMockDependencyResolver()

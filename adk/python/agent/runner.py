@@ -35,18 +35,18 @@ except ImportError as e:
     print(f"DEBUG: Failed to import gapi.native.adk: {e}", file=sys.stderr)
     # Use a dummy adk if bindings fail (for bootstrapping/testing without compilation)
     class DummyAdk:
+        # The stub DISCARDS control events rather than writing them to
+        # stdout. It used to write to sys.__stdout__, which made it the
+        # only Python ADK whose events the supervisor could see - and so
+        # the reason the suite was green on the stub and red on the real
+        # binding (GAPI-DIV-099). Stdout carries logs and only logs now,
+        # in both ADKs, so a stub that wrote protocol there would be
+        # reintroducing the defect under a different name.
         def Initialize(self, n, v, t): pass
-        def SendEvent(self, msg): 
-            try:
-                # Use __stdout__ to bypass any redirection (e.g. during agent start)
-                sys.__stdout__.write(msg + "\n")
-                sys.__stdout__.flush()
-            except BrokenPipeError:
-                pass
-        def StartHeartbeat(self, id, t): pass
+        def SendEvent(self, agent_id, state, message): pass
+        def StartHeartbeat(self, agent_id): pass
         def SetSchemaHash(self, h): pass
         def ComputeSchemaHash(self, f): return "dummy_hash"
-        def StartQUIC(self, addr): pass
     
     # Instantiate the dummy ADK
     adk = DummyAdk()
@@ -99,12 +99,33 @@ GRACE_SEC = float(os.getenv("RUNNER_READY_GRACE", "0.25"))
 READY_MODE = os.getenv("RUNNER_READY_MODE", "strict").lower()  # strict by default now
 RUN_ID = os.getenv("ADK_RUN_ID", "")
 
+# The one place an event name becomes a lifecycle state.
+#
+# GAPI-DIV-087: this used to pass `state=` on two of eight notifications,
+# so the other six reached the supervisor with an empty state and were
+# dropped on arrival. An event with no mapping here is not published at
+# all - the supervisor's old switch ignored exactly these, and silently
+# publishing them under a guessed state would be a change nobody asked
+# for.
+_EVENT_STATES = {
+    "starting": ("PENDING", "agent starting"),
+    "start_pending": ("PENDING", "awaiting readiness"),
+    "ready": ("RUNNING", "agent reported ready"),
+    "stopping": ("PENDING", "agent stopping"),
+    "stopped": ("STOPPED", "agent stopped"),
+    "reloaded": ("RUNNING", "agent reloaded"),
+    "error": ("FAILED", None),
+}
+
+
 def _notify(event: str, **kv):
-    kv.setdefault("ts", time.time())
-    if RUN_ID:
-        kv.setdefault("run_id", RUN_ID)
-    msg = json.dumps({"event": event, **kv}, ensure_ascii=False)
-    adk.SendEvent(msg)
+    mapped = _EVENT_STATES.get(event)
+    if mapped is None:
+        return
+    state, message = mapped
+    if message is None:
+        message = str(kv.get("error", "agent error"))
+    adk.SendEvent(str(kv.get("id", "")), state, message)
 
 
 def _get_fn(mod, keys):
@@ -263,16 +284,13 @@ class AgentWrapper:
 
         if err_holder["err"] is None:
             self.state = "running"
-            # Initialize QUIC connection (default to localhost loopback)
-            try:
-                addr = os.getenv("GAPI_MASTER_ADDR", "127.0.0.1:14242")
-                adk.StartQUIC(addr)
-            except Exception as e:
-                print(f"[RUNNER] Warning: Failed to start QUIC client: {e}")
-
-            _notify("ready", state=self.state, id=self.agent_id, type=self.agent_type)
-            # Offload heartbeat to Go ADK
-            adk.StartHeartbeat(self.agent_id, self.agent_type)
+            # NO TRANSPORT TO START. The control channel is an inherited
+            # descriptor (operator decision 37), so it is open before this
+            # process began and there is nothing to dial - which also
+            # retires the hardcoded "127.0.0.1:14242" that only ever
+            # worked because the daemon's default happened to match it.
+            _notify("ready", id=self.agent_id)
+            adk.StartHeartbeat(self.agent_id)
 
     def stop(self, timeout=10):
         try:

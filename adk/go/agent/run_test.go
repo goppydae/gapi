@@ -9,15 +9,20 @@
 package agent
 
 import (
+	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/encoding/protodelim"
+
+	gapiv1 "github.com/goppydae/gapi/pkg/proto"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -26,19 +31,37 @@ func boolPtr(b bool) *bool { return &b }
 func events(t *testing.T, buf *bytes.Buffer) []string {
 	t.Helper()
 
+	// The control channel carries protodelim-framed AgentControl, not
+	// JSON lines (operator decisions 37 and 38). The sequence these
+	// tests assert is now a sequence of STATES, because the ADK sets the
+	// state rather than emitting an event name the supervisor has to
+	// translate - which is the substance of GAPI-DIV-087.
 	var out []string
-	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
-		if line == "" {
-			continue
+	r := bufio.NewReader(bytes.NewReader(buf.Bytes()))
+	for {
+		var frame gapiv1.AgentControl
+		if err := protodelim.UnmarshalFrom(r, &frame); err != nil {
+			if errors.Is(err, io.EOF) {
+				return out
+			}
+			t.Fatalf("control stream is not framed AgentControl: %v", err)
 		}
-		var m map[string]any
-		if err := json.Unmarshal([]byte(line), &m); err != nil {
-			t.Fatalf("control line is not JSON: %q (%v)", line, err)
+		if frame.GetSchemaVersion() != controlSchemaVersion {
+			t.Fatalf("frame carries schema version %d, want %d",
+				frame.GetSchemaVersion(), controlSchemaVersion)
 		}
-		ev, _ := m["event"].(string)
-		out = append(out, ev)
+		switch ev := frame.GetEvent().(type) {
+		case *gapiv1.AgentControl_Status:
+			if ev.Status.GetState() == "" {
+				t.Fatal("a status frame carries no state")
+			}
+			out = append(out, ev.Status.GetState())
+		case *gapiv1.AgentControl_Heartbeat:
+			out = append(out, "HEARTBEAT")
+		default:
+			t.Fatalf("frame carries no known event arm")
+		}
 	}
-	return out
 }
 
 // TestRun_StartFlagIsAccepted is the regression for GAPI-DIV-052.
@@ -70,7 +93,7 @@ func TestRun_StartFlagIsAccepted(t *testing.T) {
 	// reaches Start at all.
 	buf := &bytes.Buffer{}
 	code := make(chan int, 1)
-	go func() { code <- supervised(mustSpec(t), newControlTo(buf)) }()
+	go func() { code <- supervised(mustSpec(t), newControlTo(buf, "test-agent")) }()
 
 	select {
 	case <-started:
@@ -132,7 +155,7 @@ func TestSupervised_ReachesRunningThenStops(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	code := make(chan int, 1)
-	go func() { code <- supervised(mustSpec(t), newControlTo(buf)) }()
+	go func() { code <- supervised(mustSpec(t), newControlTo(buf, "test-agent")) }()
 
 	// Wait past the ready grace, then stop.
 	time.Sleep(readyGrace + 250*time.Millisecond)
@@ -149,7 +172,7 @@ func TestSupervised_ReachesRunningThenStops(t *testing.T) {
 		t.Fatal("supervised path did not return")
 	}
 
-	want := []string{"starting", "ready", "stopping", "stopped"}
+	want := []string{statePending, stateRunning, statePending, stateStopped}
 	got := events(t, buf)
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("event sequence %v, want %v", got, want)
@@ -174,18 +197,18 @@ func TestSupervised_FailingStartNeverReportsReady(t *testing.T) {
 	})
 
 	buf := &bytes.Buffer{}
-	if got := supervised(mustSpec(t), newControlTo(buf)); got != 1 {
+	if got := supervised(mustSpec(t), newControlTo(buf, "test-agent")); got != 1 {
 		t.Errorf("exit code %d, want 1", got)
 	}
 
 	got := events(t, buf)
 	for _, ev := range got {
-		if ev == "ready" {
-			t.Fatalf("a Start that failed immediately still reported ready: %v", got)
+		if ev == stateRunning {
+			t.Fatalf("a Start that failed immediately still reported running: %v", got)
 		}
 	}
-	if len(got) == 0 || got[len(got)-1] != "error" {
-		t.Errorf("event sequence %v, want it to end in error", got)
+	if len(got) == 0 || got[len(got)-1] != stateFailed {
+		t.Errorf("state sequence %v, want it to end in %s", got, stateFailed)
 	}
 }
 

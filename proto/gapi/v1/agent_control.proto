@@ -1,0 +1,59 @@
+// Copyright (c) 2025 Steven Verhelle (enqack)
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+//
+// SPDX-License-Identifier: MPL-2.0
+
+syntax = "proto3";
+
+package gapi.v1;
+
+option go_package = "github.com/goppydae/gapi/pkg/proto;gapiv1";
+
+import "gapi/v1/lifecycle_status.proto";
+
+// AgentControl is what an agent writes to its inherited control
+// descriptor, and the only thing it writes there.
+//
+// Operator decision 37: a running agent's stdout carries log lines and
+// nothing else. The control channel is a descriptor the supervisor
+// passes at exec, so it exists before the process starts and there is no
+// window in which an event has nowhere to go.
+//
+// Operator decision 38: it carries protobuf. The channel crosses a
+// process boundary, and the cooperative-ecosystem manifesto's FFI
+// exception is named precisely so that such a boundary does not get a
+// second one.
+message AgentControl {
+  // schema_version is load-bearing, for the same reason it is in
+  // AgentDescriptor: a supervisor that cannot read a frame says so
+  // rather than guessing at it.
+  uint32 schema_version = 1;
+
+  // THE EVENT'S TYPE IS THE ARM, and the supervisor derives the publish
+  // topic from it. A publisher that discarded the type and posted
+  // everything to one topic would make every subscriber filter what it
+  // should have been able to select - which is what the JSON control
+  // protocol did, and GAPI-DIV-087 records.
+  //
+  // A new kind of agent-originated event is a new arm, not another
+  // optional field that every other event carries empty.
+  oneof event {
+    LifecycleStatus status = 2;
+    Heartbeat heartbeat = 3;
+  }
+}
+
+// Heartbeat is a liveness report and carries no state.
+//
+// It is a separate arm rather than a LifecycleStatus whose state happens
+// to be RUNNING: a heartbeat asserts that the process is alive, while a
+// status asserts a transition the agent chose to announce. Conflating
+// them is how a heartbeat came to be published as a lifecycle status on
+// a topic nobody subscribed to.
+message Heartbeat {
+  string agent_id = 1;
+  string run_id = 2;
+}

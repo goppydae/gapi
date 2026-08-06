@@ -10,13 +10,10 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 )
@@ -61,7 +58,12 @@ func run(args []string) int {
 	case *describe:
 		return emitDescribe(spec)
 	case *start:
-		return supervised(spec, newControl())
+		ctl, cerr := newControl(spec.ID)
+		if cerr != nil {
+			fmt.Fprintln(os.Stderr, cerr)
+			return 1
+		}
+		return supervised(spec, ctl)
 	case *stop:
 		return invoke(spec.Stop, "stop")
 	case *reload:
@@ -124,20 +126,17 @@ func fire(s *Spec) int {
 // to make possible, and a test that cannot observe it would be asserting
 // only that the process did not crash.
 func supervised(s *Spec, ctl *control) int {
-	// Everything the AUTHOR writes to stdout from here on goes to stderr;
-	// see fenceStdout for why the control channel must stay clean.
-	restore, err := fenceStdout()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fence stdout: %v\n", err)
-		return 1
-	}
-	defer restore()
-
-	ctl.emit("starting", nil)
+	// NO STDOUT FENCE. It existed because stdout WAS the control
+	// channel, so a stray fmt.Println in agent code could displace the
+	// protocol or be mistaken for it. The control channel is now its own
+	// descriptor, so the author's stdout is just the author's output and
+	// the supervisor forwards it as log lines - which is all decision 33
+	// ever wanted from it.
+	ctl.status(statePending, "agent starting")
 
 	if s.Initialize != nil {
 		if err := s.Initialize(); err != nil {
-			ctl.emit("error", map[string]any{"error": fmt.Sprintf("initialize: %v", err)})
+			ctl.status(stateFailed, fmt.Sprintf("initialize: %v", err))
 			return 1
 		}
 	}
@@ -164,19 +163,19 @@ func supervised(s *Spec, ctl *control) int {
 	case err := <-done:
 		return finish(ctl, s, err)
 	case <-time.After(readyGrace):
-		ctl.emit("ready", nil)
+		ctl.status(stateRunning, "agent reported ready")
 	}
 
 	select {
 	case err := <-done:
 		return finish(ctl, s, err)
 	case <-sigs:
-		ctl.emit("stopping", nil)
+		ctl.status(statePending, "agent stopping")
 		cancel()
 
 		if s.Stop != nil {
 			if err := s.Stop(); err != nil {
-				ctl.emit("error", map[string]any{"error": fmt.Sprintf("stop: %v", err)})
+				ctl.status(stateFailed, fmt.Sprintf("stop: %v", err))
 				return 1
 			}
 		}
@@ -189,14 +188,14 @@ func supervised(s *Spec, ctl *control) int {
 		case <-done:
 		case <-time.After(stopGrace):
 		}
-		ctl.emit("stopped", nil)
+		ctl.status(stateStopped, "agent stopped")
 		return 0
 	}
 }
 
 func finish(ctl *control, s *Spec, err error) int {
 	if err != nil {
-		ctl.emit("error", map[string]any{"error": err.Error()})
+		ctl.status(stateFailed, err.Error())
 		return 1
 	}
 	// Start returned cleanly on its own: for a service that is an
@@ -204,11 +203,16 @@ func finish(ctl *control, s *Spec, err error) int {
 	// to infer it from the process disappearing.
 	if s.Stop != nil {
 		if serr := s.Stop(); serr != nil {
-			ctl.emit("error", map[string]any{"error": fmt.Sprintf("stop: %v", serr)})
+			ctl.status(stateFailed, fmt.Sprintf("stop: %v", serr))
 			return 1
 		}
 	}
-	ctl.emit("stopped", nil)
+	// A CLEAN SELF-STOP, announced. The supervisor's exit watcher sees
+	// only that the process is gone and reports FAILED; this frame is
+	// what distinguishes an orderly finish from an unowned death, and
+	// deleting it would make every self-stopping agent look like a
+	// crash.
+	ctl.status(stateStopped, "agent stopped")
 	return 0
 }
 
@@ -220,44 +224,3 @@ const (
 	// stopGrace bounds the wait for Start to unwind after cancellation.
 	stopGrace = 5 * time.Second
 )
-
-// control writes lifecycle events to the real stdout, which is the
-// channel the supervisor scans.
-type control struct {
-	mu  sync.Mutex
-	out io.Writer
-}
-
-func newControl() *control { return &control{out: controlOut()} }
-
-// newControlTo sinks events into w. Tests only.
-func newControlTo(w io.Writer) *control { return &control{out: w} }
-
-func (c *control) emit(event string, kv map[string]any) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	m := map[string]any{"event": event, "ts": float64(time.Now().UnixNano()) / 1e9}
-	if id := os.Getenv("ADK_RUN_ID"); id != "" {
-		m["run_id"] = id
-	}
-	for k, v := range kv {
-		m[k] = v
-	}
-
-	// An unmarshalable payload must not take the agent down; the
-	// supervisor treats a missing event as "no transition", which is
-	// recoverable, where a panic here is not.
-	line, err := json.Marshal(m)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "adk/agent: dropping %s event: %v\n", event, err)
-		return
-	}
-	// A failed control write is not recoverable here - the supervisor
-	// simply does not see the transition - but it must not be silent,
-	// or an agent stuck in PENDING looks like an agent that never
-	// reached ready rather than one whose report was lost.
-	if _, werr := fmt.Fprintln(c.out, string(line)); werr != nil {
-		fmt.Fprintf(os.Stderr, "adk/agent: control write failed for %s: %v\n", event, werr)
-	}
-}

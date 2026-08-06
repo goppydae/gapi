@@ -86,7 +86,7 @@ func FuzzGoAgentStreamControl(f *testing.F) {
 		}
 		before := goAgentState(a)
 
-		a.streamControl(bytes.NewReader(data))
+		a.streamLogs(bytes.NewReader(data))
 
 		if after := goAgentState(a); after != before {
 			t.Fatalf("stdout decoder mutated supervisor state: %+v -> %+v", before, after)
@@ -111,7 +111,7 @@ func FuzzPythonAgentStreamControl(f *testing.F) {
 		}
 		before := pythonAgentState(a)
 
-		a.streamControl(bytes.NewReader(data))
+		a.streamLogs(bytes.NewReader(data))
 
 		if after := pythonAgentState(a); after != before {
 			t.Fatalf("stdout decoder mutated supervisor state: %+v -> %+v", before, after)

@@ -23,7 +23,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(1 * time.Second)
-			adk.SendEvent(`{"event": "ping", "data": "hello from go"}`)
+			adk.SendEvent("event_emitter", "RUNNING", "ping")
 		}
 	}()
 
