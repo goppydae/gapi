@@ -1,0 +1,188 @@
+.TH GAPI.CONF 5 "0.1.0-proto2k" "gapi" "File Formats Manual"
+.SH NAME
+gapi.conf \- configuration file for gapi
+.SH DESCRIPTION
+Configuration is read from gapi.conf in the search path, and every key may be
+overridden by the environment variable named with it below.
+.PP
+Precedence is environment, then configuration file, then the default.
+.SH SETTINGS
+.TP
+.B logging.file.compress
+Type: bool.
+Default: true.
+Environment: GAPI_LOGGING_FILE_COMPRESS.
+.TP
+.B logging.file.enabled
+Type: bool.
+Default: false.
+Environment: GAPI_LOGGING_FILE_ENABLED.
+.TP
+.B logging.file.maxAge
+Type: int.
+Default: 28.
+Environment: GAPI_LOGGING_FILE_MAXAGE.
+.br
+Days
+.TP
+.B logging.file.maxBackups
+Type: int.
+Default: 3.
+Environment: GAPI_LOGGING_FILE_MAXBACKUPS.
+.br
+Number of old files to keep
+.TP
+.B logging.file.maxSize
+Type: int.
+Default: 100.
+Environment: GAPI_LOGGING_FILE_MAXSIZE.
+.br
+MB
+.TP
+.B logging.file.path
+Type: string.
+Default: /var/log/gapi/gapi.log.
+Environment: GAPI_LOGGING_FILE_PATH.
+.TP
+.B logging.format
+Type: string.
+Default: json.
+Environment: GAPI_LOGGING_FORMAT.
+.br
+json, console
+.TP
+.B logging.level
+Type: string.
+Default: info.
+Environment: GAPI_LOGGING_LEVEL.
+.br
+trace, debug, info, warn, error
+.TP
+.B logging.loki.enabled
+Type: bool.
+Default: false.
+Environment: GAPI_LOGGING_LOKI_ENABLED.
+.TP
+.B logging.loki.url
+Type: string.
+Default: (none).
+Environment: GAPI_LOGGING_LOKI_URL.
+.TP
+.B metrics.addr
+Type: string.
+Default: 127.0.0.1:10973.
+Environment: GAPI_METRICS_ADDR.
+.TP
+.B metrics.enabled
+Type: bool.
+Default: false.
+Environment: GAPI_METRICS_ENABLED.
+.TP
+.B security.verifyKey
+Type: string.
+Default: (none).
+Environment: GAPI_SECURITY_VERIFYKEY.
+.br
+Path to public key
+.TP
+.B supervisor.noEarlyMounts
+Type: bool.
+Default: false.
+Environment: GAPI_SUPERVISOR_NOEARLYMOUNTS.
+.br
+NoEarlyMounts skips the mount phase (the OCI runtime owns mounts in a container).
+.TP
+.B supervisor.pid1Mode
+Type: bool.
+Default: false.
+Environment: GAPI_SUPERVISOR_PID1MODE.
+.br
+Pid1Mode activates the Phase-0 pre-userspace boot sequence (subreaper, PID-1 signals, kmsg, early mounts). Off by default: gapid runs as an ordinary supervisor unless it IS init.
+.TP
+.B supervisor.productionMode
+Type: bool.
+Default: false.
+Environment: GAPI_SUPERVISOR_PRODUCTIONMODE.
+.TP
+.B supervisor.shutdown.gracePeriod
+Type: string.
+Default: (none).
+Environment: GAPI_SUPERVISOR_SHUTDOWN_GRACEPERIOD.
+.TP
+.B supervisor.watchdog.device
+Type: string.
+Default: (none).
+Environment: GAPI_SUPERVISOR_WATCHDOG_DEVICE.
+.TP
+.B supervisor.watchdog.enabled
+Type: bool.
+Default: false.
+Environment: GAPI_SUPERVISOR_WATCHDOG_ENABLED.
+.TP
+.B supervisor.watchdog.interval
+Type: string.
+Default: (none).
+Environment: GAPI_SUPERVISOR_WATCHDOG_INTERVAL.
+.TP
+.B timeouts.clientPending
+Type: string.
+Default: 2s.
+Environment: GAPI_TIMEOUTS_CLIENTPENDING.
+.TP
+.B timeouts.clientTerminal
+Type: string.
+Default: 20s.
+Environment: GAPI_TIMEOUTS_CLIENTTERMINAL.
+.TP
+.B timeouts.quicIdle
+Type: string.
+Default: 1m0s.
+Environment: GAPI_TIMEOUTS_QUICIDLE.
+.TP
+.B timeouts.quicStream
+Type: string.
+Default: 10s.
+Environment: GAPI_TIMEOUTS_QUICSTREAM.
+.TP
+.B timeouts.supervisorShutdown
+Type: string.
+Default: 5s.
+Environment: GAPI_TIMEOUTS_SUPERVISORSHUTDOWN.
+.TP
+.B timeouts.supervisorStart
+Type: string.
+Default: 20s.
+Environment: GAPI_TIMEOUTS_SUPERVISORSTART.
+.TP
+.B transport.address
+Type: string.
+Default: 127.0.0.1:29979.
+Environment: GAPI_TRANSPORT_ADDRESS.
+.TP
+.B transport.insecureSkipVerify
+Type: bool.
+Default: true.
+Environment: GAPI_TRANSPORT_INSECURESKIPVERIFY.
+.TP
+.B transport.tlsCa
+Type: string.
+Default: (none).
+Environment: GAPI_TRANSPORT_TLSCA.
+.TP
+.B transport.tlsCert
+Type: string.
+Default: (none).
+Environment: GAPI_TRANSPORT_TLSCERT.
+.TP
+.B transport.tlsKey
+Type: string.
+Default: (none).
+Environment: GAPI_TRANSPORT_TLSKEY.
+.TP
+.B transport.type
+Type: string.
+Default: quic.
+Environment: GAPI_TRANSPORT_TYPE.
+.SH SEE ALSO
+.BR gapid (1),
+.BR gapictl (1)

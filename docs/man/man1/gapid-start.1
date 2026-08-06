@@ -1,0 +1,75 @@
+.nh
+.TH "gapid" "1" "Jan 1970" "gapid 0.1.0-proto2k" "General Commands Manual"
+
+.SH NAME
+gapid-start - Start the gapid daemon
+
+
+.SH SYNOPSIS
+\fBgapid start [flags]\fP
+
+
+.SH DESCRIPTION
+Start the gapid daemon
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for start
+
+.PP
+\fB--listen-addr\fP=""
+	Control-plane bind address (default: 127.0.0.1:29979)
+
+.PP
+\fB--no-early-mounts\fP[=false]
+	Skip the Phase 0 mount table (container environments)
+
+.PP
+\fB--pid1\fP[=false]
+	Run as PID 1: Phase 0 pre-userspace boot (subreaper, signals, mounts, reaping)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--id\fP=""
+	Unique node identifier (default: hostname)
+
+.PP
+\fB--log-file\fP=""
+	Additional rotated file sink
+
+.PP
+\fB--log-format\fP=""
+	Log format: json or console
+
+.PP
+\fB--log-level\fP=""
+	Log level: debug, info, warn, error
+
+.PP
+\fB--log-loki-url\fP=""
+	Forward logs to a Loki endpoint
+
+.PP
+\fB--metrics-addr\fP=""
+	Prometheus listen address (empty: disabled)
+
+.PP
+\fB--tls-ca\fP=""
+	CA certificate for peer verification
+
+.PP
+\fB--tls-cert\fP=""
+	This node's certificate
+
+.PP
+\fB--tls-key\fP=""
+	This node's private key
+
+.PP
+\fB-v\fP, \fB--version\fP[=false]
+	version for gapid
+
+
+.SH SEE ALSO
+\fBgapid(1)\fP

@@ -1,0 +1,43 @@
+.nh
+.TH "gapictl" "1" "Jan 1970" "gapictl 0.1.0-proto2k" "General Commands Manual"
+
+.SH NAME
+gapictl-agent - Manage agents
+
+
+.SH SYNOPSIS
+\fBgapictl agent [flags]\fP
+
+
+.SH DESCRIPTION
+Build, sign, and manage agents across Python and Go.
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for agent
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--control-addr\fP=""
+	Address of the target daemon's control plane (empty: from config)
+
+.PP
+\fB--log-level\fP=""
+	Log level: debug, info, warn, error
+
+.PP
+\fB--tls-ca\fP=""
+	CA certificate used to verify the daemon
+
+.PP
+\fB--tls-insecure\fP[=false]
+	Skip verification (INSECURE)
+
+.PP
+\fB-v\fP, \fB--version\fP[=false]
+	version for gapictl
+
+
+.SH SEE ALSO
+\fBgapictl(1)\fP, \fBgapictl-agent-build(1)\fP, \fBgapictl-agent-clean(1)\fP, \fBgapictl-agent-new(1)\fP, \fBgapictl-agent-reload(1)\fP, \fBgapictl-agent-status(1)\fP, \fBgapictl-agent-verify(1)\fP

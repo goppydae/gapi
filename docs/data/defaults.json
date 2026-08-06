@@ -1,0 +1,194 @@
+{
+  "logging.file.compress": {
+    "value": "true",
+    "env": "GAPI_LOGGING_FILE_COMPRESS",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "logging.file.enabled": {
+    "value": "false",
+    "env": "GAPI_LOGGING_FILE_ENABLED",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "logging.file.maxAge": {
+    "value": "28",
+    "env": "GAPI_LOGGING_FILE_MAXAGE",
+    "type": "int",
+    "source": "core/config.setDefaults"
+  },
+  "logging.file.maxBackups": {
+    "value": "3",
+    "env": "GAPI_LOGGING_FILE_MAXBACKUPS",
+    "type": "int",
+    "source": "core/config.setDefaults"
+  },
+  "logging.file.maxSize": {
+    "value": "100",
+    "env": "GAPI_LOGGING_FILE_MAXSIZE",
+    "type": "int",
+    "source": "core/config.setDefaults"
+  },
+  "logging.file.path": {
+    "value": "/var/log/gapi/gapi.log",
+    "env": "GAPI_LOGGING_FILE_PATH",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "logging.format": {
+    "value": "json",
+    "env": "GAPI_LOGGING_FORMAT",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "logging.level": {
+    "value": "info",
+    "env": "GAPI_LOGGING_LEVEL",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "logging.loki.enabled": {
+    "value": "false",
+    "env": "GAPI_LOGGING_LOKI_ENABLED",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "logging.loki.url": {
+    "value": "",
+    "env": "GAPI_LOGGING_LOKI_URL",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "metrics.addr": {
+    "value": "127.0.0.1:10973",
+    "env": "GAPI_METRICS_ADDR",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "metrics.enabled": {
+    "value": "false",
+    "env": "GAPI_METRICS_ENABLED",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "security.verifyKey": {
+    "value": "",
+    "env": "GAPI_SECURITY_VERIFYKEY",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.noEarlyMounts": {
+    "value": "false",
+    "env": "GAPI_SUPERVISOR_NOEARLYMOUNTS",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.pid1Mode": {
+    "value": "false",
+    "env": "GAPI_SUPERVISOR_PID1MODE",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.productionMode": {
+    "value": "false",
+    "env": "GAPI_SUPERVISOR_PRODUCTIONMODE",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.shutdown.gracePeriod": {
+    "value": "",
+    "env": "GAPI_SUPERVISOR_SHUTDOWN_GRACEPERIOD",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.watchdog.device": {
+    "value": "",
+    "env": "GAPI_SUPERVISOR_WATCHDOG_DEVICE",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.watchdog.enabled": {
+    "value": "false",
+    "env": "GAPI_SUPERVISOR_WATCHDOG_ENABLED",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "supervisor.watchdog.interval": {
+    "value": "",
+    "env": "GAPI_SUPERVISOR_WATCHDOG_INTERVAL",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.clientPending": {
+    "value": "2s",
+    "env": "GAPI_TIMEOUTS_CLIENTPENDING",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.clientTerminal": {
+    "value": "20s",
+    "env": "GAPI_TIMEOUTS_CLIENTTERMINAL",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.quicIdle": {
+    "value": "1m0s",
+    "env": "GAPI_TIMEOUTS_QUICIDLE",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.quicStream": {
+    "value": "10s",
+    "env": "GAPI_TIMEOUTS_QUICSTREAM",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.supervisorShutdown": {
+    "value": "5s",
+    "env": "GAPI_TIMEOUTS_SUPERVISORSHUTDOWN",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "timeouts.supervisorStart": {
+    "value": "20s",
+    "env": "GAPI_TIMEOUTS_SUPERVISORSTART",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "transport.address": {
+    "value": "127.0.0.1:29979",
+    "env": "GAPI_TRANSPORT_ADDRESS",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "transport.insecureSkipVerify": {
+    "value": "true",
+    "env": "GAPI_TRANSPORT_INSECURESKIPVERIFY",
+    "type": "bool",
+    "source": "core/config.setDefaults"
+  },
+  "transport.tlsCa": {
+    "value": "",
+    "env": "GAPI_TRANSPORT_TLSCA",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "transport.tlsCert": {
+    "value": "",
+    "env": "GAPI_TRANSPORT_TLSCERT",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "transport.tlsKey": {
+    "value": "",
+    "env": "GAPI_TRANSPORT_TLSKEY",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  },
+  "transport.type": {
+    "value": "quic",
+    "env": "GAPI_TRANSPORT_TYPE",
+    "type": "string",
+    "source": "core/config.setDefaults"
+  }
+}

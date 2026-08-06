@@ -1,0 +1,61 @@
+.nh
+.TH "gapictl" "1" "Jan 1970" "gapictl 0.1.0-proto2k" "General Commands Manual"
+
+.SH NAME
+gapictl-agent-new - Create a new agent from template
+
+
+.SH SYNOPSIS
+\fBgapictl agent new [name] [flags]\fP
+
+
+.SH DESCRIPTION
+Create a new agent from template with proper structure.
+
+.PP
+Examples:
+  gapictl agent new my_service
+  gapictl agent new --type=timer my_timer
+  gapictl agent new --lang=python --type=service my_py_service
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for new
+
+.PP
+\fB-l\fP, \fB--lang\fP="go"
+	Agent language (go, python)
+
+.PP
+\fB-o\fP, \fB--output\fP=""
+	Output directory (default: agents/{lang}/foundational or agents/{lang}/services)
+
+.PP
+\fB-t\fP, \fB--type\fP="service"
+	Agent type (service, socket, timer)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--control-addr\fP=""
+	Address of the target daemon's control plane (empty: from config)
+
+.PP
+\fB--log-level\fP=""
+	Log level: debug, info, warn, error
+
+.PP
+\fB--tls-ca\fP=""
+	CA certificate used to verify the daemon
+
+.PP
+\fB--tls-insecure\fP[=false]
+	Skip verification (INSECURE)
+
+.PP
+\fB-v\fP, \fB--version\fP[=false]
+	version for gapictl
+
+
+.SH SEE ALSO
+\fBgapictl-agent(1)\fP
