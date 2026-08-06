@@ -564,6 +564,34 @@ func (am *AgentManager) pythonDescribe(modulePath string) (*pyDescribe, error) {
 		return nil, fmt.Errorf("describe: invalid JSON: %w\nstdout: %q\nstderr: %s\ncmd: %s",
 			err, string(out), bytes.TrimSpace(stderr.Bytes()), cmdline)
 	}
+
+	// A SUCCESSFUL DESCRIBE STILL HAS SOMETHING TO SAY (GAPI-DIV-094).
+	//
+	// Every failure path above puts stderr in its error. The success
+	// path read the buffer and dropped it, so the runner's diagnostics
+	// were visible only when something else had already gone wrong -
+	// and discovery then registered the agent and reported completion,
+	// looking healthy.
+	//
+	// The stub warning is the case that motivated this and is no longer
+	// the only one that matters: GAPI-DIV-086 made discovery set
+	// ADK_REJECT_DUMMY in production, so there the stub takes the error
+	// path above. It still arrives here for a developer without a built
+	// extension, and it is the one line on this stream that changes what
+	// the agent MEANS rather than merely how it ran - every capability
+	// it declares is backed by a no-op - so it keeps WARN while ordinary
+	// chatter takes DEBUG.
+	if diag := bytes.TrimSpace(stderr.Bytes()); len(diag) > 0 {
+		level := slog.LevelDebug
+		if bytes.Contains(diag, []byte("the native ADK extension is missing")) {
+			level = slog.LevelWarn
+		}
+		slog.Default().LogAttrs(context.Background(), level,
+			"python describe wrote diagnostics",
+			logattr.Module("agentmgr"), logattr.Path(modAbs),
+			slog.String("stderr", string(diag)))
+	}
+
 	return &d, nil
 }
 
