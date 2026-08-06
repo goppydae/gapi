@@ -80,7 +80,26 @@ func NewEventBus[T any](t Transport[T], _ ...Options) *EventBus[T] {
 		transport:  t,
 	}
 	if t != nil {
-		t.OnRemoteEvent(func(e Event[T]) { _ = b.dispatch(e) })
+		// VALIDATE AT THE INGRESS (GAPI-DIV-100). This is the only path
+		// into the bus carrying bytes from another process, and it was
+		// the only one that skipped ValidateEvent: Publish refuses an
+		// invalid scope, while a remote event went straight to dispatch
+		// and simply missed every key. An unroutable event produced no
+		// error to the publisher and no line in the log, so a real
+		// defect presented as a silence and cost a day to trace.
+		//
+		// There is nobody to return an error to here, so the log IS the
+		// boundary failure.
+		t.OnRemoteEvent(func(e Event[T]) {
+			if err := ValidateEvent(e); err != nil {
+				slog.Default().LogAttrs(context.Background(), slog.LevelWarn,
+					"rejected invalid remote event", logattr.Event("reject"),
+					logattr.EventID(e.ID), logattr.Topic(e.Topic),
+					logattr.Scope(e.Scope), logattr.Source(e.Source), logattr.Err(err))
+				return
+			}
+			_ = b.dispatch(e)
+		})
 	}
 	return b
 }

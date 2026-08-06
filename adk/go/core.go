@@ -121,12 +121,19 @@ func SendEvent(jsonStr string) {
 		return
 	}
 
-	ev := eventbus.Event[*anypb.Any]{
-		ID:      id,
-		Topic:   eventbus.TopicAgentLifecycleStatus,
-		Payload: anyStat,
-		Source:  "agent:" + id,
-	}
+	// Through NewEvent, not a struct literal (GAPI-DIV-100). This was
+	// the only publisher in the tree that built an Event by hand, and
+	// so the only one that could omit the scope - which it did. A
+	// scopeless event goes on the wire as the bare topic, the receiver
+	// splits "agent/lifecycle.status" on the first '/' and manufactures
+	// scope "agent", and nothing can be subscribed there: the scope is
+	// not even one of the three the bus accepts. The event arrived at
+	// the daemon intact and was discarded at the key lookup.
+	//
+	// NewEvent puts scope in argument position 1, which is why the
+	// other nineteen publishers never had this defect.
+	ev := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleStatus, "agent:"+id, anyStat, false)
+	ev.ID = id
 
 	if err := quicClient.PublishRemote(context.Background(), ev); err != nil {
 		slog.Default().LogAttrs(context.Background(), slog.LevelError, "quic publish failed", logattr.Component("gapi-adk"), logattr.Err(err))
