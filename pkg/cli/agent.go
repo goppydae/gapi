@@ -41,9 +41,10 @@ var agentBuildCmd = &cobra.Command{
 	Long: `Build Go agents from source and generate checksums.
 
 Examples:
-  gapictl agent build agents/go/foundational/init/
-  gapictl agent build --watch agents/go/coordination/cluster_join/
-  gapictl agent build --sign --key=agent-signing.key agents/go/foundational/init/`,
+  gapictl agent build src/agents/init.go.service
+  gapictl agent build src/agents/
+  gapictl agent build --watch src/agents/cluster_join.go.service
+  gapictl agent build --sign --key=agent-signing.key src/agents/init.go.service`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentBuild,
 }

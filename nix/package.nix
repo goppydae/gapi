@@ -131,12 +131,17 @@ buildGoModule rec {
   # Every advertised image shipped exactly that: two Python agents in
   # /etc/gapi/agents and nothing able to read them.
   #
-  # resolvePyRunner (core/supervisor/lifecycle_handlers.go:200) looks in
-  # three places - GAPI_PY_RUNNER, then adk/python/agent/runner.py NEXT
-  # TO THE BINARY, then the same path RELATIVE TO THE CWD. The last is
-  # what a systemd unit gets, and it resolves against / on a booted
-  # system, which is why this was invisible in a checkout and fatal in an
-  # image: in a dev tree the cwd fallback happens to hit.
+  # adkpath.ResolvePyADK (core/adkpath) looks in three places -
+  # GAPI_PY_ADK, then share/<product>/python beside the binary, then
+  # adk/python at or above the cwd, each tier CHECKED.
+  #
+  # It did not always. Until GAPI-DIV-109 the second tier looked under
+  # <exedir>/adk/python, which no layout produces - verified against the
+  # store path - and the third returned a cwd-relative path on faith,
+  # which resolves against / on a booted system. That is why this was
+  # invisible in a checkout and fatal in an image: in a dev tree the cwd
+  # fallback happens to hit. With two of three tiers dead, the wrapper
+  # below was not belt-and-braces; it was the only thing working.
   #
   # Fixed in the PACKAGE rather than in module.nix so that every consumer
   # of the derivation gets a working runner, not only NixOS. The wrapper
@@ -231,12 +236,25 @@ buildGoModule rec {
     printf 'module github.com/goppydae/gapi\n\ngo %s\n' "$goDirective" \
       > $out/share/gapi/go/go.mod
 
+    # BOTH BINARIES, AND gapictl IS THE ONE THAT WAS MISSING
+    # (GAPI-DIV-109). gapid got the Python default and gapictl did not,
+    # so `gapictl agent new --lang=python` could not locate the runner
+    # on an installed system at all - the resolver's remaining tiers
+    # looked under bin/ and then at a checkout-relative path.
+    #
+    # PY_ADK names the TREE, not the script: runner.py appends its own
+    # parent to sys.path and imports gapi.native from there, so a
+    # variable naming the file silently decides which gapi package -
+    # stub or native - an agent gets.
     wrapProgram $out/bin/gapid \
-      --set-default GAPI_PY_RUNNER $out/share/gapi/python/agent/runner.py \
+      --set-default GAPI_PY_ADK $out/share/gapi/python \
+      --set-default GAPI_GO_ADK $out/share/gapi/go \
       --prefix PATH : ${lib.makeBinPath [ python3 ]}
 
     wrapProgram $out/bin/gapictl \
-      --set-default GAPI_GO_ADK $out/share/gapi/go
+      --set-default GAPI_PY_ADK $out/share/gapi/python \
+      --set-default GAPI_GO_ADK $out/share/gapi/go \
+      --prefix PATH : ${lib.makeBinPath [ python3 ]}
   '';
 
   # THE PACKAGING HALF OF GAPI-DIV-092 NEEDS ITS OWN GATE.
@@ -272,6 +290,31 @@ buildGoModule rec {
         exit 1
       fi
     done
+
+    # BOTH BINARIES MUST BE ABLE TO FIND BOTH ADKs (GAPI-DIV-109).
+    #
+    # gapictl carried GAPI_GO_ADK and not GAPI_PY_ADK, so `agent new
+    # --lang=python` could not locate the runner on an installed system.
+    # No Go test could see it: pkg/cli's tests set the variables
+    # themselves, which proves the CODE works and says nothing about
+    # what this derivation puts in the wrapper. The assertion belongs
+    # where the artifact is built, next to the file checks above.
+    for bin in gapid gapictl; do
+      for var in GAPI_PY_ADK GAPI_GO_ADK; do
+        if ! grep -q "$var" "$out/bin/$bin"; then
+          echo "$bin has no $var default: it cannot locate that ADK on an installed system" >&2
+          exit 1
+        fi
+      done
+    done
+
+    # AND THE PATH THEY NAME MUST BE THE ONE THAT RESOLVES. A wrapper
+    # pointing at a directory with no agent/runner.py in it satisfies
+    # the check above and fails at the first describe.
+    if [ ! -f "$out/share/gapi/python/agent/runner.py" ]; then
+      echo "GAPI_PY_ADK names a tree with no agent/runner.py" >&2
+      exit 1
+    fi
 
     # A go.mod naming the wrong module compiles to a confusing import
     # error at agent-build time, on the operator's machine, not here.

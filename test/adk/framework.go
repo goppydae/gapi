@@ -98,7 +98,7 @@ func (h *TestHarness) Start() error {
 		// now, so without this line the tiers come back underneath and
 		// discovery starts whatever agents the checkout happens to hold.
 		"GAPI_AGENT_PATH_EXCLUSIVE=1",
-		fmt.Sprintf("GAPI_PY_RUNNER=%s", filepath.Join(root, "adk", "python", "agent", "runner.py")),
+		fmt.Sprintf("GAPI_PY_ADK=%s", filepath.Join(root, "adk", "python")),
 		// NO ADK_FORCE_DUMMY. GAPI-DIV-099's gate is this suite passing
 		// with it REMOVED, and it was set here because the stub was the
 		// only Python ADK whose events the supervisor could see. The

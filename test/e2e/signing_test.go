@@ -85,7 +85,7 @@ def start(stop_evt=None):
 			// added there now fails on a set-but-unread project name.
 			"GAPI_TRANSPORT_TYPE=quic",           // Ensure consistent transport
 			"GAPI_TRANSPORT_ADDRESS=127.0.0.1:0", // Random port
-			"GAPI_PY_RUNNER=../../adk/python/agent/runner.py",
+			"GAPI_PY_ADK=../../adk/python",
 		)
 		// Capture stdout/stderr
 		logFile := filepath.Join(tmpDir, "gapid.log")

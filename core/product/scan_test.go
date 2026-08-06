@@ -110,9 +110,10 @@ var allowedIn = map[string][]string{
 	// rename. Tracked by GOBLIN-DIV-056.
 	"pkg/cli/agent.go": {
 		"Build Go agents from source and generate checksums.\n\nExamples:\n" +
-			"  gapictl agent build agents/go/foundational/init/\n" +
-			"  gapictl agent build --watch agents/go/coordination/cluster_join/\n" +
-			"  gapictl agent build --sign --key=agent-signing.key agents/go/foundational/init/",
+			"  gapictl agent build src/agents/init.go.service\n" +
+			"  gapictl agent build src/agents/\n" +
+			"  gapictl agent build --watch src/agents/cluster_join.go.service\n" +
+			"  gapictl agent build --sign --key=agent-signing.key src/agents/init.go.service",
 		"Create a new agent from template with proper structure.\n\nExamples:\n" +
 			"  gapictl agent new my_service\n" +
 			"  gapictl agent new --type=timer my_timer\n" +
