@@ -9,6 +9,8 @@
 package product_test
 
 import (
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -122,19 +124,76 @@ func TestEnvKey_RefusesAnUndeclaredName(t *testing.T) {
 // The control-plane default is per product and CANNOT be composed.
 //
 // Every surface above falls out of the name by string composition; a
-// port does not. 29000 does not fall out of "goblin", which is why this
+// port does not. 31415 does not fall out of "goblin", which is why this
 // one value is a table rather than a rule (GAPI-DIV-071). Asserted for
 // BOTH products, because the defect was goblin silently receiving
 // gapi's port from a loader that was product-aware everywhere else.
 func TestDefaultControlAddr_IsPerProduct(t *testing.T) {
 	product.Set("goblin")
-	if got, want := product.DefaultControlAddr(), "127.0.0.1:29000"; got != want {
+	if got, want := product.DefaultControlAddr(), "127.0.0.1:31415"; got != want {
 		t.Errorf("goblin's default control address = %q, want %q", got, want)
 	}
 
 	product.Set("gapi")
-	if got, want := product.DefaultControlAddr(), "127.0.0.1:14242"; got != want {
+	if got, want := product.DefaultControlAddr(), "127.0.0.1:29979"; got != want {
 		t.Errorf("gapi's default control address = %q, want %q", got, want)
+	}
+}
+
+// GAPI-DIV-111. The metrics default was ONE shared literal for every
+// product, on the line after the control default was made product-aware,
+// so gapid and goblind on one host contended for one listener.
+//
+// THE ASSERTION THAT A SHARED LITERAL CANNOT PASS is that the two
+// products resolve DIFFERENT addresses - checked here directly rather
+// than only by comparing each to its expected value, because two
+// constants can both be "correct" and identical.
+func TestDefaultMetricsAddr_IsPerProduct(t *testing.T) {
+	product.Set("goblin")
+	goblinAddr := product.DefaultMetricsAddr()
+	if want := "127.0.0.1:13703"; goblinAddr != want {
+		t.Errorf("goblin's default metrics address = %q, want %q", goblinAddr, want)
+	}
+
+	product.Set("gapi")
+	gapiAddr := product.DefaultMetricsAddr()
+	if want := "127.0.0.1:10973"; gapiAddr != want {
+		t.Errorf("gapi's default metrics address = %q, want %q", gapiAddr, want)
+	}
+
+	if gapiAddr == goblinAddr {
+		t.Errorf("both products default to %q; two daemons on one host "+
+			"would contend for one metrics listener, which is the defect "+
+			"GAPI-DIV-111 removed", gapiAddr)
+	}
+}
+
+// The ports must sit above the privileged range and BELOW this host's
+// ephemeral floor. A default inside the ephemeral range can be taken by
+// an outbound connection before the daemon binds, which presents as an
+// intermittent bind failure that looks like a race and is not - so the
+// constraint is asserted rather than left to the comment that states it.
+func TestDefaultPorts_AreOutsideTheEphemeralRange(t *testing.T) {
+	for _, p := range []string{"gapi", "goblin"} {
+		product.Set(p)
+		for label, addr := range map[string]string{
+			"control": product.DefaultControlAddr(),
+			"metrics": product.DefaultMetricsAddr(),
+		} {
+			_, portStr, err := net.SplitHostPort(addr)
+			if err != nil {
+				t.Fatalf("%s %s address %q is not host:port: %v", p, label, addr, err)
+			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil {
+				t.Fatalf("%s %s port %q is not a number: %v", p, label, portStr, err)
+			}
+			if port < 1024 || port > 32767 {
+				t.Errorf("%s %s port %d is outside 1024-32767; below 1024 needs "+
+					"privilege, and at or above 32768 an outbound connection can "+
+					"take the port before the daemon binds", p, label, port)
+			}
+		}
 	}
 }
 
