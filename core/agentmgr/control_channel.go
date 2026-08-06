@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protodelim"
 
@@ -49,7 +50,8 @@ func newControlPipe() (*controlPipe, error) {
 }
 
 // statusPublisher is what a control reader needs from an agent, and all
-// it needs: the two publications an agent-originated frame can produce.
+// it needs: the two publications an agent-originated frame can produce,
+// plus the record the exit watcher reads.
 //
 // An interface rather than a concrete agent because GoAgent and
 // PythonAgent differ in nothing that matters here - the frames are
@@ -57,7 +59,33 @@ func newControlPipe() (*controlPipe, error) {
 // instead of by test.
 type statusPublisher interface {
 	publishStatusWithRunID(state, message, runID string)
-	publishHeartbeat()
+	publishHeartbeat(hb *gapiv1.Heartbeat)
+	// noteAnnouncedState records the last state the AGENT announced, so
+	// the exit watcher can tell an orderly finish from an unowned death.
+	// Neither component could answer that alone: this is the seam.
+	noteAnnouncedState(state, runID string)
+}
+
+// maxBadControlFrames bounds what one broken agent can cost.
+//
+// MEASURED before this existed: 1 MiB of 0x00 on the control descriptor
+// produced 131 MB of ERROR log in 0.67s - a 125x amplification driven by
+// a process readControl's own comment calls untrusted. Every zero byte
+// decodes as a zero-length frame, fails the schema check, and logs.
+//
+// A budget rather than a rate limit: an agent writing frames this build
+// cannot read is not going to start making sense, and continuing to read
+// it buys nothing. The channel closes, the agent keeps its stdout logs,
+// and the exit watcher still owns the process.
+const maxBadControlFrames = 32
+
+// terminalAnnouncedStates are the states an agent announcing one has
+// classified its own exit with. The supervisor does not then re-classify
+// it from the outside.
+var terminalAnnouncedStates = map[string]bool{
+	"STOPPED":   true,
+	"FAILED":    true,
+	"COMPLETED": true,
 }
 
 // readControl consumes an agent's typed lifecycle frames until EOF.
@@ -81,15 +109,38 @@ type statusPublisher interface {
 func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 	br := bufio.NewReader(r)
 
+	// bad counts frames this build could not act on. See
+	// maxBadControlFrames: the budget is what stops an untrusted stream
+	// from turning one byte into a kilobyte of log.
+	bad := 0
+	refuse := func(msg string) bool {
+		bad++
+		if bad > maxBadControlFrames {
+			log.Error("closing agent control channel: too many unreadable frames",
+				logattr.AgentID(id), slog.Int("budget", maxBadControlFrames))
+			return false
+		}
+		log.Error(msg, logattr.AgentID(id))
+		return true
+	}
+
 	for {
 		var frame gapiv1.AgentControl
 		if err := protodelim.UnmarshalFrom(br, &frame); err != nil {
 			// EOF is the ordinary end of a run: the child exited and its
-			// write end closed. Anything else is a malformed stream, and
-			// it is reported rather than swallowed - a control channel
-			// that goes quiet for an unreadable reason is exactly the
-			// silence GAPI-DIV-100 cost a day to.
-			if !errors.Is(err, io.EOF) {
+			// write end closed. ErrUnexpectedEOF is the same ending with
+			// a frame half-written, which is what a SIGKILL mid-write
+			// looks like - an ordinary kill, not a stream failure, and it
+			// was reading as one. Anything else is a malformed stream and
+			// is reported rather than swallowed: a control channel that
+			// goes quiet for an unreadable reason is exactly the silence
+			// GAPI-DIV-100 cost a day to.
+			switch {
+			case errors.Is(err, io.EOF):
+			case errors.Is(err, io.ErrUnexpectedEOF):
+				log.Info("agent control stream ended mid-frame",
+					logattr.AgentID(id), logattr.Err(err))
+			default:
 				log.Error("agent control stream failed",
 					logattr.AgentID(id), logattr.Err(err))
 			}
@@ -97,8 +148,9 @@ func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 		}
 
 		if frame.GetSchemaVersion() != controlSchemaVersion {
-			log.Error("refusing agent control frame of unknown schema version",
-				logattr.AgentID(id))
+			if !refuse("refusing agent control frame of unknown schema version") {
+				return
+			}
 			continue
 		}
 
@@ -110,19 +162,87 @@ func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 				// state has announced nothing. Saying so beats publishing
 				// a status the state machine will drop on arrival, which
 				// is what the JSON path did for six of its eight events.
-				log.Error("agent status frame carries no state", logattr.AgentID(id))
+				if !refuse("agent status frame carries no state") {
+					return
+				}
 				continue
 			}
+			// RECORDED BEFORE IT IS PUBLISHED. The exit watcher reads this
+			// to tell a clean self-stop from an unowned death, and the
+			// process may already be gone by the time the publish returns.
+			a.noteAnnouncedState(st.GetState(), st.GetRunId())
 			a.publishStatusWithRunID(st.GetState(), st.GetMessage(), st.GetRunId())
 
 		case *gapiv1.AgentControl_Heartbeat:
-			a.publishHeartbeat()
+			// The frame is FORWARDED. Decoding an agent's identity and
+			// then publishing something it did not send is how the arm
+			// came to carry a state the agent never announced.
+			a.publishHeartbeat(ev.Heartbeat)
 
 		default:
 			// A frame whose arm this build does not know. The schema
 			// version matched, so this is a producer bug rather than a
 			// version skew, and it is worth a line either way.
-			log.Warn("agent control frame carries no known event", logattr.AgentID(id))
+			if !refuse("agent control frame carries no known event") {
+				return
+			}
 		}
 	}
+}
+
+// awaitControlDrain blocks until this run's control reader has seen EOF,
+// or the grace expires.
+//
+// THE EXIT WATCHER MUST NOT CLASSIFY AN EXIT BEFORE THE CHANNEL IS
+// DRAINED. The child's exit is what closes the channel, so a frame the
+// agent wrote on its way out is still in the pipe at the instant Wait
+// returns. Deciding then is a race between a pipe and a goroutine, and
+// it is the STOPPED frame that loses it.
+//
+// Bounded, because EOF needs every copy of the write end closed: a child
+// that forked a grandchild holding the descriptor would otherwise hang
+// the watcher for as long as the grandchild lives. The expiry is
+// reported, since a descriptor outliving its process is itself a finding.
+func awaitControlDrain(done <-chan struct{}, id string, log *slog.Logger) {
+	if done == nil {
+		return
+	}
+	select {
+	case <-done:
+	case <-time.After(controlDrainGrace):
+		log.Warn("agent control channel still open after exit",
+			logattr.AgentID(id), slog.Duration("waited", controlDrainGrace))
+	}
+}
+
+// controlDrainGrace bounds that wait. EOF follows the child's last
+// descriptor closing, which is ordinarily immediate.
+const controlDrainGrace = 2 * time.Second
+
+// The two runners' halves of the seam, kept in one file so that a change
+// to either is a change made in sight of the other. The parity decision
+// 37 buys is by construction; these four methods are where it would be
+// lost if it were going to be.
+
+func (a *GoAgent) noteAnnouncedState(state, runID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.announcedState, a.announcedRunID = state, runID
+}
+
+// announcedOwnExit reports whether the agent classified this run's exit
+// itself. Caller holds mu.
+func (a *GoAgent) announcedOwnExitLocked(runID string) bool {
+	return a.announcedRunID == runID && terminalAnnouncedStates[a.announcedState]
+}
+
+func (a *PythonAgent) noteAnnouncedState(state, runID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.announcedState, a.announcedRunID = state, runID
+}
+
+// announcedOwnExitLocked is GoAgent's, for the other runner. Caller holds mu.
+func (a *PythonAgent) announcedOwnExitLocked(runID string) bool {
+	return a.announcedRunID == runID && terminalAnnouncedStates[a.announcedState]
 }

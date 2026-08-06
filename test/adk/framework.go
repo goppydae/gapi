@@ -105,6 +105,15 @@ func (h *TestHarness) Start() error {
 		// control channel is a descriptor now, so the real binding
 		// reports through the same path the Go ADK does and the stub has
 		// nothing left to be load-bearing about.
+		//
+		// REJECT IT INSTEAD. Removing FORCE is not the same as refusing
+		// the stub: productionMode defaults false, so the DummyAdk stayed
+		// REACHABLE here, and this change made it DISCARD control events.
+		// An unbuilt extension then degraded into 150-second timeouts
+		// naming no cause - the cost of a suite that cannot tell "the
+		// binding is missing" from "the agent is slow". With this set,
+		// that state is a one-line failure at import instead.
+		"ADK_REJECT_DUMMY=1",
 		"GAPI_CGROUPS_DISABLE=1",
 	)
 

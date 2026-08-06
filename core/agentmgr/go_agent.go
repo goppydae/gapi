@@ -95,6 +95,15 @@ type GoAgent struct {
 	nextRunID string
 	startTime time.Time
 	bus       *eventbus.EventBus[*anypb.Any]
+
+	// controlDone is closed when this run's control reader reaches EOF;
+	// announcedState/announcedRunID hold the last state the AGENT
+	// announced on that channel. The exit watcher reads all three to tell
+	// an orderly finish from an unowned death - see awaitControlDrain.
+	// Guarded by mu.
+	controlDone    chan struct{}
+	announcedState string
+	announcedRunID string
 }
 
 func NewGoAgent(
@@ -385,18 +394,29 @@ func (a *GoAgent) Start(ctx context.Context) error {
 	// The descriptor goes AFTER any listeners so systemd's LISTEN_FDS
 	// convention keeps its base of 3, and its number is named
 	// explicitly rather than derived by the agent.
+	//
+	// LISTEN_FDS COUNTS LISTENERS AND NOTHING ELSE. Counting the control
+	// descriptor told every agent it had one socket too many, and told an
+	// agent with NO socket that it had one - which makes
+	// ErrNoInheritedListener unreachable and sends the ADK's listenerAt
+	// at fd 3, the control channel itself. The count is therefore taken
+	// BEFORE the append, and when it is zero the variables are not set at
+	// all: an absent LISTEN_FDS is how the ADK knows there was no
+	// activation, and a present LISTEN_FDS=0 is a different claim.
+	listenerCount := len(extraFiles)
+
 	ctlPipe, cerr := newControlPipe()
 	if cerr != nil {
 		return cerr
 	}
-	controlFD := 3 + len(extraFiles)
+	controlFD := 3 + listenerCount
 	extraFiles = append(extraFiles, ctlPipe.w)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", EnvControlFD, controlFD))
 
-	if len(extraFiles) > 0 {
-		cmd.ExtraFiles = extraFiles
+	cmd.ExtraFiles = extraFiles
+	if listenerCount > 0 {
 		cmd.Env = append(cmd.Env,
-			fmt.Sprintf("LISTEN_FDS=%d", len(extraFiles)),
+			fmt.Sprintf("LISTEN_FDS=%d", listenerCount),
 			"LISTEN_PID=self",
 		)
 	}
@@ -419,7 +439,17 @@ func (a *GoAgent) Start(ctx context.Context) error {
 	// The reader owns the read end; the write end is closed as soon as
 	// the child has inherited it, or the reader never sees EOF when the
 	// child dies and the goroutine outlives the daemon's interest in it.
-	go readControl(ctlPipe.r, a, a.id, slog.Default())
+	//
+	// ctlDone is this run's drain signal, and it is per-run rather than
+	// per-agent: a restart makes a new pipe and a new reader, so a stale
+	// channel would report a previous run's ending.
+	ctlDone := make(chan struct{})
+	a.controlDone = ctlDone
+	a.announcedState, a.announcedRunID = "", ""
+	go func() {
+		defer close(ctlDone)
+		readControl(ctlPipe.r, a, a.id, slog.Default())
+	}()
 	go a.streamLogs(a.stdout)
 	go a.streamStderr(a.stderr)
 
@@ -464,10 +494,31 @@ func (a *GoAgent) Start(ctx context.Context) error {
 		a.waitOnce.Do(func() {
 			a.waitErr = watchCmd.Wait()
 		})
+		// JOIN THE CONTROL CHANNEL BEFORE CLASSIFYING THE EXIT. The frame
+		// an agent writes on its way out is still in the pipe when Wait
+		// returns, so a decision taken here without the drain is a race
+		// against a goroutine - and the frame that settles it loses.
+		awaitControlDrain(ctlDone, a.id, slog.Default())
+
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.stopping || a.cmd != watchCmd {
 			return // Stop owns this exit, or a new run replaced the slot
+		}
+		// THE AGENT ALREADY SAID WHAT THIS EXIT WAS. An agent that
+		// returns cleanly from Start announces STOPPED and then exits;
+		// reporting FAILED over the top of that made every self-stopping
+		// agent look like a crash (measured: 20/20 runs). The supervisor
+		// reports what it OBSERVES and does not re-classify what the
+		// agent ANNOUNCED - which is -099's own split, applied to the one
+		// place the two components meet.
+		if a.announcedOwnExitLocked(watchRunID) {
+			slog.Default().LogAttrs(ctx, slog.LevelInfo, "agent process exited as announced",
+				logattr.Module("agentmgr"), logattr.AgentID(a.id),
+				slog.String("announced", a.announcedState),
+				slog.Duration("uptime", time.Since(a.startTime)))
+			a.cleanupAfterExit()
+			return
 		}
 		// Named explicitly rather than left to the status payload: when
 		// this fires the only downstream evidence is a later verb
@@ -666,19 +717,24 @@ func (a *GoAgent) publishStatusWithRunID(state, message, rid string) {
 	_ = a.bus.Publish(ev)
 }
 
-func (a *GoAgent) publishHeartbeat() {
+// publishHeartbeat forwards the agent's liveness frame.
+//
+// THE FRAME IS CARRIED, NOT RE-SYNTHESIZED. This used to decode the
+// agent's agent_id and run_id, discard both, and publish a manufactured
+// LifecycleStatus{State:"RUNNING"} - which asserts a TRANSITION the agent
+// never announced, on a topic spelled as a bare literal. A heartbeat says
+// the agent is alive; only a status says it changed state, and
+// agent_status.proto's comment names that distinction explicitly.
+func (a *GoAgent) publishHeartbeat(hb *protopkg.Heartbeat) {
 	if a.bus == nil {
 		return
 	}
-	st := &protopkg.LifecycleStatus{
-		AgentId:  a.id,
-		State:    "RUNNING",
-		Time:     timestamppb.Now(),
-		Hostname: a.hostname,
+	anyp, err := anypb.New(hb)
+	if err != nil {
+		return
 	}
-	anyp, _ := anypb.New(st)
-	hb := eventbus.NewEvent[*anypb.Any]("system", "", "agent/heartbeat", a.id, anyp, false)
-	_ = a.bus.Publish(hb)
+	e := eventbus.NewEvent[*anypb.Any]("system", "", eventbus.TopicAgentHeartbeat, a.id, anyp, false)
+	_ = a.bus.Publish(e)
 }
 
 func (a *GoAgent) publishLog(stream string, data any) {

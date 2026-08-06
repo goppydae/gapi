@@ -184,6 +184,7 @@ buildGoModule rec {
       share/gapi/go/go.mod \
       share/gapi/go/adk/go/agent/run.go \
       share/gapi/go/pkg/proto/agent_status.pb.go \
+      share/gapi/go/pkg/proto/agent_control.pb.go \
       share/gapi/go/vendor/google.golang.org/protobuf/proto/proto.go \
       share/gapi/go/vendor/google.golang.org/protobuf/internal/editiondefaults/editions_defaults.binpb \
       share/gapi/go/vendor/google.golang.org/protobuf/LICENSE \

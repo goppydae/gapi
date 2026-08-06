@@ -91,6 +91,12 @@ type PythonAgent struct {
 	// adoptedWatch expires that claim when the process goes (parity with
 	// GoAgent, GAPI-DIV-048). Guarded by mu; joined by Stop and Reset.
 	adoptedWatch *adoptedWatch
+
+	// controlDone/announcedState/announcedRunID are the exit watcher's
+	// view of the control channel (parity with GoAgent). Guarded by mu.
+	controlDone    chan struct{}
+	announcedState string
+	announcedRunID string
 }
 
 // Pid returns the running agent process id, or false when no process
@@ -416,19 +422,25 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	// The descriptor goes AFTER any listeners so systemd's LISTEN_FDS
 	// convention keeps its base of 3, and its number is named
 	// explicitly rather than derived by the agent.
+	//
+	// LISTEN_FDS COUNTS LISTENERS AND NOTHING ELSE - see the identical
+	// comment in go_agent.go. The count is taken BEFORE the append, and
+	// when it is zero neither variable is set.
+	listenerCount := len(extraFiles)
+
 	ctlPipe, cerr := newControlPipe()
 	if cerr != nil {
 		return cerr
 	}
-	controlFD := 3 + len(extraFiles)
+	controlFD := 3 + listenerCount
 	extraFiles = append(extraFiles, ctlPipe.w)
 	cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%d", EnvControlFD, controlFD))
 
-	if len(extraFiles) > 0 {
-		cmd.ExtraFiles = extraFiles
+	cmd.ExtraFiles = extraFiles
+	if listenerCount > 0 {
 		cmd.Env = append(cmd.Env,
-			fmt.Sprintf("LISTEN_FDS=%d", len(extraFiles)),
-			"LISTEN_PID=self", // or just ignore
+			fmt.Sprintf("LISTEN_FDS=%d", listenerCount),
+			"LISTEN_PID=self",
 		)
 	}
 	a.cmd = cmd
@@ -462,7 +474,16 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 	// The reader owns the read end; the write end is closed as soon as
 	// the child has inherited it, or the reader never sees EOF when the
 	// child dies and the goroutine outlives the daemon's interest in it.
-	go readControl(ctlPipe.r, a, a.id, slog.Default())
+	//
+	// ctlDone is this run's drain signal (parity with GoAgent) - per-run,
+	// so a restart's watcher never reads a previous run's ending.
+	ctlDone := make(chan struct{})
+	a.controlDone = ctlDone
+	a.announcedState, a.announcedRunID = "", ""
+	go func() {
+		defer close(ctlDone)
+		readControl(ctlPipe.r, a, a.id, slog.Default())
+	}()
 	go a.streamLogs(a.stdout)
 	go a.streamStderr(a.stderr)
 
@@ -506,10 +527,26 @@ func (a *PythonAgent) Start(ctx context.Context) error {
 		a.waitOnce.Do(func() {
 			a.waitErr = watchCmd.Wait()
 		})
+		// JOIN THE CONTROL CHANNEL BEFORE CLASSIFYING (parity with
+		// GoAgent). The agent's last frame is still in the pipe when Wait
+		// returns.
+		awaitControlDrain(ctlDone, a.id, slog.Default())
+
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if a.stopping || a.cmd != watchCmd {
 			return // Stop owns this exit, or a new run replaced the slot
+		}
+		// THE AGENT ALREADY SAID WHAT THIS EXIT WAS (parity with
+		// GoAgent). The supervisor reports what it observes and does not
+		// re-classify what the agent announced.
+		if a.announcedOwnExitLocked(watchRunID) {
+			slog.Default().LogAttrs(ctx, slog.LevelInfo, "agent process exited as announced",
+				logattr.Module("agentmgr"), logattr.AgentID(a.id),
+				slog.String("announced", a.announcedState),
+				slog.Duration("uptime", time.Since(a.startTime)))
+			a.cleanupAfterExit()
+			return
 		}
 		// Named explicitly rather than left to the status payload: when
 		// this fires the only downstream evidence is a later verb
@@ -701,19 +738,24 @@ func (a *PythonAgent) publishStatusWithRunID(state, message, rid string) {
 	_ = a.bus.Publish(ev)
 }
 
-func (a *PythonAgent) publishHeartbeat() {
+// publishHeartbeat forwards the agent's liveness frame.
+//
+// THE FRAME IS CARRIED, NOT RE-SYNTHESIZED. This used to decode the
+// agent's agent_id and run_id, discard both, and publish a manufactured
+// LifecycleStatus{State:"RUNNING"} - which asserts a TRANSITION the agent
+// never announced, on a topic spelled as a bare literal. A heartbeat says
+// the agent is alive; only a status says it changed state, and
+// agent_status.proto's comment names that distinction explicitly.
+func (a *PythonAgent) publishHeartbeat(hb *protopkg.Heartbeat) {
 	if a.bus == nil {
 		return
 	}
-	st := &protopkg.LifecycleStatus{
-		AgentId:  a.id,
-		State:    "RUNNING",
-		Time:     timestamppb.Now(),
-		Hostname: a.hostname,
+	anyp, err := anypb.New(hb)
+	if err != nil {
+		return
 	}
-	anyp, _ := anypb.New(st)
-	hb := eventbus.NewEvent[*anypb.Any]("system", "", "agent/heartbeat", a.id, anyp, false)
-	_ = a.bus.Publish(hb)
+	e := eventbus.NewEvent[*anypb.Any]("system", "", eventbus.TopicAgentHeartbeat, a.id, anyp, false)
+	_ = a.bus.Publish(e)
 }
 
 func (a *PythonAgent) publishLog(stream string, data any) {

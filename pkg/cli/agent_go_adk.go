@@ -228,11 +228,17 @@ func goDirectiveFrom(dir string) (string, error) {
 // target rather than as a version to resolve, so `go build` in it touches
 // no module proxy and needs no go.sum. The layout:
 //
-//	dir/go.mod        module agentbuild.local/agent, replace ADK => ./adk
+//	dir/go.mod        module agentbuild.local/agent, both replaces
 //	dir/agent.go      the author's file
 //	dir/main.go       the generated main
-//	dir/adk/go.mod    module github.com/goppydae/gapi/adk/go
-//	dir/adk/agent/    the ADK runtime's sources
+//	dir/sdk/          the kernel's module - stageADK owns its interior
+//	dir/protobuf/     the protobuf runtime
+//
+// THE INTERIOR IS stageADK's, NOT THIS FUNCTION'S, and this comment named
+// a shape that no longer exists: decision 38 put protobuf on the control
+// channel, so the ADK stopped being its own module at dir/adk and became
+// the kernel's module under sharedStageDir. A comment describing a
+// deleted layout is a claim, and it was false.
 //
 // This replaced staging the package beside the author's source, which
 // worked only inside a checkout that could already resolve the kernel.
@@ -272,10 +278,15 @@ func assembleGoAgent(srcPath, dir string, adk goADK) error {
 //	dir/go.mod              module agentbuild.local/agent, both replaces
 //	dir/agent.go            the author's file
 //	dir/main.go             the generated main
-//	dir/gapi/go.mod         module github.com/goppydae/gapi
-//	dir/gapi/adk/go/agent/  the ADK runtime
-//	dir/gapi/pkg/proto/     the generated types, SHARED with the kernel
+//	dir/sdk/go.mod          module github.com/goppydae/gapi
+//	dir/sdk/adk/go/agent/   the ADK runtime
+//	dir/sdk/pkg/proto/      the generated types, SHARED with the kernel
 //	dir/protobuf/           the protobuf runtime
+//
+// The directory is sharedStageDir, spelled once as a constant. This
+// comment said "gapi" while the code said "sdk" - a doc naming the
+// vendor where the code names the role, which is the shape core/product's
+// scan exists to catch and does not reach comments.
 //
 // The stage stays self-contained: `go build` in it resolves both
 // replaces locally, touches no proxy, and needs no go.sum. The protobuf

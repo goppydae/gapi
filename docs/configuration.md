@@ -254,19 +254,33 @@ def start():
 | Variable | Set for | Meaning |
 | -------- | ------- | ------- |
 | `ADK_RUN_ID` | Go and Python agents | per-start correlation id |
-| `LISTEN_FDS` | socket-activated agents | how many descriptors were passed |
-| `LISTEN_PID` | socket-activated agents | `self` |
+| `ADK_CONTROL_FD` | Go and Python agents | the control descriptor the agent reports its state on |
+| `LISTEN_FDS` | socket-activated agents ONLY | how many **listeners** were passed |
+| `LISTEN_PID` | socket-activated agents ONLY | `self` |
 | `ADK_REJECT_DUMMY` | Python agents | fail loudly rather than falling back to the stub ADK |
 
-The passed sockets start at **file descriptor 3**. `LISTEN_FDS` is a
-*count*, not a descriptor number:
+The passed descriptors start at **file descriptor 3**, listeners first and
+the control descriptor after them. `LISTEN_FDS` is a *count*, not a
+descriptor number:
 
 ```python
 import socket
 
-# One socket passed: LISTEN_FDS=1, and the socket is fd 3.
+# One socket passed: LISTEN_FDS=1, the socket is fd 3,
+# and ADK_CONTROL_FD is 4.
 server = socket.socket(fileno=3)
 ```
+
+**`LISTEN_FDS` counts listeners and nothing else.** The control descriptor
+is not one, and an agent with no socket is passed **no `LISTEN_FDS` at
+all** - an absent variable is how the ADK knows there was no socket
+activation. `LISTEN_FDS=0` would be a different claim, and a count that
+included the control descriptor would send an agent's `Listener()` at fd
+3, which is the control channel itself.
+
+The ADK does this arithmetic for you: call `agent.Listener()` in Go, and
+branch on `agent.ErrNoInheritedListener` if you want the agent to run
+standalone.
 
 There is no `AGENT_ID`, `AGENT_TYPE` or `GAPI_SOCKET`, and no `ENV_`
 prefix mechanism for injecting custom variables.

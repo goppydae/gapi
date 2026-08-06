@@ -207,11 +207,16 @@ func finish(ctl *control, s *Spec, err error) int {
 			return 1
 		}
 	}
-	// A CLEAN SELF-STOP, announced. The supervisor's exit watcher sees
-	// only that the process is gone and reports FAILED; this frame is
-	// what distinguishes an orderly finish from an unowned death, and
-	// deleting it would make every self-stopping agent look like a
-	// crash.
+	// A CLEAN SELF-STOP, announced.
+	//
+	// This frame is the ONLY thing that distinguishes an orderly finish
+	// from an unowned death: the supervisor's exit watcher sees a process
+	// that is gone and nothing else. The supervisor half of that contract
+	// is core/agentmgr's - it drains this channel before classifying the
+	// exit and does not re-report what the agent has already announced.
+	// The claim was written here before that was true, and for a while it
+	// was a comment asserting a property the code did not have; both ends
+	// are now pinned by TestCleanSelfStopIsNotReportedFailed.
 	ctl.status(stateStopped, "agent stopped")
 	return 0
 }

@@ -405,7 +405,17 @@ func buildGoAgent(srcPath, outDir string) (string, string, error) {
 	// provenance hash that ignored them would certify an input that is not
 	// the whole input. HashDirectory walks recursively, so the ADK copy
 	// under adk/agent is covered without a second call.
-	sourceHash, err := crypto.HashDirectory(stage, "*.go")
+	//
+	// EVERY FILE, not "*.go". The stage stopped being all-Go the moment it
+	// carried a vendored dependency: protobuf go:embeds
+	// editions_defaults.binpb, which is COMPILED IN and which a .go
+	// pattern does not see. REPRODUCED: mutating that file left the hash
+	// byte-identical, so the stamp certified less than it compiled. A
+	// pattern needing revision whenever the staged input gains a file type
+	// is a pattern that will be wrong again - and the stage is assembled
+	// by this program, so everything in it is compiled input by
+	// construction (GAPI-DIV-103).
+	sourceHash, err := crypto.HashDirectory(stage, "*")
 	if err != nil {
 		return "", "", fmt.Errorf("hash assembled package: %w", err)
 	}
