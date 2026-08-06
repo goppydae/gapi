@@ -8,7 +8,7 @@ change specific behaviour.
 
 ## Minimal
 
-Nothing at all. `gapid` binds `127.0.0.1:14242`, logs JSON at info, and
+Nothing at all. `gapid` binds `127.0.0.1:29979`, logs JSON at info, and
 generates
 an ephemeral self-signed certificate. The default is LOOPBACK: binding
 every interface is a decision an operator makes, not one they inherit.
@@ -48,7 +48,7 @@ JSON output carries `time`, `level` (uppercase) and `msg`:
 ```yaml
 transport:
   type: quic
-  address: "0.0.0.0:14242"
+  address: "0.0.0.0:29979"
   tlsCert: /etc/gapi/server.crt
   tlsKey: /etc/gapi/server.key
   tlsCa: /etc/gapi/ca.crt
@@ -83,7 +83,7 @@ Disabled by default.
 ```yaml
 metrics:
   enabled: true
-  addr: 127.0.0.1:19090
+  addr: 127.0.0.1:10973
 ```
 
 ## Timeouts

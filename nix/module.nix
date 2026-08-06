@@ -188,10 +188,12 @@ in {
         Type = "simple";
         User = cfg.user;
         Group = cfg.group;
-        # gapid takes no -config flag: cmd/gapid/gapid.go registers only
-        # --runtime-addr, --log-level, --pid1 and --no-early-mounts, and
-        # cobra rejects anything else, so passing one made the unit fail
-        # to start whenever configFile was set. The config override is an
+        # gapid takes no -config flag: pkg/cli.RegisterDaemonFlags binds
+        # the root's persistent set (--id, the four --log-* names,
+        # --metrics-addr and the three --tls-* names) and pkg/cli adds
+        # --listen-addr, --pid1 and --no-early-mounts to `start`. Cobra
+        # rejects anything else, so passing one made the unit fail to
+        # start whenever configFile was set. The config override is an
         # environment variable (core/config/config.go reads
         # GAPI_CONFIG), set below.
         ExecStart = "${cfg.package}/bin/gapid start";

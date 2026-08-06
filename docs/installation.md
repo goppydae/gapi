@@ -90,7 +90,7 @@ at the top level, not per-system, so it imports directly:
 | `package` | package | `pkgs.callPackage ./package.nix {}` |
 | `agentsDir` | path | `/var/lib/gapi/agents` |
 | `configFile` | null or path | `null` |
-| `listenAddress` | str | `127.0.0.1:14242` |
+| `listenAddress` | str | `127.0.0.1:29979` |
 | `certFile` | path | `/var/lib/gapi/certs/server.crt` |
 | `keyFile` | path | `/var/lib/gapi/certs/server.key` |
 | `verifyKey` | null or path | `null` |
@@ -135,12 +135,12 @@ rather than broken, so `nix flake check` on a Mac finds nothing to do
 instead of failing.
 
 The images sit in `legacyPackages` rather than `packages` because
-`nix flake check` names that output without traversing it, and
-evaluating seventeen NixOS image fixpoints exhausted the CI runner
-(GAPI-DIV-068). It changes nothing about how you build one: `nix build
-.#iso` resolves against `packages.<system>` and `legacyPackages.<system>`
-in that order. The one visible difference is that `nix flake show`
-prints `omitted (use '--legacy' to show)` in place of the image list.
+`nix flake check` names that output without traversing it, which keeps
+it from evaluating every NixOS image fixpoint. It changes nothing about
+how you build one: `nix build .#iso` resolves against
+`packages.<system>` and `legacyPackages.<system>` in that order. The one
+visible difference is that `nix flake show` prints
+`omitted (use '--legacy' to show)` in place of the image list.
 
 ```bash
 nix build github:goppydae/gapi
@@ -232,14 +232,15 @@ autologin, and SSH set to `PermitRootLogin = "prohibit-password"` with
 identity into it - an authorized key baked into your own module, or
 cloud-init on the formats that carry it.
 
-This is deliberate and it is enforced. Earlier images carried
-`users.users.root.password = "gapi"` in the clear, published in this
-repository (GAPI-DIV-069); `checks.<system>.image-credentials` now
-evaluates the generator configuration on every `nix flake check` and
-fails if any user carries a plaintext password or a hash of the empty
-string. Note the residual: any image built from a tree that predates
-this change still carries that password, and there is no revocation
-path for a baked-in credential.
+This is deliberate and it is enforced.
+`checks.<system>.image-credentials` evaluates the generator
+configuration on every `nix flake check` and fails if any user carries a
+plaintext password or a hash of the empty string.
+
+> **Check images you built before this repository carried that check.**
+> They may embed `users.users.root.password = "gapi"` in the clear. A
+> baked-in credential has no revocation path, so an affected image must
+> be rebuilt, not patched.
 
 ```bash
 nix build .#vm
@@ -308,14 +309,14 @@ RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/gapid /usr/local/bin/gapid
 COPY --from=build /out/gapictl /usr/local/bin/gapictl
 ENV GAPI_AGENT_PATH=/var/lib/gapi/agents
-EXPOSE 14242/udp
+EXPOSE 29979/udp
 ENTRYPOINT ["/usr/local/bin/gapid"]
 ```
 
-QUIC is UDP. Publishing `14242/tcp` publishes nothing useful.
+QUIC is UDP. Publishing `29979/tcp` publishes nothing useful.
 
 ```bash
-docker run -p 14242:14242/udp -v ./agents:/var/lib/gapi/agents gapi
+docker run -p 29979:29979/udp -v ./agents:/var/lib/gapi/agents gapi
 ```
 
 Running `gapid` as the container's init:
@@ -415,11 +416,15 @@ gapictl agent status
 ## Troubleshooting
 
 **The unit will not start.** `journalctl -u gapi -n 50`. A cobra usage
-error means a flag that does not exist - `gapid` accepts only
-`--runtime-addr`, `--log-level`, `--pid1` and `--no-early-mounts`.
+error means a flag that does not exist. `gapid` carries nine persistent
+flags on its root - `--id`, `--log-level`, `--log-format`, `--log-file`,
+`--log-loki-url`, `--metrics-addr`, `--tls-ca`, `--tls-cert` and
+`--tls-key` - and three more on `gapid start`: `--listen-addr`,
+`--pid1` and `--no-early-mounts`. The bind address is `--listen-addr`;
+`--runtime-addr` is an older spelling that cobra now rejects.
 
 **`gapictl` cannot reach the daemon.** Check the address. The default is
-`127.0.0.1:14242`, and the transport is QUIC over UDP - a TCP-only
+`127.0.0.1:29979`, and the transport is QUIC over UDP - a TCP-only
 firewall rule silently blackholes it.
 
 **Agents are not discovered.** Confirm `GAPI_AGENT_PATH` points at
