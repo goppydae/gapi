@@ -183,3 +183,67 @@ func TestLifecycle_DistinctAgentsNoCrossTalk(t *testing.T) {
 		}
 	}
 }
+
+// TestPing_SurvivesALateSubscriber is GAPI-DIV-120's client-side gate.
+//
+// The defect: Ping published ONCE, fire-and-forget. A daemon that is
+// listening but has not yet subscribed - the whole of agent bring-up -
+// silently dropped the probe, and the client then waited out its ENTIRE
+// deadline for a pong nobody would send. Measured against the real
+// daemon before the fix: 0.21s to first pong with no agents, 30.21s with
+// the ADK fixture set, which is exactly gapictl's 30s timeout rather
+// than anything about the agents.
+//
+// The window here is deliberately WIDER than one retry interval, so this
+// test cannot pass by luck of the first publish landing late. Reverting
+// the retry loop in Ping makes it fail by timing out.
+func TestPing_SurvivesALateSubscriber(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
+
+	// No ping subscriber yet: this is the window.
+	const window = 3 * pingRetryInterval
+
+	subscribed := make(chan struct{})
+	go func() {
+		time.Sleep(window)
+		if err := bus.Subscribe("system", "", "ping", func(e eventbus.Event[*anypb.Any]) {
+			payload, err := anypb.New(&protopkg.PingStatus{Status: "pong"})
+			if err != nil {
+				return
+			}
+			reply := eventbus.NewEvent("system", "", "pong", "test-daemon", payload)
+			reply.ID = e.ID
+			_ = bus.Publish(reply)
+		}); err != nil {
+			t.Errorf("late subscribe: %v", err)
+		}
+		close(subscribed)
+	}()
+
+	// Comfortably above the window and far below the 30s production
+	// deadline, so a pass means the retry worked rather than that the
+	// deadline was generous.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	status, err := NewFromBus(bus).Ping(ctx)
+	elapsed := time.Since(start)
+
+	<-subscribed
+	if err != nil {
+		t.Fatalf("Ping across a late-subscriber window failed: %v (waited %s)", err, elapsed)
+	}
+	if status != "pong" {
+		t.Errorf("Ping status = %q, want pong", status)
+	}
+	if elapsed < window {
+		t.Errorf("Ping returned in %s, before the %s window elapsed; "+
+			"the test is not exercising a late subscriber", elapsed, window)
+	}
+}
