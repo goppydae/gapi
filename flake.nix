@@ -193,9 +193,9 @@
         #
         # The dev shell IS offered on darwin, which is the whole point: a
         # Mac can build both binaries with the Go toolchain, run the unit
-        # tests and lint. gapictl cross-compiles to darwin/arm64 today; a
-        # packaged cross-platform client would be an additive output here,
-        # not a change to this one.
+        # tests and lint. The packaged cross-platform client this note
+        # once anticipated now exists, as `gapictl` below - an ADDITIVE
+        # output, not a change to this one.
         packages = {
           # gopy is NOT gated on onLinux with the rest. It is a Go code
           # generator, not the daemon: the darwin dev shell needs it for
@@ -203,6 +203,17 @@
           # reintroduce the shell-hook build on exactly the platform
           # that has no packaged alternative (GAPI-DIV-096).
           inherit gopy;
+
+          # EVERY system, including darwin, and that is the whole point
+          # (GAPI-DIV-113). Operator decision 10 makes the control client
+          # cross-platform while the daemon is not; before this attribute
+          # existed, darwin got `gopy` and no control binary at all,
+          # because the only derivation carrying gapictl is the
+          # platforms.linux one below. Cross-compilation was verified
+          # before advertising it - see nix/gapictl.nix - since offering
+          # a package for an unchecked platform is what
+          # GAPI-DIV-068's --all-systems flag exists to catch.
+          gapictl = pkgs.callPackage ./nix/gapictl.nix { };
         } // pkgs.lib.optionalAttrs onLinux {
           default = pkgs.callPackage ./nix/package.nix { };
           gapi = self.packages.${system}.default;

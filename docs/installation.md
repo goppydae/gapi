@@ -123,7 +123,8 @@ nix flake show github:goppydae/gapi
 | Output | What it is |
 | ------ | ---------- |
 | `nixosModules.default`, `nixosModules.gapi` | the module above |
-| `packages.<system>.default`, `.gapi` | the two binaries |
+| `packages.<system>.default`, `.gapi` | the two binaries and the Python ADK; Linux only |
+| `packages.<system>.gapictl` | the control client alone, on Linux **and** darwin |
 | `legacyPackages.<system>.{iso,vm,qcow,raw,docker,lxc,lxc-metadata,virtualbox,vmware}` | machine images |
 | `checks.<system>.module-boot` | a NixOS VM test that boots the module |
 | `checks.<system>.image-credentials` | asserts the images ship no default credential |
@@ -133,6 +134,14 @@ Systems are `x86_64-linux`, `aarch64-linux` and `aarch64-darwin`. The
 image outputs and the checks are Linux-only - on darwin they are absent
 rather than broken, so `nix flake check` on a Mac finds nothing to do
 instead of failing.
+
+`gapictl` is the exception, and deliberately so: the control-plane
+client is cross-platform while the daemon is not, so a macOS operator
+builds `nix build .#gapictl` and drives a remote daemon. It carries no
+Python ADK - that tree needs a C toolchain linked against
+`python3-config`, which this repository does not package for darwin - so
+`gapictl agent build` and agent `--describe` need a Linux host. Every
+control verb works.
 
 The images sit in `legacyPackages` rather than `packages` because
 `nix flake check` names that output without traversing it, which keeps
