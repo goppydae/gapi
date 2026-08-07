@@ -239,7 +239,7 @@
         # NOTHING ELSE CHANGES FOR AN OPERATOR. `nix build .#iso` still
         # resolves, because the installable attribute paths nix tries
         # are packages.<system>.<name> AND legacyPackages.<system>.<name>
-        # in that order; docs/installation.md and
+        # in that order; docs/content/user/installation.md and
         # nix/generators/README.md keep their commands verbatim. The one
         # visible difference is `nix flake show`, which prints
         # "omitted (use '--legacy' to show)" for this output.
