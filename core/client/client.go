@@ -64,13 +64,22 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 
 	// Correlate the reply to this request's ID so concurrent Ping callers don't
 	// steal each other's pong. The daemon echoes the request ID onto the reply.
+	// NON-BLOCKING sends, because the retry below can draw more than one
+	// reply for a single request ID and both channels hold exactly one.
+	// A second blocking send would park this handler goroutine forever.
 	if err := c.bus.SubscribeCorrelated("system", "", "pong", req.ID, func(e eventbus.Event[*anypb.Any]) {
 		var pong protopkg.PingStatus
 		if err := e.Payload.UnmarshalTo(&pong); err != nil {
-			errCh <- fmt.Errorf("failed to unmarshal pong: %w", err)
+			select {
+			case errCh <- fmt.Errorf("failed to unmarshal pong: %w", err):
+			default:
+			}
 			return
 		}
-		done <- pong.Status
+		select {
+		case done <- pong.Status:
+		default:
+		}
 	}); err != nil {
 		return "", fmt.Errorf("failed to subscribe to pong: %w", err)
 	}
@@ -79,15 +88,48 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to publish ping: %w", err)
 	}
 
-	select {
-	case status := <-done:
-		return status, nil
-	case err := <-errCh:
-		return "", err
-	case <-ctx.Done():
-		return "", ctx.Err()
+	// RETRY WITHIN THE DEADLINE (GAPI-DIV-120).
+	//
+	// A ping is published fire-and-forget: a daemon that is listening but
+	// has not yet subscribed silently drops it, and a single publish then
+	// waits out the ENTIRE deadline for a pong nobody will ever send. That
+	// turned a sub-second probe into a 30-second stall whenever the client
+	// won the race against the daemon's subscription.
+	//
+	// GAPI-DIV-120's primary fix is supervisor-side - liveness subscribes
+	// before agent bring-up - so this is defence in depth rather than the
+	// cure. It is worth having anyway: the supervisor's ordering is one
+	// repository's guarantee, and this client is what goblin embeds.
+	//
+	// The SAME req is republished, deliberately. The subscription above is
+	// correlated to req.ID, so a fresh event per attempt would need a
+	// fresh subscription and would leak one per retry.
+	ticker := time.NewTicker(pingRetryInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case status := <-done:
+			return status, nil
+		case err := <-errCh:
+			return "", err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-ticker.C:
+			if err := c.bus.Publish(req); err != nil {
+				return "", fmt.Errorf("failed to republish ping: %w", err)
+			}
+		}
 	}
 }
+
+// pingRetryInterval is how often Ping republishes while awaiting a pong.
+//
+// Chosen against the measured cost of the window it covers rather than
+// picked round: agent bring-up held the subscription off for ~0.3s in
+// the ADK fixture set, so an interval well under that closes the gap in
+// a handful of attempts while staying negligible against a 30s deadline.
+const pingRetryInterval = 250 * time.Millisecond
 
 // ReloadAgents triggers a reload of the agent registry on the daemon.
 func (c *Client) ReloadAgents(ctx context.Context) error {

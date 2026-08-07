@@ -29,6 +29,11 @@ type TestHarness struct {
 	binDir    string
 	ctx       context.Context
 	cancel    context.CancelFunc
+	// readyAfter is how long Start waited for the daemon's first pong.
+	// Recorded on the SUCCESS path deliberately: this suite's flake was a
+	// readiness stall that still ended in a pass, so a number only kept
+	// on failure would never have shown it (GAPI-DIV-120).
+	readyAfter time.Duration
 }
 
 // NewHarness creates a harness over the whole fixtures tree.
@@ -137,6 +142,13 @@ func (h *TestHarness) Start() error {
 		}
 		return fmt.Errorf("gapid failed to become ready: %w", err)
 	}
+
+	// PRINTED, not merely recorded. A field nothing reads is the defect
+	// this repo keeps producing, and the number is only useful if a CI
+	// log carries it: readiness here was 30s per supervisor start for
+	// months while every run still passed, so nothing but the printed
+	// figure would have shown the stall (GAPI-DIV-120).
+	fmt.Printf("harness: gapid answered ping after %s\n", h.readyAfter.Round(time.Millisecond))
 
 	return nil
 }
@@ -253,20 +265,79 @@ func findProjectRoot() (string, error) {
 	}
 }
 
-// waitForReady waits for gapid to be responsive using gapictl ping
+// notReadyError reports a readiness timeout as DATA, so a failing run
+// says what was observed rather than only that time ran out.
+//
+// GAPI-DIV-120 was diagnosed from a local reproduction rather than from
+// CI, because every CI occurrence produced a bare deadline error: it
+// named neither how many probes were attempted nor what the last one
+// said. The numbers below are what makes the next occurrence readable
+// from the log alone.
+type notReadyError struct {
+	Elapsed  time.Duration
+	Attempts int
+	// LastOutput is the final probe's combined output. `gapictl ping`
+	// prints its own diagnosis - which address it dialled and where it
+	// looked - and that line is the difference between "no daemon" and
+	// "daemon present, not answering".
+	LastOutput string
+	LastErr    error
+}
+
+func (e *notReadyError) Error() string {
+	return fmt.Sprintf(
+		"gapid did not answer ping within %s: %d probe(s), last error: %v; last probe said: %s",
+		e.Elapsed.Round(time.Millisecond), e.Attempts, e.LastErr, strings.TrimSpace(e.LastOutput))
+}
+
+func (e *notReadyError) Unwrap() error { return e.LastErr }
+
+// probeTimeout bounds ONE readiness probe.
+//
+// Shorter than the readiness budget on purpose. `gapictl ping` carries
+// its own 30s deadline, so with a 30s budget and no per-probe bound this
+// loop got exactly ONE attempt and never polled at all - a retry loop
+// that cannot retry. Bounding the probe here is what makes the budget a
+// number of attempts rather than a single blocking call.
+const probeTimeout = 5 * time.Second
+
+// waitForReady waits for gapid to answer a ping, and reports what it saw
+// if it never does.
 func (h *TestHarness) waitForReady(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+	start := time.Now()
+	deadline := start.Add(timeout)
+
+	var attempts int
+	var lastOutput string
+	var lastErr error
+
 	for time.Now().Before(deadline) {
 		// Check process liveness
 		if h.gapidCmd.ProcessState != nil && h.gapidCmd.ProcessState.Exited() {
-			return fmt.Errorf("gapid process exited unexpectedly")
+			return fmt.Errorf("gapid process exited unexpectedly after %s (%d probes)",
+				time.Since(start).Round(time.Millisecond), attempts)
 		}
 
-		cmd := exec.Command(h.gapictl, "ping")
-		if err := cmd.Run(); err == nil {
+		attempts++
+		ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+		out, err := exec.CommandContext(ctx, h.gapictl, "ping").CombinedOutput()
+		cancel()
+		if err == nil {
+			// Recorded on success too: a ping that took seconds is the
+			// early warning for the failure this instrumentation exists
+			// to explain, and it is invisible if only failures report.
+			h.readyAfter = time.Since(start)
 			return nil
 		}
+		lastOutput, lastErr = string(out), err
+
 		time.Sleep(1 * time.Second)
 	}
-	return context.DeadlineExceeded
+
+	return &notReadyError{
+		Elapsed:    time.Since(start),
+		Attempts:   attempts,
+		LastOutput: lastOutput,
+		LastErr:    lastErr,
+	}
 }
