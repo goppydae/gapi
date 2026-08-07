@@ -298,6 +298,20 @@ func (q *QUIC) handleStream(s *quic.Stream) {
 		Tags:      env.Tags,
 	}
 
+	// RECEIPT IS LOGGED, AND UNTIL NOW NOTHING WAS. eventbus.Publish
+	// logs every send; this path logged only its three error cases and
+	// never a success, so a request lost in flight and one that arrived
+	// and was answered slowly produced identical logs.
+	//
+	// Logged BEFORE dispatch, deliberately: the claim is "the frame
+	// arrived and parsed", not "a handler ran". Logging after onRemote
+	// would fold handler latency and any panic into the arrival record.
+	// The event id matches the sender's, so a send and its receipt join
+	// across two processes' logs.
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "structured event",
+		logattr.Module("transport"), logattr.Event("receive"),
+		logattr.EventID(e.ID), logattr.Source(e.Source), logattr.Topic(e.Topic))
+
 	if q.onRemote != nil {
 		q.onRemote(e)
 	}
@@ -333,9 +347,21 @@ func (q *QUIC) PublishRemote(ctx context.Context, e eventbus.Event[*anypb.Any]) 
 	return nil
 }
 
-// publishTo sends one event to one peer. The body is unchanged from when
-// this transport addressed a single connection - the defect was never in
-// how a frame is written, only in how many peers were reachable.
+// publishTo sends one event to one peer.
+//
+// EVERY EXIT FROM THIS GOROUTINE IS LOGGED. PublishRemote returns nil as
+// soon as these goroutines are spawned, so "Publish returned nil" means
+// "a send was started", NOT "the bytes went out". Each failure path used
+// to be a bare `return` - no error, no log - which made a publish that
+// never reached the wire indistinguishable from one the peer answered
+// slowly, in a system that logs every transmission.
+//
+// The sends stay ASYNCHRONOUS and PublishRemote still returns nil:
+// making the caller wait would let one unresponsive peer block every
+// other publisher, which is what the peer-set fan-out exists to prevent.
+// Only the silence changes. Turning a lost send into a RETURNED error is
+// a larger change with a real behavioural cost and wants its own
+// evidence.
 func (q *QUIC) publishTo(ctx context.Context, conn *quic.Conn, e eventbus.Event[*anypb.Any]) {
 	// Async publish to prevent blocking on dead clients
 	go func() {
@@ -343,6 +369,13 @@ func (q *QUIC) publishTo(ctx context.Context, conn *quic.Conn, e eventbus.Event[
 		defer cancel()
 		s, err := conn.OpenStreamSync(timeoutCtx)
 		if err != nil {
+			// The event id is the join key. Without it a reader can see
+			// that A publish failed but not WHICH request vanished, and
+			// correlating a lost request to a client's timeout is the
+			// entire diagnostic task.
+			slog.Default().LogAttrs(ctx, slog.LevelWarn, "publish stream open failed",
+				logattr.Module("transport"), logattr.EventID(e.ID),
+				logattr.Topic(e.Topic), logattr.Err(err))
 			return
 		}
 		// Write-side close in a fire-and-forget publish goroutine: a close
@@ -391,10 +424,22 @@ func (q *QUIC) publishTo(ctx context.Context, conn *quic.Conn, e eventbus.Event[
 		}
 		lenBuf := make([]byte, 4)
 		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
+		// A PARTIAL FRAME IS WORSE THAN NO FRAME, so the two writes are
+		// logged separately. Losing the length prefix means the peer
+		// never sees a message; failing between the prefix and the body
+		// leaves the peer blocked reading a payload that will not
+		// arrive, until its own read path gives up. Those are different
+		// failures and a single shared message would conflate them.
 		if _, err := s.Write(lenBuf); err != nil {
+			slog.Default().LogAttrs(ctx, slog.LevelWarn, "publish length prefix write failed",
+				logattr.Module("transport"), logattr.EventID(e.ID),
+				logattr.Topic(e.Topic), logattr.Err(err))
 			return
 		}
 		if _, err := s.Write(data); err != nil {
+			slog.Default().LogAttrs(ctx, slog.LevelWarn, "publish payload write failed",
+				logattr.Module("transport"), logattr.EventID(e.ID),
+				logattr.Topic(e.Topic), logattr.Bytes(dataLen), logattr.Err(err))
 			return
 		}
 	}()
