@@ -37,15 +37,16 @@ func TestPublishRemoteWithoutPeerReportsNoPeer(t *testing.T) {
 		}
 	}()
 
-	ev := eventbus.NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil, false)
+	ev := eventbus.NewEvent[*anypb.Any]("system", "", "test.msg", "test", nil)
 
 	if perr := q.PublishRemote(context.Background(), ev); !errors.Is(perr, eventbus.ErrNoPeer) {
 		t.Fatalf("PublishRemote with no peer = %v, want ErrNoPeer", perr)
 	}
 
-	// Broadcast delegates to PublishRemote, so it must report the same
-	// thing; the bus calls whichever the event asked for.
-	if berr := q.Broadcast(ev); !errors.Is(berr, eventbus.ErrNoPeer) {
-		t.Fatalf("Broadcast with no peer = %v, want ErrNoPeer", berr)
-	}
+	// The Broadcast half of this test is gone with the method
+	// (GAPI-DIV-106). It asserted that Broadcast reported the same thing
+	// as PublishRemote, which it necessarily did - it called it. There is
+	// one operation now, and TestPublishAfterEveryPeerLeavesReportsNoPeer
+	// covers the case this one cannot: an empty set that once had a peer,
+	// rather than one that never did.
 }
