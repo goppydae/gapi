@@ -1,0 +1,43 @@
+.nh
+.TH "gapictl" "1" "Jan 1970" "gapictl 0.1.0-proto2k" "General Commands Manual"
+
+.SH NAME
+gapictl-ping - Ping the daemon
+
+
+.SH SYNOPSIS
+\fBgapictl ping [flags]\fP
+
+
+.SH DESCRIPTION
+Ping the daemon
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for ping
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--control-addr\fP=""
+	Address of the target daemon's control plane (empty: from config)
+
+.PP
+\fB--log-level\fP=""
+	Log level: debug, info, warn, error
+
+.PP
+\fB--tls-ca\fP=""
+	CA certificate used to verify the daemon
+
+.PP
+\fB--tls-insecure\fP[=false]
+	Skip verification (INSECURE)
+
+.PP
+\fB-v\fP, \fB--version\fP[=false]
+	version for gapictl
+
+
+.SH SEE ALSO
+\fBgapictl(1)\fP

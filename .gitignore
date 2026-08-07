@@ -81,11 +81,34 @@ gapi.sock
 *.sqlite
 
 # --- Generated Documentation ---
+#
+# GENERATED REFERENCE IS COMMITTED. docs/content/reference, docs/man and
+# docs/data/defaults.json are produced by `mage docs:generate` and checked
+# in, so the reference reads on the forge without a build and the drift
+# gate has committed bytes to compare against. Only the RENDERED SITE and
+# the materialised magelib asset tree are ignored.
+#
+# `man/` used to sit here unanchored, which matched docs/man/ as well as
+# the legacy root-level output - so every generated man page would have
+# been silently excluded from the commit while `mage docs:check` stayed
+# green locally, and a fresh clone would have had nothing to compare.
+# Anchored to the root now. This is the same defect shape as the
+# `result/` trailing slash two lines' worth of history above, and as the
+# unanchored rsync exclude that read as a darwin incompatibility: a
+# pattern that matches more than it names, failing silently.
 docs/_build/
 docs/build/
 docs/generated/
+docs/public/
+docs/.magelib/
+docs/resources/
+.hugo_build.lock
 site/
-man/
+/man/
+
+# Built by `go build ./tools/...`, which writes to the working directory
+# rather than to bin/.
+/gendocs
 
 # --- Mage Build Artifacts ---
 mage_output/

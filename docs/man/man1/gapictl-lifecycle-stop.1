@@ -1,0 +1,43 @@
+.nh
+.TH "gapictl" "1" "Jan 1970" "gapictl 0.1.0-proto2k" "General Commands Manual"
+
+.SH NAME
+gapictl-lifecycle-stop - Send stop command to one or more agents
+
+
+.SH SYNOPSIS
+\fBgapictl lifecycle stop AGENT... [flags]\fP
+
+
+.SH DESCRIPTION
+Send stop command to one or more agents
+
+
+.SH OPTIONS
+\fB-h\fP, \fB--help\fP[=false]
+	help for stop
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--control-addr\fP=""
+	Address of the target daemon's control plane (empty: from config)
+
+.PP
+\fB--log-level\fP=""
+	Log level: debug, info, warn, error
+
+.PP
+\fB--tls-ca\fP=""
+	CA certificate used to verify the daemon
+
+.PP
+\fB--tls-insecure\fP[=false]
+	Skip verification (INSECURE)
+
+.PP
+\fB-v\fP, \fB--version\fP[=false]
+	version for gapictl
+
+
+.SH SEE ALSO
+\fBgapictl-lifecycle(1)\fP

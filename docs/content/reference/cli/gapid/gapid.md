@@ -1,0 +1,29 @@
+---
+title: "gapid"
+---
+
+## gapid
+
+Supervision kernel daemon
+
+### Options
+
+```
+  -h, --help                  help for gapid
+      --id string             Unique node identifier (default: hostname)
+      --log-file string       Additional rotated file sink
+      --log-format string     Log format: json or console
+      --log-level string      Log level: debug, info, warn, error
+      --log-loki-url string   Forward logs to a Loki endpoint
+      --metrics-addr string   Prometheus listen address (empty: disabled)
+      --tls-ca string         CA certificate for peer verification
+      --tls-cert string       This node's certificate
+      --tls-key string        This node's private key
+  -v, --version               version for gapid
+```
+
+### SEE ALSO
+
+* [gapid start](./gapid_start/)	 - Start the gapid daemon
+* [gapid version](./gapid_version/)	 - Print version info
+

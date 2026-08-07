@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/checkpoint-restore/go-criu/v7 v7.2.0
+	github.com/cpuguy83/go-md2man/v2 v2.0.6
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-python/gopy v0.4.10
 	github.com/google/go-cmp v0.7.0
@@ -59,6 +60,7 @@ require (
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sourcegraph/conc v0.3.1-0.20240121214520-5f936abd7ae8 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
