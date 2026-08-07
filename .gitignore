@@ -96,15 +96,18 @@ gapi.sock
 # `result/` trailing slash two lines' worth of history above, and as the
 # unanchored rsync exclude that read as a darwin incompatibility: a
 # pattern that matches more than it names, failing silently.
-docs/_build/
-docs/build/
-docs/generated/
+#
+# The mkdocs-era patterns are gone with the targets that produced them:
+# docs/_build/, docs/build/ and site/ were mkdocs output, and /man/ was
+# Docs.Man's pandoc output at the repository root. None of the four
+# exists on disk, and an ignore rule for a directory nothing writes is
+# an instruction to a future reader that the build still works that way.
+# docs/generated/ goes with them; the generated reference is committed
+# under docs/content, docs/man and docs/data, which is the point.
 docs/public/
 docs/.magelib/
 docs/resources/
 .hugo_build.lock
-site/
-/man/
 
 # Built by `go build ./tools/...`, which writes to the working directory
 # rather than to bin/.
