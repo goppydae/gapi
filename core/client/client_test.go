@@ -206,7 +206,7 @@ func TestPing_SurvivesALateSubscriber(t *testing.T) {
 	})
 
 	// No ping subscriber yet: this is the window.
-	const window = 3 * pingRetryInterval
+	const window = 3 * requestRetryInterval
 
 	subscribed := make(chan struct{})
 	go func() {
@@ -244,6 +244,74 @@ func TestPing_SurvivesALateSubscriber(t *testing.T) {
 	}
 	if elapsed < window {
 		t.Errorf("Ping returned in %s, before the %s window elapsed; "+
+			"the test is not exercising a late subscriber", elapsed, window)
+	}
+}
+
+// TestAgentStatus_SurvivesALateSubscriber is GAPI-DIV-122's gate.
+//
+// The same defect as TestPing_SurvivesALateSubscriber, in the method the
+// -120 fix did not reach. The daemon subscribes agents/ only after
+// setupAgents returns, so a status request issued during bring-up has no
+// subscriber and is dropped, and a single publish then waits out the
+// whole deadline. Measured in a clean NixOS guest before the fix: the
+// request went out at 17:06:05 and the client gave up at 17:06:35 -
+// exactly its 30s deadline, one call, no load. That is what had been
+// reddening the VM check on main for five consecutive commits.
+//
+// Retrying is safe HERE and not everywhere: a status read is idempotent.
+// The lifecycle verbs are excluded deliberately, because re-publishing a
+// mutating action could execute it twice. GAPI-DIV-122 names each
+// exclusion.
+//
+// As with the ping test, the window is wider than one retry interval and
+// the elapsed time is asserted, so this cannot pass by luck or without
+// exercising a late subscriber.
+func TestAgentStatus_SurvivesALateSubscriber(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
+
+	const window = 3 * requestRetryInterval
+
+	subscribed := make(chan struct{})
+	go func() {
+		time.Sleep(window)
+		if err := bus.Subscribe("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
+			payload, err := anypb.New(&protopkg.AgentStatusResponse{
+				Agents: []*protopkg.AgentStatus{{Id: "agent-1"}},
+			})
+			if err != nil {
+				return
+			}
+			reply := eventbus.NewEvent("system", "", "agents.reply", "test-daemon", payload)
+			reply.ID = e.ID
+			_ = bus.Publish(reply)
+		}); err != nil {
+			t.Errorf("late subscribe: %v", err)
+		}
+		close(subscribed)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	agents, err := NewFromBus(bus).AgentStatus(ctx)
+	elapsed := time.Since(start)
+
+	<-subscribed
+	if err != nil {
+		t.Fatalf("AgentStatus across a late-subscriber window failed: %v (waited %s)", err, elapsed)
+	}
+	if len(agents) != 1 || agents[0].Id != "agent-1" {
+		t.Errorf("AgentStatus = %v, want one agent-1", agents)
+	}
+	if elapsed < window {
+		t.Errorf("AgentStatus returned in %s, before the %s window elapsed; "+
 			"the test is not exercising a late subscriber", elapsed, window)
 	}
 }
