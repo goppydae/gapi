@@ -44,7 +44,14 @@ var toolchain = magelib.DoctorConfig{
 	// $GOBIN=.bin, which leads PATH and is not under /nix/store, so
 	// reintroducing that build makes hermetic-resolution fail - in doctor
 	// and in checkHermetic, which gates every real target.
-	SharedTools: []string{"buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports", "mkdocs", "pandoc", "gopy"},
+	// hugo replaced mkdocs and pandoc when the generated site landed. All
+	// three are documentation tools and that is the whole resemblance:
+	// mkdocs rendered a hand-written tree that nothing generated, and
+	// pandoc converted three of those pages into man pages that nothing
+	// compared to source. Both targets are retired, so leaving their
+	// tools declared would have kept two entries the doctor requires,
+	// the hermetic check gates on, and no target uses.
+	SharedTools: []string{"buf", "golangci-lint", "gosec", "govulncheck", "mage", "goimports", "hugo", "gopy"},
 }
 
 // fileLengthWaivers is DEBT: hand-written files the 500-line rule applies
@@ -382,7 +389,7 @@ func Fmt() error {
 //     audited chokepoint (clean + absolute, root-confined where a root
 //     exists); the rule now only fires inside that package.
 func Lint() error {
-	mg.Deps(checkHermetic, checkTerminology, checkFileLength, checkLedger, LicenseCheck)
+	mg.Deps(checkHermetic, checkTerminology, checkFileLength, checkLedger, LicenseCheck, Docs.Check)
 	return magelib.Lint("G204", "G304")
 }
 
@@ -488,51 +495,156 @@ func CIVM() error {
 		"--max-jobs", "1", "--keep-going")
 }
 
+// docsConfig is this repo's documentation site.
+//
+// Generators is what gives tools/gendocs a caller. Until this landed
+// nothing in the Magefile, any workflow or any nix file invoked it, so
+// the 28 CLI pages, 30 man pages, configuration reference and
+// defaults.json on main were generated once and committed with NOTHING
+// comparing them to source - worse than not generating at all, because
+// the output looks generated. See GAPI-DIV-119.
+//
+// The generator is invoked with ONE APPENDED ARGUMENT, the output root.
+// That is magelib's contract and it is what makes the drift gate
+// trustworthy: CheckDocsDrift regenerates into a temporary tree and
+// byte-compares, which it can only do if generation is redirectable. A
+// generator that hardcoded its output would force the gate to either
+// mutate the working tree - repairing the drift it is measuring - or
+// compare against something it did not produce.
+//
+// APIPackages is empty, so no gomarkdoc target exists here. gapi
+// publishes an operator reference rather than a Go API reference; the
+// exported surface is served by pkg.go.dev, which the sidebar links.
+//
+// Committed names all 60 generated paths individually because the gate's
+// third condition depends on it: a file that generation produces and
+// Committed does not name is reported as UNTRACKED, so an artifact
+// cannot quietly fall outside drift control. Listing a directory would
+// give up exactly that check.
+var docsConfig = magelib.DocsConfig{
+	Dir:        "docs",
+	Title:      "gapi",
+	BaseURL:    "https://goppydae.github.io/gapi/",
+	Repo:       "github.com/goppydae/gapi",
+	Generators: [][]string{{"go", "run", "./tools/gendocs"}},
+	Committed:  docsCommitted,
+}
+
+// docsCommitted are the generated paths under drift control.
+//
+// Every path here is produced by tools/gendocs and checked in, so the
+// reference is readable on the forge without a build. The list is
+// exhaustive by necessity rather than by style: CheckDocsDrift reports
+// a generated file this list omits as untracked and fails, which is the
+// condition that keeps a new page from escaping the gate.
+var docsCommitted = []string{
+	// The gapictl and gapid command trees, walked from the roots the
+	// binaries actually run.
+	"docs/content/reference/cli/gapictl/gapictl.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_build.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_clean.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_new.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_reload.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_status.md",
+	"docs/content/reference/cli/gapictl/gapictl_agent_verify.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_age-keygen.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_decrypt.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_encrypt.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_keygen.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_sign.md",
+	"docs/content/reference/cli/gapictl/gapictl_crypto_verify.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle_reload.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle_restart.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle_start.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle_status.md",
+	"docs/content/reference/cli/gapictl/gapictl_lifecycle_stop.md",
+	"docs/content/reference/cli/gapictl/gapictl_ping.md",
+	"docs/content/reference/cli/gapictl/gapictl_shutdown.md",
+	"docs/content/reference/cli/gapictl/gapictl_tui.md",
+	"docs/content/reference/cli/gapictl/gapictl_version.md",
+	"docs/content/reference/cli/gapid/gapid.md",
+	"docs/content/reference/cli/gapid/gapid_start.md",
+	"docs/content/reference/cli/gapid/gapid_version.md",
+
+	// The configuration reference, a join of the registered defaults
+	// and a reflection walk over the config schema.
+	"docs/content/reference/configuration.md",
+
+	// Man pages: sections 1 and 5 generated from the same sources as
+	// the pages above, section 7 converted from the written overview.
+	"docs/man/man1/gapictl-agent-build.1",
+	"docs/man/man1/gapictl-agent-clean.1",
+	"docs/man/man1/gapictl-agent-new.1",
+	"docs/man/man1/gapictl-agent-reload.1",
+	"docs/man/man1/gapictl-agent-status.1",
+	"docs/man/man1/gapictl-agent-verify.1",
+	"docs/man/man1/gapictl-agent.1",
+	"docs/man/man1/gapictl-crypto-age-keygen.1",
+	"docs/man/man1/gapictl-crypto-decrypt.1",
+	"docs/man/man1/gapictl-crypto-encrypt.1",
+	"docs/man/man1/gapictl-crypto-keygen.1",
+	"docs/man/man1/gapictl-crypto-sign.1",
+	"docs/man/man1/gapictl-crypto-verify.1",
+	"docs/man/man1/gapictl-crypto.1",
+	"docs/man/man1/gapictl-lifecycle-reload.1",
+	"docs/man/man1/gapictl-lifecycle-restart.1",
+	"docs/man/man1/gapictl-lifecycle-start.1",
+	"docs/man/man1/gapictl-lifecycle-status.1",
+	"docs/man/man1/gapictl-lifecycle-stop.1",
+	"docs/man/man1/gapictl-lifecycle.1",
+	"docs/man/man1/gapictl-ping.1",
+	"docs/man/man1/gapictl-shutdown.1",
+	"docs/man/man1/gapictl-tui.1",
+	"docs/man/man1/gapictl-version.1",
+	"docs/man/man1/gapictl.1",
+	"docs/man/man1/gapid-start.1",
+	"docs/man/man1/gapid-version.1",
+	"docs/man/man1/gapid.1",
+	"docs/man/man5/gapi.conf.5",
+	"docs/man/man7/gapi.7",
+
+	// The defaults, published as data so a document can cite a value
+	// without transcribing it.
+	"docs/data/defaults.json",
+}
+
 // Documentation tasks
 type Docs mg.Namespace
 
-// Html generates the static documentation site using MkDocs
-func (Docs) Html() error {
-	fmt.Println("Generating HTML documentation...")
-	// Check for mkdocs
-	if _, err := exec.LookPath("mkdocs"); err != nil {
-		return fmt.Errorf("mkdocs not found. Run 'nix develop' to get documentation tools")
-	}
-	return sh.RunV("mkdocs", "build")
+// Sync materialises the shared Hugo assets into docs/.magelib.
+func (Docs) Sync() error {
+	mg.Deps(checkHermetic)
+	return magelib.DocsSync(docsConfig)
 }
 
-// Man generates man pages from markdown files using Pandoc
-func (Docs) Man() error {
-	fmt.Println("Generating Man pages...")
-	// Check for pandoc
-	if _, err := exec.LookPath("pandoc"); err != nil {
-		return fmt.Errorf("pandoc not found. Run 'nix develop' to get documentation tools")
-	}
+// Generate renders the reference from source.
+func (Docs) Generate() error {
+	mg.Deps(checkHermetic)
+	return magelib.DocsGenerate(docsConfig)
+}
 
-	if err := os.MkdirAll("man/man1", 0755); err != nil {
-		return err
-	}
+// Build renders the static site into docs/public.
+func (Docs) Build() error {
+	mg.Deps(checkHermetic)
+	return magelib.DocsBuild(docsConfig)
+}
 
-	// Generate main man page
-	// Metadata in frontmatter (title, section) is respected by pandoc if present,
-	// otherwise we might want to set title via flags.
-	// We'll generate a basic man page for the main entry points.
+// Serve runs Hugo's own server with live reload.
+func (Docs) Serve() error {
+	mg.Deps(checkHermetic)
+	return magelib.DocsServe(docsConfig)
+}
 
-	pages := map[string]string{
-		"docs/index.md":           "man/man1/gapi.1",
-		"docs/library_usage.md":   "man/man1/gapi-library.1",
-		"docs/getting-started.md": "man/man1/gapi-quickstart.1",
-	}
-
-	for src, dst := range pages {
-		fmt.Printf("Generating %s -> %s\n", src, dst)
-		if err := sh.Run("pandoc", src, "-s", "-t", "man", "-o", dst); err != nil {
-			return fmt.Errorf("failed to generate %s: %w", dst, err)
-		}
-	}
-
-	fmt.Println("Man pages generated in ./man/man1")
-	return nil
+// Check fails when the committed reference no longer matches its source.
+//
+// Wired into Lint rather than left to a separate invocation, because a
+// gate nobody runs is the state this repo's reference was already in.
+func (Docs) Check() error {
+	mg.Deps(checkHermetic)
+	return magelib.CheckDocsDrift(docsConfig)
 }
 
 // checkHermetic ensures tools are running from Nix store
