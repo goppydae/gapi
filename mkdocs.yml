@@ -18,22 +18,9 @@ nav:
     - Configuration: configuration.md
     - Configuration Examples: config-example.md
   - Design:
-    - Architecture: gapi-design-document.md
-    - Features: features.md
     - Library Usage: library_usage.md
-    - Protobuf Compatibility: protobuf_compatibility.md
-  - Operations:
-    - PID 1: pid1-testing.md
-  - Development:
-    - Developer Guide: development.md
+  - Agents:
     - Agent Examples: agent-examples.md
-    - Cursed Knowledge: cursed-knowledge.md
-    - Determinism Checklist: determinism_checklist.md
-  - Reference:
-    - Glossary: glossary.md
-    - Lexicon: lexicon.md
-    - Lore: lore.md
-    - History: history.md
 
 markdown_extensions:
   - admonition

@@ -349,9 +349,9 @@ The only automated path is:
 mage testPid1
 ```
 
-which runs `gapid` as pid 1 of a rootless podman container. See
-[pid1-testing.md](pid1-testing.md) for what it asserts and how to
-reproduce it by hand.
+which runs `gapid` as pid 1 of a rootless podman container. What it asserts,
+and how to reproduce it by hand, is documented in the goppydae-docs
+repository.
 
 For a NixOS guest, the flake's VM checks are the supported route:
 
@@ -459,5 +459,5 @@ process gets a capability error even with the binary present.
 
 - [Getting started](getting-started.md) - build and run your first agent
 - [Configuration](configuration.md) - every config key and metadata field
-- [Development](development.md) - working on GAPI itself
-- [PID 1 testing](pid1-testing.md) - running as init
+- Working on GAPI itself, and running it as init, are documented in the
+  goppydae-docs repository

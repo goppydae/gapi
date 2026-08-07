@@ -192,5 +192,5 @@ mage python:build
 
 - [Configuration](configuration.md) - every config key and metadata field
 - [Agent examples](agent-examples.md) - services, timers, sockets
-- [Development](development.md) - working on GAPI itself
+- Working on GAPI itself is documented in the goppydae-docs repository
 - [Installation](installation.md) - deploying beyond a dev shell

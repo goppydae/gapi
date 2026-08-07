@@ -38,17 +38,35 @@ nix build .#lxc
 
 ## Available Formats
 
+These are the formats the flake exposes, and the list is exhaustive: it is
+`imageFormats` in `flake.nix`, which is what `nix build .#<format>`
+resolves against.
+
 - **iso** - Bootable ISO for USB/CD
 - **vm** - QEMU VM with automatic boot
-- **vm-nogui** - Headless QEMU VM
 - **qcow** - QCOW2 disk image
 - **raw** - Raw disk image
-- **raw-efi** - Raw EFI disk image
-- **virtualbox** - VirtualBox OVA
 - **vmware** - VMware VMDK
 - **lxc** - LXC container
+- **lxc-metadata** - the metadata tarball an LXC import needs beside it
 - **docker** - Docker image
-- **proxmox** - Proxmox VE template
+
+x86_64-linux only:
+
+- **virtualbox** - VirtualBox OVA
+
+`virtualbox` is separate because its image builder pulls in the
+VirtualBox package, which nixpkgs marks x86_64-linux only. Offering it on
+aarch64-linux would advertise a target that cannot be built there, which
+is the defect `nix flake check --all-systems` exists to catch.
+
+**Adding a format is a one-line change** - append it to `imageFormats`.
+nixos-generators supports more than this list, including `vm-nogui`,
+`raw-efi`, `proxmox` and the cloud targets (`amazon`, `azure`, `gce`,
+`do`). They are not exposed because nobody has built them here, and
+**no CI job evaluates the image formats at all** (see below), so an
+unbuildable format would be found by whoever next tried it rather than by
+a gate. Add one when you intend to build it.
 
 ## Testing Workflow
 
@@ -90,36 +108,38 @@ lxc launch gapi-test test-instance
 lxc exec test-instance -- gapictl status
 ```
 
-### 4. Cloud Image Testing
-
-```bash
-# Build for specific cloud provider
-nix build .#amazon
-nix build .#azure
-nix build .#gce
-nix build .#do  # Digital Ocean
-```
-
 ## Configuration Files
 
-- `base.nix` - Base GAPI configuration shared across all formats
-- `iso.nix` - ISO-specific configuration (installer)
-- `vm.nix` - VM-specific configuration
-- `container.nix` - Container-specific configuration
+- `base.nix` - the GAPI configuration every format is built from
 
-## PID1 Testing
+That is the whole directory. There is no per-format configuration: every
+image comes from `mkImage`, which passes `base.nix` as the only module
+and varies `format` alone. So a change to the ISO and a change to the
+container are the same change, and a format cannot drift from its
+siblings.
 
-For PID1 testing, use the minimal configuration:
+## PID 1 Testing
+
+There is no `pid1-test` image, and **the NixOS module exposes no PID 1
+option** - it declares `enable`, `package`, `agentsDir`, `configFile`,
+`listenAddress`, `certFile`, `keyFile`, `verifyKey`, `logLevel`, `user`,
+`group` and `openFirewall`, and nothing else. PID 1 mode is the daemon's
+own setting (`supervisor.pid1Mode`, or `--pid1` on `gapid start`), so
+reaching it from an image means supplying a config file through
+`configFile` rather than setting a module option.
+
+The VM-backed checks are where PID 1 behaviour is actually asserted:
 
 ```bash
-# Build minimal system with GAPI as primary supervisor
-nix build .#pid1-test
-
-# Run in QEMU
-./result/bin/run-*-vm
-
-# GAPI will be running as the main process supervisor
+nix flake check
 ```
+
+`checks.<system>.module-boot` boots a guest and exercises the module.
+Booting a guest is the only way to assert runtime behaviour rather than
+merely evaluating it, so a green `nix build` of an image says nothing
+about whether the supervisor comes up inside it.
+
+The PID 1 testing guide lives in the goppydae-docs repository.
 
 ## Customization
 
@@ -143,18 +163,18 @@ Edit `base.nix` to customize the GAPI installation:
 }
 ```
 
-## CI/CD Integration
+## There is no CI for these images, deliberately
 
-```yaml
-# .github/workflows/test-images.yml
-name: Test Images
-on: [push]
-jobs:
-  build-iso:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: cachix/install-nix-action@v22
-      - run: nix build .#iso
-      - run: nix build .#vm
-```
+No workflow builds or evaluates an image format. That is the cost of
+moving them into `legacyPackages` so that `nix flake check` stops
+evaluating them (GAPI-DIV-068), and it is recorded rather than hidden:
+**a format that stops evaluating is found by whoever next builds one
+locally.**
+
+What CI does keep is `checks.<system>.image-credentials`, which evaluates
+this same `base.nix` once and fails if any user carries a plaintext
+password or a hash of the empty string. That is the reader GAPI-DIV-069
+needs, and it survives the move on purpose.
+
+So if you change `base.nix`, build at least one image locally before
+trusting it. Nothing else will.

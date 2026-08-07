@@ -150,4 +150,4 @@ gapid
 - [Python ADK Guide](python/README.md)
 - [Go ADK Guide](go/README.md)
 - [Plugin Development](plugins/README.md)
-- [GAPI Design Document](../docs/gapi-design-document.md)
+- GAPI's architecture, in the goppydae-docs repository

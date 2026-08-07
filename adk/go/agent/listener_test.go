@@ -160,9 +160,9 @@ func listenerChild() {
 }
 
 // TestListenerAt_BoundsTheIndex covers the count-versus-descriptor
-// confusion docs/features.md warns about: LISTEN_FDS is how MANY were
-// passed, so index 1 with a count of 1 is out of range even though fd 4
-// might exist for unrelated reasons.
+// confusion the ecosystem documentation warns about: LISTEN_FDS is how
+// MANY were passed, so index 1 with a count of 1 is out of range even
+// though fd 4 might exist for unrelated reasons.
 func TestListenerAt_BoundsTheIndex(t *testing.T) {
 	t.Setenv("LISTEN_FDS", "1")
 	t.Setenv("LISTEN_PID", strconv.Itoa(os.Getpid()))

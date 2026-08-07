@@ -33,21 +33,19 @@ separate `gapid`.
 
 ## Reference
 
-- [Features](features.md) - what the kernel does, in detail
 - [Agent examples](agent-examples.md) - services, timers, sockets, Go agents
-- [Design document](gapi-design-document.md) - architecture and philosophy
 - [Library usage](library_usage.md) - embedding the kernel in your own binary
-- [PID 1](pid1-testing.md) - running and testing GAPI as init
+
+The kernel's architecture, and an as-built account of its features, are
+documented in the goppydae-docs repository.
 
 ## Working on GAPI
 
-- [Development](development.md) - toolchain, gates, layout
-- [Cursed knowledge](cursed-knowledge.md) - traps that cost real time
-- [Determinism checklist](determinism_checklist.md)
-- [Protobuf compatibility](protobuf_compatibility.md)
-- [Glossary](glossary.md) - normative definitions and invariants
-- [Lexicon](lexicon.md) and [Lore](lore.md) - the cultural reference
-- [History](history.md)
+Contributor documentation - the development guide, the cursed knowledge, PID 1
+testing, the determinism checklist, the protobuf compatibility contract, the
+glossary, the lexicon, the lore and the kernel's history - lives in the
+goppydae-docs repository rather than here. This site is the operator and
+library surface.
 
 ## The honesty layer
 
