@@ -98,6 +98,21 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 // a handful of attempts while staying negligible against a 30s deadline.
 const requestRetryInterval = 250 * time.Millisecond
 
+// requestRetryAttempts BOUNDS the republishing, and the bound is the
+// point rather than a tidiness.
+//
+// The window this retry crosses is agent bring-up, measured at 0.02s to
+// a few hundred milliseconds - eight attempts covers it with a wide
+// margin. Republishing for the FULL deadline instead would turn one
+// status call into ~120 requests against a daemon that is already slow,
+// which is request amplification aimed at the exact condition that
+// makes a suite flaky. Nothing measured says that amplification caused
+// a failure; the cap means nothing has to.
+//
+// After the cap the original deadline still rides, so a genuinely
+// unresponsive daemon fails exactly as it did before any retry existed.
+const requestRetryAttempts = 8
+
 // awaitCorrelated publishes req and waits for its correlated reply,
 // REPUBLISHING on an interval until the reply lands or ctx expires.
 //
@@ -139,6 +154,7 @@ func awaitCorrelated[T any](
 	ticker := time.NewTicker(requestRetryInterval)
 	defer ticker.Stop()
 
+	attempts := 0
 	for {
 		select {
 		case v := <-done:
@@ -148,6 +164,14 @@ func awaitCorrelated[T any](
 		case <-ctx.Done():
 			return zero, ctx.Err()
 		case <-ticker.C:
+			if attempts >= requestRetryAttempts {
+				// Stop republishing and keep waiting out ctx. Stopping
+				// the ticker is what ends the resends: its channel never
+				// fires again, so this arm is unreachable afterwards.
+				ticker.Stop()
+				continue
+			}
+			attempts++
 			if err := c.bus.Publish(req); err != nil {
 				return zero, fmt.Errorf("republish %s: %w", req.Topic, err)
 			}

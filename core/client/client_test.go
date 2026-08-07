@@ -315,3 +315,64 @@ func TestAgentStatus_SurvivesALateSubscriber(t *testing.T) {
 			"the test is not exercising a late subscriber", elapsed, window)
 	}
 }
+
+// TestAwaitCorrelated_BoundsItsRepublishing asserts the retry cannot
+// amplify a request against a daemon that never answers.
+//
+// The retry crosses agent bring-up, measured at 0.02s to a few hundred
+// milliseconds. Republishing for the full deadline instead would turn
+// one status call into roughly 120 requests aimed at a daemon that is
+// already slow - request amplification pointed at exactly the condition
+// that makes a suite flaky. Nothing measured says that happened; this
+// bound means nothing has to.
+//
+// Counts the requests the daemon ACTUALLY receives, rather than trusting
+// the constant: a cap that is declared and not enforced is the shape
+// this repo keeps finding.
+func TestAwaitCorrelated_BoundsItsRepublishing(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
+
+	var mu sync.Mutex
+	var received int
+	// Subscribed but NEVER replying: the client must give up republishing
+	// on its own rather than because an answer arrived.
+	if err := bus.Subscribe("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
+		mu.Lock()
+		received++
+		mu.Unlock()
+	}); err != nil {
+		t.Fatalf("subscribe agents/: %v", err)
+	}
+
+	// Comfortably longer than the whole retry budget
+	// (1 + requestRetryAttempts) * requestRetryInterval, so the cap is
+	// what stops the resends rather than the deadline.
+	budget := time.Duration(requestRetryAttempts+1) * requestRetryInterval
+	ctx, cancel := context.WithTimeout(context.Background(), budget+2*time.Second)
+	defer cancel()
+
+	if _, err := NewFromBus(bus).AgentStatus(ctx); err == nil {
+		t.Fatal("AgentStatus returned nil error against a daemon that never replies")
+	}
+
+	mu.Lock()
+	got := received
+	mu.Unlock()
+
+	want := 1 + requestRetryAttempts // the initial publish plus the retries
+	if got > want {
+		t.Errorf("daemon received %d requests, want at most %d "+
+			"(one initial publish plus %d retries); the cap is not holding",
+			got, want, requestRetryAttempts)
+	}
+	if got < 2 {
+		t.Errorf("daemon received %d requests; fewer than 2 means the retry "+
+			"never fired and this test is not exercising the cap", got)
+	}
+	t.Logf("requests received: %d (cap %d)", got, want)
+}
