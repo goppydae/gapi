@@ -81,7 +81,12 @@ var allowedIn = map[string][]string{
 	// WIRE: the source field on a bus event, read by subscribers.
 	"core/supervisor/supervisor.go":         {"gapid"},
 	"core/supervisor/lifecycle_handlers.go": {"gapid"},
-	"core/tui/actions.go":                   {"gapictl-tui"},
+	// Same wire source, on the pong reply. liveness.go was split out of
+	// supervisor.go for GAPI-DIV-120, and this gate caught the move -
+	// which is the file-scoping above working exactly as its comment
+	// says it should, rather than a new decision about the literal.
+	"core/supervisor/liveness.go": {"gapid"},
+	"core/tui/actions.go":         {"gapictl-tui"},
 
 	// A binary naming ITSELF, which is what an identity surface is for,
 	// plus the product each root declares.
