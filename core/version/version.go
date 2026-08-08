@@ -29,9 +29,31 @@ var (
 	BuiltBy          = "unknown"
 )
 
-// runtimeCoreLabel is the kernel's own row, and the fallback name when
-// no binary has registered an identity.
-const runtimeCoreLabel = "Runtime Core"
+// THESE TWO CONSTANTS SPELL THE SAME STRING AND MUST NOT BE MERGED
+// BACK (GAPI-DIV-128). One is a display name, the other was a
+// control-flow key, and their being a single value is what inverted
+// this package's most visible rule.
+//
+// The old `runtimeCoreLabel` was both the fallback name for a binary
+// that had registered no identity AND the key in `if name !=
+// runtimeCoreLabel`. So the row was suppressed exactly when the binary
+// was UNIDENTIFIED and never when it was the kernel - the opposite of
+// the documented intent, reached by a condition that reads correctly.
+// It was invisible while SetBinaryNameAndVersion had no callers,
+// because the fallback fired for everyone; GAPI-DIV-056 gave it its
+// first caller and turned the row on for every binary including gapid.
+// A fix that satisfied its own exit inverted a neighbouring rule, and
+// nothing could notice, because a redundant row is well-formed.
+//
+// The suppression now keys off a DECLARATION - see shipsKernel - and
+// never off a label or a version string.
+
+// unidentifiedBinaryLabel names the block when no binary has registered
+// an identity. A display value, read by nothing that branches.
+const unidentifiedBinaryLabel = "Runtime Core"
+
+// embeddedKernelRowLabel is the label of the embedded-kernel row.
+const embeddedKernelRowLabel = "Runtime Core"
 
 // devVersion is the unstamped placeholder. It is a value the resolution
 // must REJECT as an answer, not merely a default it happens to return.
@@ -191,6 +213,26 @@ type Info struct {
 var (
 	mu     sync.RWMutex
 	active Info
+
+	// shipsKernel is the invoking binary's own statement that it IS the
+	// gapi kernel rather than a process embedding one.
+	//
+	// A DECLARATION AND NOT AN INFERENCE, which is the load-bearing part
+	// (GAPI-DIV-128). The renderer must not decide this by comparing the
+	// binary's version against the kernel's: they coincide whenever
+	// goblin happens to tag a matching string, and the block's SHAPE
+	// would then depend on an accident of two values while the contract
+	// requires it to be constant.
+	//
+	// It is deliberately NOT a field of Info and is not touched by
+	// SetBinaryNameAndVersion. Coupling the two is what made the old
+	// behaviour depend on call order, and order-dependence is how a
+	// display change silently becomes a control-flow change.
+	//
+	// False is the correct default: a binary that names itself and says
+	// nothing further is a consumer, so goblind and goblinctl keep the
+	// row without goblin changing a line.
+	shipsKernel bool
 )
 
 func init() {
@@ -222,6 +264,19 @@ func SetBinaryNameAndVersion(name, version string) {
 	active.Version = version
 }
 
+// SetShipsKernel records whether the invoking binary is the kernel
+// itself. gapi's own binaries declare true; a process that embeds the
+// kernel declares nothing and gets the Runtime Core row.
+//
+// Separate from SetBinaryNameAndVersion on purpose, so that the two can
+// be called in either order and neither can change what the other
+// means.
+func SetShipsKernel(v bool) {
+	mu.Lock()
+	defer mu.Unlock()
+	shipsKernel = v
+}
+
 // SetBuildMetadata lets downstream components override specific build details
 func SetBuildMetadata(overrides Info) {
 	mu.Lock()
@@ -250,8 +305,9 @@ func Summary() string {
 
 	name := active.Name
 	version := active.Version
-	if name == "" {
-		name = runtimeCoreLabel
+	identified := name != ""
+	if !identified {
+		name = unidentifiedBinaryLabel
 	}
 	if version == "" {
 		// The kernel's own row takes the resolved version too. Reading
@@ -271,10 +327,17 @@ func Summary() string {
 	// Platform and a 21-character "Protobuf Schema Hash:" that aligned
 	// with nothing - so adding a field meant re-guessing the alignment.
 	rows := [][2]string{{name, version}}
-	// Runtime Core is emitted only when the invoking binary is not the
-	// kernel itself, so gapid does not print its own version twice.
-	if name != runtimeCoreLabel {
-		rows = append(rows, [2]string{runtimeCoreLabel, KernelVersion()})
+	// The embedded-kernel row is emitted only by a binary that both
+	// identified itself and did not declare that it ships the kernel.
+	//
+	// Both halves are required. Without the declaration gapid prints its
+	// own version twice, which is the defect this replaced. Without
+	// `identified`, a binary that registered nothing would print a
+	// Runtime Core row underneath a block already headed Runtime Core -
+	// the fallback name and the row label are the same string, and that
+	// coincidence is precisely what must not drive a branch.
+	if identified && !shipsKernel {
+		rows = append(rows, [2]string{embeddedKernelRowLabel, KernelVersion()})
 	}
 	rows = append(rows,
 		[2]string{"Go ADK", adkVersion(GoADKVersion)},

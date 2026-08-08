@@ -88,6 +88,45 @@ func TestVersionBlockNamesItsBinary(t *testing.T) {
 	}
 }
 
+// TestKernelRootsOmitTheRuntimeCoreRow is GAPI-DIV-128's revert-proof,
+// and it is placed HERE rather than in core/version deliberately: the
+// defect was not in the renderer's logic but in nobody declaring
+// anything, so a test that declares its own state cannot see it.
+//
+// This constructs the roots the shipped binaries construct. Delete
+// either `version.SetShipsKernel(true)` call and this goes red with the
+// duplicate row it was written against - measured on v0.1.0-proto2m,
+// where `gapid:` and `Runtime Core:` both read 0.1.0-proto2m.
+//
+// It does NOT assert that goblind keeps the row, because this package
+// cannot construct goblind's root. That half lives in
+// core/version's TestSummary_RuntimeCoreReportsResolvedKernel and in
+// goblin's own internal/cli/kernel_version_test.go, and the exit
+// requires all of them.
+func TestKernelRootsOmitTheRuntimeCoreRow(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		build func() *cobra.Command
+	}{
+		{"gapid", func() *cobra.Command { root, _, _ := NewGapidRoot(noopStart); return root }},
+		{"gapictl", func() *cobra.Command { root, _ := NewGapictlRoot(); return root }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			block := renderSurface(t, tc.build(), "version")
+
+			for _, line := range strings.Split(block, "\n") {
+				if strings.HasPrefix(line, "Runtime Core:") {
+					t.Fatalf("%s prints its own version twice - it IS the kernel:\n%s",
+						tc.name, block)
+				}
+			}
+			if !strings.HasPrefix(block, tc.name+":") {
+				t.Fatalf("%s block does not name its binary:\n%s", tc.name, block)
+			}
+		})
+	}
+}
+
 // TestVersionBlockSharesOneColumnWidth pins the contract's layout rule.
 // The block previously carried four different hardcoded paddings, so
 // "Protobuf Schema Hash:" at 21 characters aligned with nothing.
