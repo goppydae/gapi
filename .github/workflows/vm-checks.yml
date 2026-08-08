@@ -92,3 +92,64 @@ jobs:
           name: vm-checks-${{ github.run_id }}-${{ github.run_attempt }}
           path: vm-checks.log
           retention-days: 30
+
+  # THE FAILURE REACHES A HUMAN WITHOUT ANYONE CHOOSING TO LOOK
+  # (GAPI-DIV-123). The schedule above bounds how long a regression can
+  # hide; this job is what makes the bound worth anything. Before it, VM
+  # Checks was red on main for FIVE CONSECUTIVE COMMITS and surfaced to
+  # nobody - found by accident, while reading an unrelated run list.
+  #
+  # AN ISSUE RATHER THAN A WEBHOOK, and the reason is that a webhook needs
+  # a secret this repository does not have. A mechanism that cannot be
+  # demonstrated is the thing this entry is about, so the notification had
+  # to be one that works with github.token alone and can be watched
+  # arriving. Issue creation emails every watcher, which on a
+  # two-developer repository is both of them.
+  #
+  # ONE THREAD, NOT ONE ISSUE PER RED MORNING. A daily schedule against a
+  # broken main would otherwise open seven issues in a week and train the
+  # reader to filter them, which is how a notification becomes noise and
+  # then becomes ignored. An existing open report is commented on instead.
+  notify:
+    name: Report a Failure
+    runs-on: ubuntu-latest
+    needs: vm-checks
+    # Every event this workflow has - push to main, the schedule, and a
+    # manual dispatch. The dispatch case is deliberate: it is how the
+    # notification path gets DEMONSTRATED, which is what this entry
+    # closes on rather than the mechanism merely existing.
+    if: failure()
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the failure report
+        env:
+          # Run context through the environment rather than interpolated
+          # into the script. None of these is attacker-controlled, but a
+          # workflow that interpolates by habit eventually interpolates
+          # something that is.
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+
+          title="VM Checks are failing on main"
+          body=$(printf '%s\n\n- commit: `%s`\n- triggered by: `%s`\n- run: %s\n\nThe VM suites boot NixOS guests and run off the pull-request\npath, so this did not block any merge. The log is attached to the\nrun as an artifact and survives a rerun; read it before rerunning.\n' \
+            "NixOS VM Checks failed." "$COMMIT" "$EVENT" "$RUN_URL")
+
+          # Matched by title rather than by label: a label has to exist
+          # before it can be applied, and a notification that fails
+          # because somebody deleted a label is a notification that does
+          # not notify.
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            echo "commenting on existing report #$existing"
+            gh issue comment "$existing" --body "$body"
+          else
+            echo "opening a new report"
+            gh issue create --title "$title" --body "$body"
+          fi
