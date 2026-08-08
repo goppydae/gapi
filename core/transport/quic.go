@@ -123,6 +123,7 @@ func NewQUICClient(addr string, cert *tls.Certificate, tlsConfig TLSConfig) (*QU
 	// exactly the lifecycle a server's does and there is one place that
 	// owns membership.
 	q := &QUIC{peers: make(map[*quic.Conn]struct{})}
+	traceDial(conn)
 	go q.handleConn(conn)
 	return q, nil
 }
