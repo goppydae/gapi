@@ -144,6 +144,7 @@ func NewGoAgent(
 		hostname:     host,
 	}
 	a.ctrl = lifecycle.NewController(id, host, a, a.bus, depView)
+	applyLanguageBudgets(a.ctrl, a.Lang())
 
 	// Eager bind
 	if listenStream != "" {
