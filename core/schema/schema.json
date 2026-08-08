@@ -75,6 +75,10 @@
                 "type": "string"
             },
             "description": "Declarative capabilities provided by this agent"
+        },
+        "readiness_budget": {
+            "type": "string",
+            "description": "Optional. How long this agent may take to reach RUNNING after its first control frame, as a Go duration (e.g. 30s). Omit to take the per-language derived default; the supervisor refuses a value above its ceiling at declaration time."
         }
     },
     "required": [

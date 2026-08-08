@@ -10,6 +10,7 @@ package lifecycle
 
 import (
 	"context"
+	"time"
 )
 
 // The agent contract this package once declared lived here as an Agent
@@ -60,6 +61,26 @@ type SpeechReporter interface {
 	// since the current run was started. It is reset by Start, so it
 	// answers about this run and not the agent's history.
 	HasSpoken() bool
+}
+
+// FirstFrameReporter answers HOW LONG the current run's child took to
+// write its first control frame (GAPI-DIV-107).
+//
+// SpeechReporter answers whether; this answers when, and the two are
+// different questions with different consumers. The silence deadline
+// needs the first - a child that has said nothing has no latency to
+// report, so 0 could not be told from "instantly". A start that failed
+// needs the second: an agent that spoke at 1ms and then hung inside its
+// own start() and one whose ADK took most of the budget to come up both
+// present as Silent=false, and only the measured latency separates
+// them.
+//
+// Optional, on the same terms as SpeechReporter: an in-process runner
+// has no control channel and simply does not implement it.
+type FirstFrameReporter interface {
+	// FirstFrameLatency reports exec to first control frame for the
+	// current run, or 0 if the child has not spoken.
+	FirstFrameLatency() time.Duration
 }
 
 // Checkpointer is an optional capability for runners whose process can

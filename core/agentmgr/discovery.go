@@ -335,6 +335,17 @@ func (am *AgentManager) processDiscovered(path string, d schema.AgentDescribe, a
 		es.SetEnabled(enabled)
 	}
 
+	// And the declared readiness budget, on the same terms
+	// (GAPI-DIV-107). Absent means the runner keeps the per-language
+	// default it was constructed with, so there is nothing to carry.
+	if rs, ok := a.(readinessSetter); ok {
+		resolved, err := resolveReadinessBudget(d, a.Lang())
+		if err != nil {
+			slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "declared readiness budget rejected after validation; using the derived default", logattr.Module("discovery"), logattr.Path(path), logattr.Err(err))
+		}
+		rs.SetReadinessBudget(resolved)
+	}
+
 	*agents = append(*agents, a)
 	return nil
 }

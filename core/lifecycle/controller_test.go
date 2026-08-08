@@ -100,7 +100,14 @@ func newTestController(t *testing.T, id string, r Runner) (*Controller, <-chan *
 	}
 
 	c := NewController(id, "testhost", r, bus, nil)
-	c.WaitStart = 200 * time.Millisecond
+	// The three budgets WaitStart used to be, set apart from each other
+	// so a test asserting one cannot pass on another (GAPI-DIV-107).
+	// Silence is well under readiness because that is the relationship
+	// in production - 250ms against 10s for Go - and a harness that
+	// collapsed them would retire the silence deadline before it fired.
+	c.ReadinessBudget = 200 * time.Millisecond
+	c.SilenceBudget = 40 * time.Millisecond
+	c.SpawnBudget = 200 * time.Millisecond
 	return c, statuses
 }
 

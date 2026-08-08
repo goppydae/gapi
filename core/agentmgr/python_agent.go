@@ -149,6 +149,7 @@ func NewPythonAgent(
 		productionMode: productionMode,
 	}
 	a.ctrl = lifecycle.NewController(id, host, a, a.bus, depView)
+	applyLanguageBudgets(a.ctrl, a.Lang())
 
 	// Eagerly bind the socket if configured (Socket Activation / Supervisor Managed)
 	if listenStream != "" {

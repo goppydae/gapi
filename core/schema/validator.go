@@ -71,6 +71,23 @@ type AgentDescribe struct {
 	// the moment the field was honoured. Validation ignores it; only
 	// discovery resolves it.
 	Enabled *bool `json:"enabled"`
+
+	// ReadinessBudget is how long this agent may take to reach RUNNING
+	// after its first control frame (GAPI-DIV-107). OPTIONAL: decision
+	// 51 dropped the required form on this entry's own warning that a
+	// required field invites an author to copy a number from an example,
+	// and a cargo-culted value is worse than a default because it LOOKS
+	// declared.
+	//
+	// POINTER for the same reason as Enabled, and it matters more here:
+	// absent means "use the derived default for my language", which is
+	// a different instruction from any duration an author could write.
+	// A plain string would spell absence as "", which is a value.
+	//
+	// A STRING, holding a Go duration such as "30s", matching CPULimit
+	// and MemoryLimit rather than inventing a numeric unit convention
+	// for one field. Parsed and refused by ParseReadinessBudget.
+	ReadinessBudget *string `json:"readiness_budget"`
 }
 
 // DescribeEnvelope is the object an agent actually prints: the
@@ -133,6 +150,15 @@ func ValidateAgentDescribe(desc AgentDescribe) error {
 		if err := validateListenStream(desc.ListenStream); err != nil {
 			return fmt.Errorf("invalid listen_stream: %w", err)
 		}
+	}
+
+	// THE CEILING IS REFUSED HERE, WHERE THE DECLARATION IS READ
+	// (GAPI-DIV-107, decision 43(2)). Not wrapped: the error already
+	// names the agent, the declared value and the ceiling, and wrapping
+	// it in a sentence would put a prefix in front of data a caller is
+	// meant to match on with errors.As.
+	if _, err := ParseReadinessBudget(desc); err != nil {
+		return err
 	}
 
 	return nil
