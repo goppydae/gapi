@@ -51,6 +51,9 @@ var rootCmd, controlFlags = newControlTree(
 // constructor: goblinctl mounting the kernel's verbs under `agent` is
 // not goblinctl becoming gapi.
 func NewGapictlRoot() (*cobra.Command, *ControlFlags) {
+	// gapictl ships the kernel it talks to, so no Runtime Core row
+	// (GAPI-DIV-128). Ahead of the constructor, which renders the block.
+	version.SetShipsKernel(true)
 	return NewControlRoot("gapi", "gapictl", version.BinaryVersion(), "Supervision kernel control CLI")
 }
 
@@ -99,6 +102,16 @@ func applyControlFlags(cfg *config.Config) {
 // namespace and the search path (GAPI-DIV-061).
 func Execute() error {
 	product.Set("gapi")
+
+	// The same reasoning one field further: the singleton above was
+	// rendered during package initialization, which goblinctl also runs,
+	// so it could not declare that it ships the kernel without stripping
+	// goblinctl's Runtime Core row. Declare it now that the process is
+	// known to be gapictl's, and re-render - both surfaces read
+	// root.Version at run time, so they stay identical (GAPI-DIV-128).
+	version.SetShipsKernel(true)
+	rootCmd.Version = version.Summary()
+
 	return RunRoot(rootCmd, os.Args[1:])
 }
 

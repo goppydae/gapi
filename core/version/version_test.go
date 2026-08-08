@@ -203,14 +203,48 @@ func TestKernelVersion_LongestContainingModuleWins(t *testing.T) {
 	}
 }
 
+// stubIdentity registers a binary and its kernel declaration, and undoes
+// both.
+//
+// The cleanup is not hygiene. shipsKernel is package state, so a test
+// that declared the kernel and did not reset it would suppress the row
+// for every test that ran after it - and those tests would go green
+// while asserting a block they never rendered.
+func stubIdentity(t *testing.T, name, version string, kernel bool) {
+	t.Helper()
+	SetBinaryNameAndVersion(name, version)
+	SetShipsKernel(kernel)
+	t.Cleanup(func() {
+		SetBinaryNameAndVersion("", "")
+		SetShipsKernel(false)
+	})
+}
+
+// countRows reports how many lines open with the given label.
+func countRows(block, label string) int {
+	n := 0
+	for _, line := range strings.Split(block, "\n") {
+		if strings.HasPrefix(line, label+":") {
+			n++
+		}
+	}
+	return n
+}
+
 // TestSummary_RuntimeCoreReportsResolvedKernel drives the row itself,
 // not just the resolver. The existing goblin guards assert only that the
 // LABEL appears, so they pass against any value; this asserts the value.
+//
+// GAPI-DIV-128 REVISITED THIS TEST RATHER THAN LEAVING IT GREEN. It is
+// the CONSUMER case and always was - goblind embeds a kernel it did not
+// ship - but it reached that state through a condition that was
+// suppressing on the fallback label, so it passed for the wrong reason.
+// The declaration is now explicit, which is what makes it the other
+// half of the pair below instead of a coincidence.
 func TestSummary_RuntimeCoreReportsResolvedKernel(t *testing.T) {
 	stubStamps(t, "dev", "dev", "dev")
 	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
-	SetBinaryNameAndVersion("goblind", "0.1.0-proto2f")
-	t.Cleanup(func() { SetBinaryNameAndVersion("", "") })
+	stubIdentity(t, "goblind", "0.1.0-proto2f", false)
 
 	got := Summary()
 
@@ -222,6 +256,73 @@ func TestSummary_RuntimeCoreReportsResolvedKernel(t *testing.T) {
 	}
 	if !strings.Contains(got, "Runtime Core:         0.1.0-proto2f") {
 		t.Fatalf("kernel row does not carry the resolved version:\n%s", got)
+	}
+}
+
+// TestSummary_KernelBinaryOmitsItsOwnRow is the gapi half of
+// GAPI-DIV-128's exit, and the pair to the consumer case above.
+//
+// BOTH HALVES ARE REQUIRED AND ONE ALONE IS WORSE THAN NEITHER. A
+// change that suppressed the row everywhere satisfies this test and
+// silently removes the only place a goblin operator learns which kernel
+// their binary embeds - which is why the consumer case sits directly
+// above rather than in another file.
+func TestSummary_KernelBinaryOmitsItsOwnRow(t *testing.T) {
+	stubStamps(t, "dev", "dev", "dev")
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2m"), true)
+	stubIdentity(t, "gapid", "0.1.0-proto2m", true)
+
+	got := Summary()
+
+	if n := countRows(got, "Runtime Core"); n != 0 {
+		t.Fatalf("the kernel prints its own version twice - %d Runtime Core row(s):\n%s", n, got)
+	}
+	if n := countRows(got, "gapid"); n != 1 {
+		t.Fatalf("want exactly one gapid row, got %d:\n%s", n, got)
+	}
+}
+
+// TestSummary_SuppressionIsNotAVersionComparison is the discriminating
+// case, and the reason the declaration exists at all.
+//
+// Inferring "am I the kernel" by comparing the two version strings
+// passes every other test in this file, because in every other test the
+// two differ. Here they are EQUAL and the binary is a consumer - goblin
+// tagging a string that happens to match the kernel's - and the row must
+// still appear. An inference would drop it, making the block's shape
+// depend on an accident of two values while cli-contract.md requires it
+// to be constant.
+func TestSummary_SuppressionIsNotAVersionComparison(t *testing.T) {
+	stubStamps(t, "dev", "dev", "dev")
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
+	stubIdentity(t, "goblind", "0.1.0-proto2f", false)
+
+	got := Summary()
+
+	if n := countRows(got, "Runtime Core"); n != 1 {
+		t.Fatalf("a consumer whose version equals the kernel's must still name it - "+
+			"%d Runtime Core row(s):\n%s", n, got)
+	}
+}
+
+// TestSummary_UnidentifiedBinaryPrintsOneBlockHeader covers the case the
+// old sentinel made unreachable.
+//
+// The fallback display name and the row label are the same string, so a
+// binary that registered nothing would head its block "Runtime Core" and
+// then print a second "Runtime Core" row underneath it. That coincidence
+// of two spellings is exactly what must not drive a branch, and this is
+// the assertion that keeps them separable.
+func TestSummary_UnidentifiedBinaryPrintsOneBlockHeader(t *testing.T) {
+	stubStamps(t, "dev", "dev", "dev")
+	stubBuildInfo(t, depInfo("github.com/goppydae/gapi", "v0.1.0-proto2f"), true)
+	SetBinaryNameAndVersion("", "")
+	SetShipsKernel(false)
+
+	got := Summary()
+
+	if n := countRows(got, "Runtime Core"); n != 1 {
+		t.Fatalf("an unidentified binary must print one Runtime Core line, got %d:\n%s", n, got)
 	}
 }
 

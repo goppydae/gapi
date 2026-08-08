@@ -264,6 +264,15 @@ type GapidStartFlags struct {
 // The start action is a parameter, so this package still never imports
 // core/supervisor.
 func NewGapidRoot(start func(*cobra.Command, []string) error) (*cobra.Command, *DaemonFlags, *GapidStartFlags) {
+	// gapid IS the kernel, so its block must not carry a Runtime Core
+	// row repeating the version it just printed (GAPI-DIV-128).
+	//
+	// Declared HERE and not in newRoot, for the same reason product.Set
+	// is not there: newRoot is the shape goblind shares, and a process
+	// that embeds the kernel must keep the row. Ahead of NewDaemonRoot
+	// because that constructor renders the block.
+	version.SetShipsKernel(true)
+
 	root, daemonFlags := NewDaemonRoot("gapi", "gapid", version.BinaryVersion(), "Supervision kernel daemon", start)
 
 	sf := &GapidStartFlags{}
