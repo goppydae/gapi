@@ -134,7 +134,12 @@ const pingRetryInterval = 250 * time.Millisecond
 // ReloadAgents triggers a reload of the agent registry on the daemon.
 func (c *Client) ReloadAgents(ctx context.Context) error {
 	evt := eventbus.NewEvent[*anypb.Any]("system", "", "agent.reload", "client", nil)
-	if err := c.bus.Publish(evt); err != nil {
+	// A COMMAND THAT WAS NEVER SENT MUST NOT REPORT SUCCESS. Nothing
+	// here waits for a reply, so this call's return value is the only
+	// thing the operator ever sees - and `gapictl lifecycle stop` exiting
+	// 0 for a refused action is a defect this repository has already
+	// fixed once. Publish would report nil for a send with no peer.
+	if err := c.bus.PublishRequest(evt); err != nil {
 		return fmt.Errorf("failed to publish reload: %w", err)
 	}
 	return nil
@@ -150,7 +155,10 @@ func (c *Client) Shutdown(ctx context.Context, action string) error {
 		return fmt.Errorf("encode shutdown action: %w", err)
 	}
 	evt := eventbus.NewEvent[*anypb.Any]("system", "", eventbus.TopicSystemShutdown, "client", payload)
-	if err := c.bus.Publish(evt); err != nil {
+	// Same reasoning as ReloadAgents: nothing waits for a reply, so this
+	// return value is the whole report, and a shutdown that never left
+	// the process must not read as a shutdown that was accepted.
+	if err := c.bus.PublishRequest(evt); err != nil {
 		return fmt.Errorf("failed to publish shutdown: %w", err)
 	}
 	return nil
@@ -181,7 +189,13 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 		return nil, fmt.Errorf("failed to subscribe to agents.reply: %w", err)
 	}
 
-	if err := c.bus.Publish(req); err != nil {
+	// PublishRequest, NOT Publish, AND THE DIFFERENCE IS THIS FUNCTION'S
+	// ENTIRE FAILURE MODE. There is ONE publish here and no retry, so a
+	// send that does not happen costs the caller its whole deadline and
+	// then blames the daemon. Publish demotes ErrNoPeer to a debug line
+	// (GAPI-DIV-095), which is correct for an announcement and fatal
+	// here.
+	if err := c.bus.PublishRequest(req); err != nil {
 		return nil, fmt.Errorf("failed to publish status request: %w", err)
 	}
 
@@ -226,7 +240,14 @@ func (c *Client) LifecycleWithOpts(ctx context.Context, agentIDs []string, actio
 				return
 			}
 			ev := eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleAction, "client", packed)
-			if err := c.bus.Publish(ev); err != nil {
+			// THIS IS THE PATH THE 2s FAILURES CAME THROUGH. One publish,
+			// no retry, then a 2s wait for PENDING - so a send that never
+			// happened surfaces as "timeout waiting for PENDING", which is
+			// the assertion five occurrences of the test/adk flake carried
+			// and is a statement about the SUPERVISOR. PublishRequest makes
+			// it a statement about the send instead. The Result error branch
+			// this feeds already existed; only which errors reach it change.
+			if err := c.bus.PublishRequest(ev); err != nil {
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("publish control: %w", err)}
 				return
 			}

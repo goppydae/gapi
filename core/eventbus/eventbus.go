@@ -221,14 +221,60 @@ func (b *EventBus[T]) removePrefixSubByID(k string, id uint64) {
 
 // ---- Publish / Dispatch ----
 
+// Publish announces an event. It reports validation and dispatch
+// failures and DELIBERATELY does not report a remote send failure - see
+// PublishRequest for the caller that needs one.
 func (b *EventBus[T]) Publish(e Event[T]) error {
+	_, err := b.publish(e)
+	return err
+}
+
+// PublishRequest publishes an event whose sender is going to WAIT FOR A
+// REPLY, and reports whether the remote send actually happened.
+//
+// THE DIFFERENCE IS THE CALLER'S INTENT, WHICH THIS BUS CANNOT INFER.
+// Publish demotes ErrNoPeer to a debug line (GAPI-DIV-095) and returns
+// only the dispatch error, and that is right for an announcement: a
+// daemon publishing events with nobody attached has not failed. For a
+// REQUEST the same condition is fatal, and silently so - the caller
+// gets nil, waits its entire deadline for an answer to something that
+// was never sent, and reports a timeout against whichever component it
+// was talking to.
+//
+// MEASURED, on gapi #136 job 93050924850: `gapictl status` published
+// one event on topic agents/ and the event id appears exactly once in
+// the whole run - no send_start, no error, no receipt - then
+// "failed to get status: context deadline exceeded" 30 seconds later.
+// Client.AgentStatus publishes once and waits, so a single demoted
+// ErrNoPeer costs the full deadline. This is also why the LONG cases
+// were never explained by goroutine scheduling: a request that was
+// never sent does not care how long the caller waits for it.
+//
+// Ping is deliberately NOT a caller of this. It republishes on a ticker
+// (GAPI-DIV-120), which is the right answer to a transient absence -
+// failing fast there would undo that fix.
+func (b *EventBus[T]) PublishRequest(e Event[T]) error {
+	terr, err := b.publish(e)
+	if terr != nil {
+		// The transport error first: when both are present, the send
+		// failing is what the caller must not proceed past.
+		return terr
+	}
+	return err
+}
+
+// publish is the one implementation. It hands back the transport error
+// and the caller-facing error SEPARATELY rather than choosing between
+// them, because that choice is exactly what differs between Publish and
+// PublishRequest.
+func (b *EventBus[T]) publish(e Event[T]) (terr error, err error) {
 	if err := ValidateEvent(e); err != nil {
 		slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "rejected invalid event", logattr.Event("reject"), logattr.EventID(e.ID), logattr.Topic(e.Topic), logattr.Scope(e.Scope))
-		return err
+		return nil, err
 	}
 
 	if b == nil {
-		return fmt.Errorf("eventbus: publish on nil bus")
+		return nil, fmt.Errorf("eventbus: publish on nil bus")
 	}
 
 	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "structured event",
@@ -240,7 +286,11 @@ func (b *EventBus[T]) Publish(e Event[T]) error {
 		// ONE ARM, because there was only ever one operation
 		// (GAPI-DIV-106). Broadcast delegated to PublishRemote, so the
 		// branch chose between a method and itself.
-		terr := b.transport.PublishRemote(context.Background(), e)
+		// ASSIGNED TO THE NAMED RETURN, not to a local. This was `terr :=`
+		// and the value was logged and then dropped on the floor, so the
+		// bus reported success for a send that did not happen - the same
+		// overclaimed return value PublishRemote itself had, one layer up.
+		terr = b.transport.PublishRemote(context.Background(), e)
 		// Having no peer is not a publish failure (GAPI-DIV-095). Only
 		// this ONE sentinel is demoted, and only by matching it: lowering
 		// the level for every transport error would hide a real one
@@ -259,7 +309,7 @@ func (b *EventBus[T]) Publish(e Event[T]) error {
 
 	slog.Default().LogAttrs(context.Background(), slog.LevelDebug, "publishing event", logattr.Topic(e.Topic), logattr.EventID(e.ID), logattr.Scope(e.Scope))
 
-	return b.dispatch(e)
+	return terr, b.dispatch(e)
 }
 
 // dispatch hands the event to every matching subscription's delivery

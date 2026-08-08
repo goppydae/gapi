@@ -19,6 +19,29 @@ var (
 	// QUICIdleTimeout is the connection idle timeout before automatic closure.
 	// Rationale: Balances connection reuse vs resource cleanup (1 minute idle acceptable).
 	QUICIdleTimeout = 60 * time.Second
+
+	// PublishConfirmTimeout is how long PublishRemote waits for its
+	// per-peer sends to confirm before reporting the publish
+	// unconfirmed.
+	//
+	// IT IS CHOSEN, NOT DERIVED, and saying so is the point - nothing
+	// here measured how long a healthy stream open and two writes take,
+	// so there is no table to derive it from and labelling it derived
+	// would be the cargo-culted constant GAPI-DIV-107 exists to
+	// complain about.
+	//
+	// The two facts that chose it: it must be BELOW
+	// ClientPendingTimeout, or a client's reply deadline expires before
+	// its own publish admits it never sent, which is exactly the
+	// symptom this bound exists to convert into an error; and it must
+	// be well ABOVE a healthy send, which on a live connection is a
+	// stream open and two buffered writes.
+	//
+	// IT BOUNDS THE WAIT AND NOT THE SEND. A send that outlives this
+	// window keeps its QUICStreamTimeout and finishes or fails on its
+	// own, so no send gets less time than it had before the window
+	// existed - only the caller stops pretending it knows the outcome.
+	PublishConfirmTimeout = 1 * time.Second
 )
 
 // Client Lifecycle Timeouts

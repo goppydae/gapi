@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"math/big"
 	"net"
 	"os"
@@ -118,11 +117,40 @@ func NewQUICClient(addr string, cert *tls.Certificate, tlsConfig TLSConfig) (*QU
 	if err != nil {
 		return nil, err
 	}
-	// The client does not seed the set itself: handleConn adds the
-	// connection and removes it when it dies, so a client's own peer has
-	// exactly the lifecycle a server's does and there is one place that
-	// owns membership.
-	q := &QUIC{peers: make(map[*quic.Conn]struct{})}
+	// THE CLIENT SEEDS ITS OWN PEER, AND THE COMMENT THAT SAID IT MUST NOT
+	// WAS WRONG IN A WAY THAT COST FIVE OCCURRENCES OF A FLAKE.
+	//
+	// It used to read: handleConn adds the connection and removes it when
+	// it dies, so a client's own peer has exactly the lifecycle a server's
+	// does and there is one place that owns membership. The symmetry is
+	// real and the conclusion did not follow. handleConn runs in a
+	// GOROUTINE, so between this constructor returning and that goroutine
+	// being scheduled the peer set is EMPTY - and a caller that dials and
+	// immediately publishes gets ErrNoPeer for a daemon that is right
+	// there on the other end of a live connection.
+	//
+	// A SERVER CANNOT HAVE THIS BUG AND A CLIENT CANNOT AVOID IT, which is
+	// why the symmetry misled. acceptLoop learns of a connection and hands
+	// it to handleConn with nothing in between that could publish to it; a
+	// client's caller holds the transport the instant New returns and its
+	// very first act is usually a request.
+	//
+	// MEASURED on gapi #136 job 93050924850: `gapictl status` published
+	// one event on topic agents/ whose id appears exactly once in the
+	// entire run - no send_start, no error, no receipt - and then timed
+	// out 30s later. ErrNoPeer is the only path with that signature, and
+	// eventbus demoted it to a debug line, so the loss was invisible.
+	// Joining the send fan-out does not help here: there was no peer to
+	// send to, so no goroutine was ever spawned to join.
+	//
+	// REMOVAL STILL BELONGS TO handleConn ALONE. Seeding here does not
+	// split ownership: this adds the entry the constructor already holds
+	// the connection for, and handleConn's defer remains the single place
+	// a peer is evicted, on the AcceptStream error that IS the
+	// connection's death. handleConn's own add becomes a no-op on the same
+	// key rather than a race, which is what a set gives us for free.
+	q := &QUIC{peers: map[*quic.Conn]struct{}{conn: {}}}
+	traceDial(conn)
 	go q.handleConn(conn)
 	return q, nil
 }
@@ -211,6 +239,7 @@ func (q *QUIC) acceptLoop(ln *quic.Listener) {
 
 		// Reset temporary delay on success
 		tempDelay = 0
+		traceAccept(conn)
 		go q.handleConn(conn)
 	}
 }
@@ -237,6 +266,7 @@ func (q *QUIC) handleConn(conn *quic.Conn) {
 			slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "accept stream failed", logattr.Err(err))
 			return
 		}
+		traceAcceptStream(conn, s)
 		go q.handleStream(s)
 	}
 }
@@ -298,106 +328,23 @@ func (q *QUIC) handleStream(s *quic.Stream) {
 		Tags:      env.Tags,
 	}
 
+	// RECEIPT IS LOGGED, AND UNTIL NOW NOTHING WAS. eventbus.Publish
+	// logs every send; this path logged only its three error cases and
+	// never a success, so a request lost in flight and one that arrived
+	// and was answered slowly produced identical logs.
+	//
+	// Logged BEFORE dispatch, deliberately: the claim is "the frame
+	// arrived and parsed", not "a handler ran". Logging after onRemote
+	// would fold handler latency and any panic into the arrival record.
+	// The event id matches the sender's, so a send and its receipt join
+	// across two processes' logs.
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "structured event",
+		logattr.Module("transport"), logattr.Event("receive"),
+		logattr.EventID(e.ID), logattr.Source(e.Source), logattr.Topic(e.Topic))
+
 	if q.onRemote != nil {
 		q.onRemote(e)
 	}
-}
-
-// ---- Publish ----
-
-func (q *QUIC) PublishRemote(ctx context.Context, e eventbus.Event[*anypb.Any]) error {
-	// Snapshot under the mutex. Sending while holding it would let one
-	// unresponsive peer block every other publisher.
-	q.mu.Lock()
-	peers := make([]*quic.Conn, 0, len(q.peers))
-	for c := range q.peers {
-		peers = append(peers, c)
-	}
-	q.mu.Unlock()
-
-	if len(peers) == 0 {
-		// An EMPTINESS check now, where it was a nil check; GAPI-DIV-095's
-		// reasoning is unchanged. NOT io.ErrUnexpectedEOF, which asserts
-		// that a read ended before it should have. Nothing was read and
-		// nothing went wrong: there is simply nobody to send to.
-		return eventbus.ErrNoPeer
-	}
-
-	// ONE GOROUTINE PER PEER. A publish reaching some peers and not
-	// others must not depend on their order, so no peer's send is
-	// sequenced behind another's timeout.
-	for _, conn := range peers {
-		q.publishTo(ctx, conn, e)
-	}
-
-	return nil
-}
-
-// publishTo sends one event to one peer. The body is unchanged from when
-// this transport addressed a single connection - the defect was never in
-// how a frame is written, only in how many peers were reachable.
-func (q *QUIC) publishTo(ctx context.Context, conn *quic.Conn, e eventbus.Event[*anypb.Any]) {
-	// Async publish to prevent blocking on dead clients
-	go func() {
-		timeoutCtx, cancel := context.WithTimeout(ctx, config.QUICStreamTimeout)
-		defer cancel()
-		s, err := conn.OpenStreamSync(timeoutCtx)
-		if err != nil {
-			return
-		}
-		// Write-side close in a fire-and-forget publish goroutine: a close
-		// error can mean the frame did not flush - log it loudly.
-		defer func() {
-			if cerr := s.Close(); cerr != nil {
-				slog.Default().LogAttrs(ctx, slog.LevelWarn, "close publish stream failed", logattr.Err(cerr))
-			}
-		}()
-
-		// Every routing value the Event declares is written to the field
-		// that declares it (GAPI-DIV-102). Namespace and tags were
-		// declared on the Envelope and written by nobody, so they were
-		// dropped on every publish in the system's life.
-		//
-		// Event.Broadcast is deliberately absent, and it is now absent
-		// from the Event too (GAPI-DIV-106). It was a flag with no
-		// receiver: this transport addressed ONE peer, so "broadcast"
-		// and "publish" were the same operation and the two bus arms
-		// called the same code. With a peer set, a remote publish IS to
-		// every peer, so the flag has nothing left to select and the
-		// distinction it encoded never existed on the wire.
-		env := &protopkg.Envelope{
-			Id:        e.ID,
-			Scope:     e.Scope,
-			Namespace: e.Namespace,
-			Topic:     e.Topic,
-			Source:    e.Source,
-			Type:      "event",
-			Payload:   e.Payload,
-			Tags:      e.Tags,
-		}
-
-		data, err := proto.Marshal(env)
-		if err != nil {
-			slog.Default().LogAttrs(ctx, slog.LevelError, "marshal envelope failed", logattr.Err(err))
-			return
-		}
-
-		// Length prefix. The receiver caps messages far below this, but
-		// the conversion itself must be provably in range.
-		dataLen := len(data)
-		if dataLen > math.MaxUint32 {
-			slog.Default().LogAttrs(ctx, slog.LevelError, "envelope too large to frame", logattr.Bytes(dataLen))
-			return
-		}
-		lenBuf := make([]byte, 4)
-		binary.BigEndian.PutUint32(lenBuf, uint32(dataLen))
-		if _, err := s.Write(lenBuf); err != nil {
-			return
-		}
-		if _, err := s.Write(data); err != nil {
-			return
-		}
-	}()
 }
 
 func (q *QUIC) OnRemoteEvent(fn func(eventbus.Event[*anypb.Any])) { q.onRemote = fn }
