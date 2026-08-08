@@ -26,7 +26,21 @@ the registered defaults and a reflection walk over the config schema.
   `gapictl`.
 - [Configuration reference](reference/configuration/) - every key, its
   default, and the environment variable that overrides it.
+
+Everything under [Using gapi](user/) is hand-written prose, and is the
+half a generator cannot produce: what the kernel is, how to bring it up,
+and how to author an agent against it.
+
 - [Overview](user/overview/) - what the kernel does, in prose.
+- [Getting started](user/getting-started/) - build and run your first agent.
+- [Installation](user/installation/) - NixOS module, machine images, systemd.
+- [Configuration examples](user/configuration-examples/) - worked setups,
+  and the traps the key table cannot state.
+- [Agent metadata](user/agent-metadata/) - every field an agent declares,
+  and what the supervisor hands it at exec.
+- [Agent examples](user/agent-examples/) - services, timers, sockets, Go agents.
+- [Library usage](user/library-usage/) - embedding the kernel in your own
+  binary.
 
 Man pages are generated from the same sources and ship with the package:
 `gapid(1)`, `gapictl(1)`, `gapi.conf(5)` and `gapi(7)`.

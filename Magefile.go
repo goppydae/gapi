@@ -389,7 +389,7 @@ func Fmt() error {
 //     audited chokepoint (clean + absolute, root-confined where a root
 //     exists); the rule now only fires inside that package.
 func Lint() error {
-	mg.Deps(checkHermetic, checkTerminology, checkFileLength, checkLedger, LicenseCheck, Docs.Check)
+	mg.Deps(checkHermetic, checkTerminology, checkFileLength, checkLedger, LicenseCheck, Docs.Check, checkDocsLocation)
 	return magelib.Lint("G204", "G304")
 }
 
