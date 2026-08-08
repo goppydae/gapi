@@ -82,9 +82,12 @@ imported module, so it must be a real assignment - a commented
 
 ## Documentation
 
-- **[Getting started](docs/getting-started.md)** - first agent, end to end
-- **[Installation](docs/installation.md)** - NixOS module, images, systemd
-- **[Configuration](docs/configuration.md)** - every key and metadata field
+- **[Getting started](docs/content/user/getting-started.md)** - first agent, end to end
+- **[Installation](docs/content/user/installation.md)** - NixOS module, images, systemd
+- **[Configuration reference](docs/content/reference/configuration.md)** - every key,
+  generated from the schema
+- **[Configuration examples](docs/content/user/configuration-examples.md)** - worked setups
+- **[Agent metadata](docs/content/user/agent-metadata.md)** - every field an agent declares
 - **Development** - building and testing GAPI itself is documented in the goppydae-docs repository
 - **Architecture and features** - the kernel's target design, and an as-built
   account of what it does, are documented in the goppydae-docs repository

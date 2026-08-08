@@ -1,4 +1,9 @@
-# GAPI as a Library
+---
+title: "Library Usage"
+weight: 70
+---
+
+# gapi as a Library
 
 The kernel is the product; `gapid` is a thin wrapper around it. Embed
 the supervisor in your own Go binary and you get local agent
@@ -120,9 +125,9 @@ want the pinned version rather than the sibling checkout.
 
 ## Example
 
-[examples/standalone/main.go](../examples/standalone/main.go) is a
-complete, compiling program: programmatic config, `supervisor.New`, and
-a `Run` bounded by a five-second context.
+`examples/standalone/main.go` in this repository is a complete,
+compiling program: programmatic config, `supervisor.New`, and a `Run`
+bounded by a five-second context.
 
 ```bash
 go run ./examples/standalone
