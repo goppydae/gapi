@@ -10,9 +10,16 @@ baseURL: {{ .BaseURL }}
 locale: en-us
 title: {{ .Title }}
 
-taxonomies:
-  category: categories
-  tag: tags
+# NO TAXONOMIES, AND THE EMPTY MAP IS LOAD-BEARING (MAGELIB-DIV-013).
+# Hugo's BUILT-IN defaults are category and tag, so deleting this block
+# would not remove them - it would restore them. An explicit empty map is
+# the only way to say "this site has none".
+#
+# Every site advertised a Categories and a Tags link to an index nothing
+# populated: zero pages in any of the four repos declare either. Dropping
+# is one of the two resolutions MAGELIB-DIV-013 accepts; populating is the
+# other, and is deferred rather than refused - see that entry.
+taxonomies: {}
 
 module:
   imports:
@@ -38,15 +45,6 @@ module:
     - source: data
       target: data
 
-menu:
-  taxonomylinks:
-    - name: Categories
-      url: /categories/
-      weight: 1
-    - name: Tags
-      url: /tags/
-      weight: 2
-
 params:
   themeVariant:
     - auto:
@@ -69,14 +67,13 @@ params:
         - type: githublink
           url: "https://{{ .Repo }}"
           label: GitHub
+{{- if .ImportableModule }}
         - type: pkgsite
           repo: "{{ .Repo }}"
+{{- end }}
     - type: divider
 
   sidebarfootermenus:
-    - type: divider
-    - identifier: taxonomylinks
-      type: menu
     - type: divider
     - identifier: footercontrols
       elements:

@@ -31,8 +31,49 @@ var baseTools = []string{"go", "gcc", "protoc"}
 // call CheckHermetic() with no arguments. Callers should feed it the same
 // value they hand DoctorConfig.SharedTools, so the doctor and the gate
 // cannot report different tool sets.
+//
+// IT ADDS TO baseTools AND CANNOT SUBTRACT, which is correct for a repo
+// that compiles C and generates protobuf and wrong for one that does
+// neither. See CheckHermeticTools.
 func CheckHermetic(extra ...string) error {
-	for _, tool := range hermeticTools(extra) {
+	return checkTools(hermeticTools(extra))
+}
+
+// CheckHermeticTools is CheckHermetic for a repo that declares its WHOLE
+// tool set, inheriting nothing.
+//
+// baseTools is {go, gcc, protoc} and CheckHermetic resolves it BEFORE a
+// caller's extras, so the additive form has no way to say "this repo does
+// not build C" (MAGELIB-DIV-015). goppydae-docs runs hugo, a linter and a
+// content gate, and carried gcc and protobuf in its flake for no reason
+// but this gate - written down in that flake under a nine-line comment
+// naming this variable as the cause.
+//
+// THE ADDITIVE FORM IS NOT DEPRECATED BY THIS, and that is the point.
+// MAGELIB-DIV-003 was the opposite complaint - the gate covered too FEW
+// tools - and it resolved by making CheckHermetic variadic so a repo
+// could ADD. That resolution stands and remains right for the three
+// repos that do compile C and generate protobuf. What was missing is the
+// ability to SUBTRACT, which -003 never needed because all three of its
+// repos wanted the base set.
+//
+// The pandoc probe is deliberately absent here: it reads PATH and adds a
+// tool the caller did not name, which is exactly the inheritance this
+// entry point exists to refuse.
+func CheckHermeticTools(tools ...string) error {
+	if len(tools) == 0 {
+		return fmt.Errorf(
+			"hermetic check: no tools declared; a check over an empty tool set " +
+				"passes without resolving anything")
+	}
+	return checkTools(tools)
+}
+
+// checkTools resolves every named tool from the Nix store and then checks
+// the toolchain pin. One implementation so the two entry points cannot
+// diverge in what "hermetic" means - only in which tools they are given.
+func checkTools(tools []string) error {
+	for _, tool := range tools {
 		if err := checkStorePath(tool); err != nil {
 			return err
 		}
