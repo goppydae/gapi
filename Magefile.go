@@ -539,6 +539,15 @@ var docsConfig = magelib.DocsConfig{
 	Repo:       "github.com/goppydae/gapi",
 	Generators: [][]string{{"go", "run", "./tools/gendocs"}},
 	Committed:  docsCommitted,
+	// MAGELIB-DIV-016's exit names THIS sidebar as one of its two
+	// closing halves: the hub must lose the pkg.go.dev link and gapi
+	// must keep it, because a change that removed it everywhere would
+	// satisfy the first and quietly break the second. Making the
+	// element opt-in did exactly that - no consumer opted in - so gapi
+	// carried no link at all. github.com/goppydae/gapi serves 200 on
+	// pkg.go.dev now that operator decision 24 has published the repo,
+	// measured 2026-08-08.
+	ImportableModule: true,
 }
 
 // docsCommitted are the generated paths under drift control.
@@ -649,13 +658,21 @@ func (Docs) Serve() error {
 	return magelib.DocsServe(docsConfig)
 }
 
-// Check fails when the committed reference no longer matches its source.
+// Check runs every documentation gate.
 //
 // Wired into Lint rather than left to a separate invocation, because a
 // gate nobody runs is the state this repo's reference was already in.
+//
+// ONE CALL RATHER THAN A LIST THAT DRIFTS. This was CheckDocsDrift
+// alone, so MAGELIB-DIV-012's rendered-h1 gate and -013's advertised-
+// taxonomy gate shipped in magelib v0.9.0 and ran nowhere here - the
+// silo's dominant defect shape, a mechanism built and never wired.
+// CheckDocs composes all three, so a gate magelib adds next reaches
+// this repo with the re-vendor instead of waiting for somebody to
+// remember a second line.
 func (Docs) Check() error {
 	mg.Deps(checkHermetic)
-	return magelib.CheckDocsDrift(docsConfig)
+	return magelib.CheckDocs(docsConfig)
 }
 
 // checkHermetic ensures tools are running from Nix store

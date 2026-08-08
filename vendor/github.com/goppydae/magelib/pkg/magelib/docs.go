@@ -98,8 +98,36 @@ type DocsConfig struct {
 	BaseURL string
 	// Repo is the repository's canonical path without a scheme, e.g.
 	// "github.com/goppydae/magelib". It supplies the sidebar's GitHub
-	// link, the pkg.go.dev link, and the default EditURL.
+	// link and the default EditURL, and names the module for the
+	// pkg.go.dev link when ImportableModule is set.
 	Repo string
+	// ImportableModule says this repository is a Go module somebody can
+	// import, and turns on the sidebar's pkg.go.dev link.
+	//
+	// OPT-IN BECAUSE THE ELEMENT WAS EMITTED UNCONDITIONALLY AND NO
+	// CONSUMER COULD DECLINE IT (MAGELIB-DIV-016). Repo supplies the
+	// GitHub link, the pkg.go.dev link and the default EditURL at once,
+	// so keeping two meant keeping the third, and Hugo REPLACES rather
+	// than merges a config slice - dropping one menu element meant
+	// restating the whole block, which drifts by omission the moment
+	// magelib adds an entry.
+	//
+	// THE ENTRY GAVE TWO REASONS FOR THE LINK BEING WRONG AND ONLY ONE
+	// SURVIVES. It said the repos are private, so pkg.go.dev has nothing
+	// to serve and the link 404s on all four sites. That expired:
+	// operator decision 24 published them, and measured 2026-08-08 gapi,
+	// goblin and magelib are public with pkg.go.dev serving gapi and
+	// magelib. Only goppydae-docs remains, and it is the DURABLE half -
+	// not a Go library at all, carrying a go.mod solely so Hugo can
+	// resolve its theme and mage can compile a Magefile, and private
+	// permanently. So the three code repos set this and the hub does
+	// not.
+	//
+	// Defaulting OFF rather than on is still the direction that cannot
+	// mislead: an absent link says nothing, while a present one that
+	// 404s is a claim the site cannot honour. A repo that is genuinely
+	// published sets this.
+	ImportableModule bool
 	// EditURL is the base for per-page "edit this page" links. Derived
 	// from Repo and Dir when empty, which is the correct value for every
 	// repo in this silo; setting it is for a repo whose default branch
@@ -268,11 +296,15 @@ func (c DocsConfig) renderBaseConfig(tmpl []byte) ([]byte, error) {
 		return nil, fmt.Errorf("parsing hugo-base template: %w", err)
 	}
 	var buf bytes.Buffer
-	err = t.Execute(&buf, struct{ Title, BaseURL, Repo, EditURL string }{
-		Title:   c.Title,
-		BaseURL: c.BaseURL,
-		Repo:    c.Repo,
-		EditURL: c.editURL(),
+	err = t.Execute(&buf, struct {
+		Title, BaseURL, Repo, EditURL string
+		ImportableModule              bool
+	}{
+		Title:            c.Title,
+		BaseURL:          c.BaseURL,
+		Repo:             c.Repo,
+		EditURL:          c.editURL(),
+		ImportableModule: c.ImportableModule,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("rendering hugo-base config: %w", err)
@@ -303,7 +335,7 @@ func docsGenerateInto(cfg DocsConfig, root string) error {
 		if err := runStreamed("gomarkdoc", gomarkdocArgs(cfg, pkg, out)...); err != nil {
 			return fmt.Errorf("gomarkdoc %s: %w", pkg.Path, err)
 		}
-		if err := prependFrontMatter(out, pkg.Title); err != nil {
+		if err := applyFrontMatter(out, pkg.Title); err != nil {
 			return err
 		}
 	}
@@ -349,21 +381,33 @@ func gomarkdocArgs(cfg DocsConfig, pkg APIPackage, out string) []string {
 	}
 }
 
-// prependFrontMatter puts a relearn front matter block in front of
-// gomarkdoc's output.
+// applyFrontMatter puts a relearn front matter block in front of
+// gomarkdoc's output and drops the h1 gomarkdoc opens with.
 //
 // It is idempotent by construction - it rewrites the whole file from
 // gomarkdoc's bytes each time - and it carries no date. A generated
 // artifact under a byte-comparing drift gate cannot contain a clock, and
 // front matter is the obvious place to reach for one.
-func prependFrontMatter(path, title string) error {
+//
+// THE LEADING h1 IS REMOVED HERE BECAUSE THIS IS THE ONLY PLACE THAT
+// OWNS THE ASSEMBLED FILE. Front matter supplies the title and the theme
+// renders it (operator decision 62), so gomarkdoc's own "# magelib" is a
+// second h1 on the same page - the one open work item decision 62 named
+// for itself. The alternative was a gomarkdoc template override, which
+// that decision said to RAISE rather than build quietly, since a forked
+// template is what produced MAGELIB-DIV-012 in the first place. Nine
+// lines here beat a fork.
+//
+// Only the FIRST heading is dropped, and only before any other content,
+// so a "#" inside a later code block is untouched.
+func applyFrontMatter(path, title string) error {
 	body, err := os.ReadFile(path) // #nosec G304 -- path is repo-relative config, validated by DocsConfig.validate
 	if err != nil {
 		return fmt.Errorf("reading generated %s: %w", path, err)
 	}
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "---\ntitle: %q\n---\n\n", title)
-	buf.Write(body)
+	buf.Write(dropLeadingH1(body))
 	return os.WriteFile(path, buf.Bytes(), 0o600)
 }
 
@@ -408,4 +452,58 @@ func hugoArgs(cfg DocsConfig) []string {
 		configs += ",config.yaml"
 	}
 	return []string{"--source", cfg.Dir, "--config", configs}
+}
+
+// dropLeadingH1 removes the first ATX h1 from generated markdown, along
+// with a blank line following it.
+//
+// Scans only until the first line that is neither blank nor an HTML
+// comment: gomarkdoc emits a "Code generated" banner before the heading,
+// and stopping at real content means a document whose first heading is
+// deeper than h1 is returned untouched rather than silently edited.
+func dropLeadingH1(body []byte) []byte {
+	lines := strings.Split(string(body), "\n")
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "<!--") {
+			continue
+		}
+		if !strings.HasPrefix(t, "# ") {
+			return body
+		}
+		rest := lines[i+1:]
+		if len(rest) > 0 && strings.TrimSpace(rest[0]) == "" {
+			rest = rest[1:]
+		}
+		return []byte(strings.Join(append(lines[:i:i], rest...), "\n"))
+	}
+	return body
+}
+
+// CheckDocs runs every documentation gate, in the order they depend on.
+//
+// ONE ENTRY POINT SO A NEW GATE COSTS CONSUMERS NOTHING. Each repo's
+// Docs.Check used to call CheckDocsDrift directly, so adding a gate
+// meant editing three Magefiles and waiting for a release and a
+// re-vendor in each - which is the per-repo drift the shared build
+// library exists to prevent, arriving through the wiring instead of
+// through the rule. Consumers call this; gates are added here.
+//
+// ORDER IS LOAD-BEARING, NOT ALPHABETICAL. CheckDocsDrift proves the
+// committed generated output matches a fresh regeneration. Every gate
+// after it reads that output, so running them first would have them
+// assert against files nobody has shown to be current - and a gate that
+// measures a stale tree reports a fact about that tree's age.
+//
+// It stops at the FIRST failure deliberately. A stale reference makes
+// every later result a statement about the wrong bytes, so reporting
+// them together would pad one real failure with derived ones.
+func CheckDocs(cfg DocsConfig) error {
+	if err := CheckDocsDrift(cfg); err != nil {
+		return err
+	}
+	if err := CheckRenderedH1(cfg); err != nil {
+		return err
+	}
+	return CheckAdvertisedTaxonomies(cfg)
 }
