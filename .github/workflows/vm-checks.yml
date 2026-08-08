@@ -137,7 +137,7 @@ jobs:
           set -euo pipefail
 
           title="VM Checks are failing on main"
-          body=$(printf '%s\n\n- commit: `%s`\n- triggered by: `%s`\n- run: %s\n\nThe VM suites boot NixOS guests and run off the pull-request\npath, so this did not block any merge. The log is attached to the\nrun as an artifact and survives a rerun; read it before rerunning.\n' \
+          body=$(printf '%s\n\n- commit: `%s`\n- triggered by: `%s`\n- run: %s\n\nThe VM suites boot NixOS guests and run off the pull-request\npath, so this did not block any merge. If the suite itself ran, its\nlog is attached to the run as an artifact and survives a rerun -\nread it BEFORE rerunning, since a rerun replaces the conclusion.\n' \
             "NixOS VM Checks failed." "$COMMIT" "$EVENT" "$RUN_URL")
 
           # Matched by title rather than by label: a label has to exist
