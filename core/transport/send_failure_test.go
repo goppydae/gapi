@@ -22,10 +22,10 @@ import (
 
 // A PUBLISH THAT FAILS TO SEND MUST SAY SO.
 //
-// PublishRemote returns nil once the peer set is non-empty, and the
-// actual send happens in a goroutine whose every failure mode was a
-// bare `return` - no error, no log, nothing. So "Publish returned nil"
-// meant "a goroutine was spawned", not "the bytes went out", and a lost
+// PublishRemote USED TO return nil once the peer set was non-empty, with
+// the actual send in a goroutine whose every failure mode was a bare
+// `return` - no error, no log, nothing. So "Publish returned nil" meant
+// "a goroutine was spawned", not "the bytes went out", and a lost
 // request was indistinguishable from one the daemon answered slowly.
 //
 // That ambiguity is not hypothetical: it is why five occurrences of the
@@ -33,8 +33,11 @@ import (
 // across as many pull requests. The system logs every transmission and
 // logged no reception, so no log could locate a loss.
 //
-// This asserts the send path reports failure. It does NOT assert the
-// send succeeds - that is the transport's job and other tests cover it.
+// This asserts the send path LOGS its failure. That the failure is also
+// RETURNED is asserted in publish_join_test.go; the two halves are kept
+// apart because the log is what located this defect and the return is
+// what fixes it, and a log that stopped being emitted would otherwise
+// pass unnoticed behind the error check.
 //
 // THE PEER SET IS BUILT DIRECTLY rather than through NewQUICClient,
 // because handleConn removes a dead connection when AcceptStream errors.
@@ -55,11 +58,18 @@ func TestPublishLogsSendFailure(t *testing.T) {
 	}
 	ev := eventbus.NewEvent("system", "", "lost-topic", "test", payload)
 
-	if perr := q.PublishRemote(context.Background(), ev); perr != nil {
-		t.Fatalf("PublishRemote returned %v; the peer set is non-empty so it reports nil and sends asynchronously", perr)
+	// THIS ASSERTION WAS INVERTED, AND THE OLD ONE WAS THE DEFECT WRITTEN
+	// DOWN AS A PROPERTY. It required nil here, reasoning that a
+	// non-empty peer set means the send is asynchronous - true of the
+	// code as it stood, and exactly what made a lost request
+	// unreportable. The fan-out is joined now, so a peer that cannot be
+	// opened is a returned error. TestPublishRemoteReportsDeadPeer is
+	// what this half became.
+	if perr := q.PublishRemote(context.Background(), ev); perr == nil {
+		t.Fatal("PublishRemote returned nil for an already-closed peer; a send that did not happen must be reported")
 	}
 
-	rec := awaitRecord(t, records, ev.ID)
+	rec := awaitFailureRecord(t, records, ev.ID)
 	if rec.Level < slog.LevelWarn {
 		t.Errorf("send failure logged at %v; a dropped publish must be at least WARN", rec.Level)
 	}
@@ -120,9 +130,9 @@ func TestReceiveLogsArrival(t *testing.T) {
 		t.Fatalf("publish: %v", perr)
 	}
 
-	rec := awaitRecord(t, records, ev.ID)
-	if !recordHasValue(rec, "event", "receive") {
-		t.Errorf("record naming event %s is not a receive record; arrival must be distinguishable from the publish line", ev.ID)
+	rec := awaitTracedRecord(t, records, ev.ID, "receive")
+	if !recordHasValue(rec, "module", "transport") {
+		t.Errorf("receive record for %s is not from the transport; arrival must be recorded where the frame arrives, not by a later handler", ev.ID)
 	}
 }
 
@@ -194,20 +204,74 @@ func captureLogs(t *testing.T) chan slog.Record {
 // awaitRecord waits for a record carrying the given event id. The send
 // is asynchronous, so a bare channel read with no deadline would hang
 // the suite rather than fail it when the defect is present.
-func awaitRecord(t *testing.T, records chan slog.Record, eventID string) slog.Record {
+// MATCHING ON THE EVENT ID ALONE WAS NOT ENOUGH, AND THE PROBE PROVED IT
+// BY BREAKING BOTH CALLERS.
+//
+// One helper used to return the first record carrying the id, on the
+// reasonable-sounding assumption that a publish emits one line about
+// itself. Adding traceSendStart - which records that a send goroutine
+// RAN, at INFO, with the event id - made that first record the probe's
+// own, so TestPublishLogsSendFailure read INFO where it demanded WARN
+// and TestReceiveLogsArrival read a send line where it demanded an
+// arrival. Both failed on the branch that added the probe, and neither
+// failure was about the thing it asserted.
+//
+// So the two waits are separate now and each names what it will accept.
+// An instrument that changes what the harness measures is the same
+// family of defect as a probe that cannot fail: the fix is to make the
+// selection explicit rather than to trust an ordering.
+
+// awaitTracedRecord waits for a structured trace record - one carrying an
+// `event` field with the given value - that names the event id. The
+// deadline exists because the send is concurrent: a bare channel read
+// would hang the suite rather than fail it when the defect is present.
+func awaitTracedRecord(t *testing.T, records chan slog.Record, eventID, event string) slog.Record {
+	t.Helper()
+
+	return awaitMatchingRecord(t, records, eventID,
+		func(rec slog.Record) bool { return recordHasValue(rec, "event", event) },
+		"trace record event="+event)
+}
+
+// awaitFailureRecord waits for a record that names the event id and is
+// NOT a trace record. Failure lines carry no `event` field - they are
+// prose about something going wrong, not a point on the wire - and that
+// absence is what distinguishes them from the traces interleaved with
+// them.
+func awaitFailureRecord(t *testing.T, records chan slog.Record, eventID string) slog.Record {
+	t.Helper()
+
+	return awaitMatchingRecord(t, records, eventID,
+		func(rec slog.Record) bool { return !recordHasKey(rec, "event") },
+		"failure record")
+}
+
+func awaitMatchingRecord(t *testing.T, records chan slog.Record, eventID string, match func(slog.Record) bool, want string) slog.Record {
 	t.Helper()
 
 	deadline := time.After(5 * time.Second)
 	for {
 		select {
 		case rec := <-records:
-			if recordHasValue(rec, "event_id", eventID) {
+			if recordHasValue(rec, "event_id", eventID) && match(rec) {
 				return rec
 			}
 		case <-deadline:
-			t.Fatalf("no log record naming event %s within 5s: the send failed silently", eventID)
+			t.Fatalf("no %s naming event %s within 5s", want, eventID)
 		}
 	}
+}
+
+func recordHasKey(rec slog.Record, key string) bool {
+	found := false
+	rec.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func recordHasValue(rec slog.Record, key, want string) bool {
