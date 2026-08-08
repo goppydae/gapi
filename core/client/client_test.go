@@ -206,7 +206,7 @@ func TestPing_SurvivesALateSubscriber(t *testing.T) {
 	})
 
 	// No ping subscriber yet: this is the window.
-	const window = 3 * pingRetryInterval
+	const window = 3 * requestRetryInterval
 
 	subscribed := make(chan struct{})
 	go func() {
@@ -246,4 +246,133 @@ func TestPing_SurvivesALateSubscriber(t *testing.T) {
 		t.Errorf("Ping returned in %s, before the %s window elapsed; "+
 			"the test is not exercising a late subscriber", elapsed, window)
 	}
+}
+
+// TestAgentStatus_SurvivesALateSubscriber is GAPI-DIV-122's gate.
+//
+// The same defect as TestPing_SurvivesALateSubscriber, in the method the
+// -120 fix did not reach. The daemon subscribes agents/ only after
+// setupAgents returns, so a status request issued during bring-up has no
+// subscriber and is dropped, and a single publish then waits out the
+// whole deadline. Measured in a clean NixOS guest before the fix: the
+// request went out at 17:06:05 and the client gave up at 17:06:35 -
+// exactly its 30s deadline, one call, no load. That is what had been
+// reddening the VM check on main for five consecutive commits.
+//
+// Retrying is safe HERE and not everywhere: a status read is idempotent.
+// The lifecycle verbs are excluded deliberately, because re-publishing a
+// mutating action could execute it twice. GAPI-DIV-122 names each
+// exclusion.
+//
+// As with the ping test, the window is wider than one retry interval and
+// the elapsed time is asserted, so this cannot pass by luck or without
+// exercising a late subscriber.
+func TestAgentStatus_SurvivesALateSubscriber(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
+
+	const window = 3 * requestRetryInterval
+
+	subscribed := make(chan struct{})
+	go func() {
+		time.Sleep(window)
+		if err := bus.Subscribe("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
+			payload, err := anypb.New(&protopkg.AgentStatusResponse{
+				Agents: []*protopkg.AgentStatus{{Id: "agent-1"}},
+			})
+			if err != nil {
+				return
+			}
+			reply := eventbus.NewEvent("system", "", "agents.reply", "test-daemon", payload)
+			reply.ID = e.ID
+			_ = bus.Publish(reply)
+		}); err != nil {
+			t.Errorf("late subscribe: %v", err)
+		}
+		close(subscribed)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	agents, err := NewFromBus(bus).AgentStatus(ctx)
+	elapsed := time.Since(start)
+
+	<-subscribed
+	if err != nil {
+		t.Fatalf("AgentStatus across a late-subscriber window failed: %v (waited %s)", err, elapsed)
+	}
+	if len(agents) != 1 || agents[0].Id != "agent-1" {
+		t.Errorf("AgentStatus = %v, want one agent-1", agents)
+	}
+	if elapsed < window {
+		t.Errorf("AgentStatus returned in %s, before the %s window elapsed; "+
+			"the test is not exercising a late subscriber", elapsed, window)
+	}
+}
+
+// TestAwaitCorrelated_BoundsItsRepublishing asserts the retry cannot
+// amplify a request against a daemon that never answers.
+//
+// The retry crosses agent bring-up, measured at 0.02s to a few hundred
+// milliseconds. Republishing for the full deadline instead would turn
+// one status call into roughly 120 requests aimed at a daemon that is
+// already slow - request amplification pointed at exactly the condition
+// that makes a suite flaky. Nothing measured says that happened; this
+// bound means nothing has to.
+//
+// Counts the requests the daemon ACTUALLY receives, rather than trusting
+// the constant: a cap that is declared and not enforced is the shape
+// this repo keeps finding.
+func TestAwaitCorrelated_BoundsItsRepublishing(t *testing.T) {
+	bus := eventbus.NewInprocBus[*anypb.Any]()
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Errorf("close bus: %v", err)
+		}
+	})
+
+	var mu sync.Mutex
+	var received int
+	// Subscribed but NEVER replying: the client must give up republishing
+	// on its own rather than because an answer arrived.
+	if err := bus.Subscribe("system", "", "agents/", func(e eventbus.Event[*anypb.Any]) {
+		mu.Lock()
+		received++
+		mu.Unlock()
+	}); err != nil {
+		t.Fatalf("subscribe agents/: %v", err)
+	}
+
+	// Comfortably longer than the whole retry budget
+	// (1 + requestRetryAttempts) * requestRetryInterval, so the cap is
+	// what stops the resends rather than the deadline.
+	budget := time.Duration(requestRetryAttempts+1) * requestRetryInterval
+	ctx, cancel := context.WithTimeout(context.Background(), budget+2*time.Second)
+	defer cancel()
+
+	if _, err := NewFromBus(bus).AgentStatus(ctx); err == nil {
+		t.Fatal("AgentStatus returned nil error against a daemon that never replies")
+	}
+
+	mu.Lock()
+	got := received
+	mu.Unlock()
+
+	want := 1 + requestRetryAttempts // the initial publish plus the retries
+	if got > want {
+		t.Errorf("daemon received %d requests, want at most %d "+
+			"(one initial publish plus %d retries); the cap is not holding",
+			got, want, requestRetryAttempts)
+	}
+	if got < 2 {
+		t.Errorf("daemon received %d requests; fewer than 2 means the retry "+
+			"never fired and this test is not exercising the cap", got)
+	}
+	t.Logf("requests received: %d (cap %d)", got, want)
 }

@@ -84,52 +84,116 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to subscribe to pong: %w", err)
 	}
 
-	if err := c.bus.Publish(req); err != nil {
-		return "", fmt.Errorf("failed to publish ping: %w", err)
-	}
-
-	// RETRY WITHIN THE DEADLINE (GAPI-DIV-120).
-	//
-	// A ping is published fire-and-forget: a daemon that is listening but
-	// has not yet subscribed silently drops it, and a single publish then
-	// waits out the ENTIRE deadline for a pong nobody will ever send. That
-	// turned a sub-second probe into a 30-second stall whenever the client
-	// won the race against the daemon's subscription.
-	//
-	// GAPI-DIV-120's primary fix is supervisor-side - liveness subscribes
-	// before agent bring-up - so this is defence in depth rather than the
-	// cure. It is worth having anyway: the supervisor's ordering is one
-	// repository's guarantee, and this client is what goblin embeds.
-	//
-	// The SAME req is republished, deliberately. The subscription above is
-	// correlated to req.ID, so a fresh event per attempt would need a
-	// fresh subscription and would leak one per retry.
-	ticker := time.NewTicker(pingRetryInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case status := <-done:
-			return status, nil
-		case err := <-errCh:
-			return "", err
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-ticker.C:
-			if err := c.bus.Publish(req); err != nil {
-				return "", fmt.Errorf("failed to republish ping: %w", err)
-			}
-		}
-	}
+	// Publishing and retrying both belong to awaitCorrelated; see it for
+	// why a read may be republished and a lifecycle verb may not.
+	return awaitCorrelated(ctx, c, req, done, errCh)
 }
 
-// pingRetryInterval is how often Ping republishes while awaiting a pong.
+// requestRetryInterval is how often an idempotent request is republished
+// while awaiting its correlated reply.
 //
 // Chosen against the measured cost of the window it covers rather than
 // picked round: agent bring-up held the subscription off for ~0.3s in
 // the ADK fixture set, so an interval well under that closes the gap in
 // a handful of attempts while staying negligible against a 30s deadline.
-const pingRetryInterval = 250 * time.Millisecond
+const requestRetryInterval = 250 * time.Millisecond
+
+// requestRetryAttempts BOUNDS the republishing, and the bound is the
+// point rather than a tidiness.
+//
+// The window this retry crosses is agent bring-up, measured at 0.02s to
+// a few hundred milliseconds - eight attempts covers it with a wide
+// margin. Republishing for the FULL deadline instead would turn one
+// status call into ~120 requests against a daemon that is already slow,
+// which is request amplification aimed at the exact condition that
+// makes a suite flaky. Nothing measured says that amplification caused
+// a failure; the cap means nothing has to.
+//
+// After the cap the original deadline still rides, so a genuinely
+// unresponsive daemon fails exactly as it did before any retry existed.
+const requestRetryAttempts = 8
+
+// awaitCorrelated publishes req and waits for its correlated reply,
+// REPUBLISHING on an interval until the reply lands or ctx expires.
+//
+// GAPI-DIV-120 and -122. A request published while the daemon is still
+// in setupAgents has no subscriber and is silently dropped, and a single
+// publish then waits out the entire deadline for a reply nobody will
+// send. Measured in a clean NixOS guest: `gapictl agent status` issued
+// immediately after wait_for_unit reported the request at 17:06:05 and
+// gave up at 17:06:35 - exactly the client's 30s deadline, with one call
+// and no load.
+//
+// FOR IDEMPOTENT READS ONLY, and that restriction is the whole design.
+// Re-publishing a read costs nothing and the correlated subscription
+// discards the duplicate replies. Re-publishing a MUTATING verb could
+// execute it twice: operator decision 42 records four concurrent starts
+// spawning four processes. So Ping and AgentStatus use this and the
+// lifecycle verbs deliberately do not - see GAPI-DIV-122, which names
+// each exclusion.
+//
+// The SAME req is republished, deliberately. The caller's subscription
+// is correlated to req.ID, so a fresh event per attempt would need a
+// fresh subscription and would leak one per retry.
+//
+// A free function rather than a method: Go does not allow type
+// parameters on methods, and the reply type differs per caller.
+func awaitCorrelated[T any](
+	ctx context.Context,
+	c *Client,
+	req eventbus.Event[*anypb.Any],
+	done <-chan T,
+	errCh <-chan error,
+) (T, error) {
+	var zero T
+
+	// Publish, NOT PublishRequest, AND THE RETRY IS THE REASON.
+	// PublishRequest reports a remote send that did not happen, which is
+	// what a SINGLE-SHOT request needs - failing fast on it here would
+	// defeat the very window this function exists to cross. A daemon that
+	// is listening but has not yet subscribed, or a peer set that is
+	// momentarily empty, is exactly what republishing answers. So the
+	// paths with no retry (ReloadAgents, Shutdown, the lifecycle verbs)
+	// use PublishRequest and these two do not, which is the same split
+	// GAPI-DIV-122 draws between idempotent reads and mutating verbs.
+	//
+	// RESIDUAL, recorded rather than fixed here: a request whose every
+	// attempt failed to SEND still ends as a bare context deadline, so it
+	// reads identically to one the daemon simply never answered. Removing
+	// that ambiguity means retaining the last transport error and
+	// reporting it on expiry, which is a change to this function's
+	// contract and does not belong in a conflict resolution.
+	if err := c.bus.Publish(req); err != nil {
+		return zero, fmt.Errorf("publish %s: %w", req.Topic, err)
+	}
+
+	ticker := time.NewTicker(requestRetryInterval)
+	defer ticker.Stop()
+
+	attempts := 0
+	for {
+		select {
+		case v := <-done:
+			return v, nil
+		case err := <-errCh:
+			return zero, err
+		case <-ctx.Done():
+			return zero, ctx.Err()
+		case <-ticker.C:
+			if attempts >= requestRetryAttempts {
+				// Stop republishing and keep waiting out ctx. Stopping
+				// the ticker is what ends the resends: its channel never
+				// fires again, so this arm is unreachable afterwards.
+				ticker.Stop()
+				continue
+			}
+			attempts++
+			if err := c.bus.Publish(req); err != nil {
+				return zero, fmt.Errorf("republish %s: %w", req.Topic, err)
+			}
+		}
+	}
+}
 
 // ReloadAgents triggers a reload of the agent registry on the daemon.
 func (c *Client) ReloadAgents(ctx context.Context) error {
@@ -178,35 +242,37 @@ func (c *Client) AgentStatus(ctx context.Context) ([]*protopkg.AgentStatus, erro
 
 	// Correlate the reply to this request's ID so concurrent status callers don't
 	// steal each other's reply. The daemon echoes the request ID onto the reply.
+	// NON-BLOCKING sends, because awaitCorrelated may republish and draw
+	// more than one reply for a single request id while both channels hold
+	// exactly one. A second blocking send would park this handler forever.
 	if err := c.bus.SubscribeCorrelated("system", "", "agents.reply", req.ID, func(e eventbus.Event[*anypb.Any]) {
 		var res protopkg.AgentStatusResponse
 		if err := e.Payload.UnmarshalTo(&res); err != nil {
-			errCh <- fmt.Errorf("failed to unmarshal agent status: %w", err)
+			select {
+			case errCh <- fmt.Errorf("failed to unmarshal agent status: %w", err):
+			default:
+			}
 			return
 		}
-		done <- res.Agents
+		select {
+		case done <- res.Agents:
+		default:
+		}
 	}); err != nil {
 		return nil, fmt.Errorf("failed to subscribe to agents.reply: %w", err)
 	}
 
-	// PublishRequest, NOT Publish, AND THE DIFFERENCE IS THIS FUNCTION'S
-	// ENTIRE FAILURE MODE. There is ONE publish here and no retry, so a
-	// send that does not happen costs the caller its whole deadline and
-	// then blames the daemon. Publish demotes ErrNoPeer to a debug line
-	// (GAPI-DIV-095), which is correct for an announcement and fatal
-	// here.
-	if err := c.bus.PublishRequest(req); err != nil {
-		return nil, fmt.Errorf("failed to publish status request: %w", err)
-	}
-
-	select {
-	case agents := <-done:
-		return agents, nil
-	case err := <-errCh:
-		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
+	// RETRIES, and it is safe to because a status read is idempotent
+	// (GAPI-DIV-122). The daemon subscribes agents/ only after setupAgents
+	// returns, so a request issued during bring-up is dropped and this call
+	// otherwise waits out its whole deadline - measured at exactly 30s in a
+	// clean NixOS guest, which is what reddened the VM check.
+	//
+	// Answering that request EARLY was the rejected alternative: the
+	// handler reads the registry, so subscribing it before bring-up
+	// finishes returns a confidently PARTIAL agent list. Retrying yields
+	// the complete one, because the republish lands after setupAgents.
+	return awaitCorrelated(ctx, c, req, done, errCh)
 }
 
 // LifecycleOptions defines optional parameters for lifecycle actions.
@@ -245,8 +311,13 @@ func (c *Client) LifecycleWithOpts(ctx context.Context, agentIDs []string, actio
 			// happened surfaces as "timeout waiting for PENDING", which is
 			// the assertion five occurrences of the test/adk flake carried
 			// and is a statement about the SUPERVISOR. PublishRequest makes
-			// it a statement about the send instead. The Result error branch
-			// this feeds already existed; only which errors reach it change.
+			// it a statement about the send instead.
+			//
+			// NOT awaitCorrelated, and GAPI-DIV-122 draws that line: a
+			// lifecycle verb MUTATES, and operator decision 42 records four
+			// concurrent starts spawning four processes. Republishing one
+			// would risk executing it twice, so this path gets honesty
+			// about the send instead of a retry.
 			if err := c.bus.PublishRequest(ev); err != nil {
 				results <- Result{AgentID: agentID, Err: fmt.Errorf("publish control: %w", err)}
 				return
