@@ -3,8 +3,6 @@ title: "Agent Examples"
 weight: 60
 ---
 
-# Agent Examples
-
 Every field these blocks declare is catalogued on the
 [agent metadata](../agent-metadata/) page.
 

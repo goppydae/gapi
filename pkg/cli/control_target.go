@@ -13,12 +13,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/goppydae/gapi/core/client"
 	"github.com/goppydae/gapi/core/config"
 	"github.com/goppydae/gapi/core/product"
+	"github.com/goppydae/gapi/internal/logattr"
 )
 
 // controlAddrSource records how the target address was chosen, so a
@@ -134,5 +137,20 @@ func describeControlTarget(cfg *config.Config) string {
 		return fmt.Sprintf("dialled %s, the configured default - no live daemon has "+
 			"published an address in %s (pass --control-addr if it is listening elsewhere)",
 			addr, strings.Join(config.ControlAddrDirs(), " or "))
+	}
+}
+
+// closeControlClient releases a control client, reporting a close
+// failure rather than swallowing it.
+//
+// A FUNCTION RATHER THAN SIX LINES REPEATED AT EVERY CALL SITE. There
+// are six of them, and the deferred form was pushing gapictl.go past the
+// 500-line ceiling - which is the ceiling working, since four copies of
+// one teardown is exactly what it exists to catch. A CLI command is a
+// terminus, so the error is logged here rather than propagated
+// (GAPI-DIV-124).
+func closeControlClient(c *client.Client) {
+	if err := c.Close(); err != nil {
+		slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "close control client", logattr.Err(err))
 	}
 }

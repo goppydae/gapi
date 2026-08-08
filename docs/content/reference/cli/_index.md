@@ -3,8 +3,6 @@ title: "Command Reference"
 weight: 10
 ---
 
-# Command Reference
-
 Generated from the cobra trees the binaries run, not from a second
 declaration of them.
 

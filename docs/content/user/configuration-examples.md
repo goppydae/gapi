@@ -3,8 +3,6 @@ title: "Configuration Examples"
 weight: 40
 ---
 
-# Configuration Examples
-
 Worked setups, and the things a key table cannot tell you. Every key,
 its type, its default and the environment variable that overrides it are
 published in the generated

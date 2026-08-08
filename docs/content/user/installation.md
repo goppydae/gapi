@@ -3,8 +3,6 @@ title: "Installation"
 weight: 30
 ---
 
-# Installation
-
 Deploying gapi beyond a dev shell.
 
 ## Contents

@@ -11,6 +11,8 @@ package magelib
 import (
 	"bytes"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,22 +20,49 @@ import (
 	"strings"
 )
 
-// maxFileLines is the whole rule, and it is a package constant on
-// purpose: a per-repo limit is exactly the drift that makes a shared
-// rule meaningless. The moment one repo can pass 800 the number stops
-// describing the ecosystem and starts describing whoever wired the
-// gate. Debt is expressed through the waiver list instead, which names
-// individual files, shrinks, and cannot rot (see CheckFileLength).
+// TWO CEILINGS, BECAUSE ONE NUMBER CANNOT MEASURE WHAT THE RULE IS FOR.
 //
-// The gate fails strictly ABOVE this number: a 500-line file passes, a
-// 501-line file fails. The go manifesto phrases the rule as "less than
-// 500 lines", which read literally would fail at exactly 500; the
-// operative definition here is the one GAPI-DIV-047's exit uses - "a
-// 501-line file turns the gate red".
-const maxFileLines = 500
+// The rule exists for COGNITIVE LOAD: a file should be small enough to
+// hold as one mental model. Those two numbers bound the two things that
+// cost a reader, and they are not the same thing.
+//
+// maxSourceLines bounds the MODEL - the state and control flow a reader
+// has to simulate. Comments do not add to that; they reduce it, which is
+// why counting them as code taxed exactly the explanations this codebase
+// is built on (MAGELIB-DIV-014). Measured across all three repos before
+// choosing: 464 hand-written files, median 93 source lines, p90 221,
+// p99 416, max 602. 400 sits at p99, so it argues with the top one
+// percent and nothing else.
+//
+// maxRawLines bounds the READING - the sheer length of what opens in the
+// editor, which prose does add to. It exists because a source ceiling
+// alone places NO bound on that: nothing in a 400-source limit prevents
+// a 3000-line file. Today's corpus is well behaved (median 144 raw, p99
+// 612, max 891) so this binds nothing; it is a backstop against a future
+// where it would. 1000 is not invented - operator decision 23 already
+// states magefiles may grow to 1000 lines before splitting is looked at.
+//
+// SOURCE COUNTING IS MORE PERMISSIVE THAN wc -l AND THAT WAS TAKEN
+// DELIBERATELY. A 500-line raw ceiling was allowing about 318 source
+// lines at the median 36% prose density, so 400 is a real loosening of
+// roughly a quarter, accepted because it is measuring the right quantity
+// rather than because the old number was wrong.
+//
+// Package constants on purpose: a per-repo limit is exactly the drift
+// that makes a shared rule meaningless. Debt is expressed through the
+// waiver list instead, which names individual files, shrinks, and cannot
+// rot (see CheckFileLength).
+//
+// Both gates fail strictly ABOVE their number: a 400-source file passes,
+// a 401-source file fails.
+const (
+	maxSourceLines = 400
+	maxRawLines    = 1000
+)
 
 // CheckFileLength fails when any hand-written Go file in the repo
-// rooted at the current directory is longer than maxFileLines. Like
+// rooted at the current directory breaches either ceiling - more than
+// maxSourceLines of source, or more than maxRawLines to read. Like
 // CheckTerminology it is meant to be wired into a Lint target with
 // mg.Deps, so it rides a CI context that already blocks merges rather
 // than becoming a target nobody invokes - the failure mode GAPI-DIV-030
@@ -138,6 +167,7 @@ func CheckFileLength(waivers []string, skips ...Skip) error {
 	// actually measured, which is what lets a stale or bogus waiver be
 	// told apart from a live one after the walk.
 	checked := make(map[string]int, len(waived))
+	checkedRaw := make(map[string]int, len(waived))
 
 	err = filepath.WalkDir(".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -175,14 +205,19 @@ func CheckFileLength(waivers []string, skips ...Skip) error {
 			return nil
 		}
 		rel := filepath.Clean(path)
-		n := countLines(data)
+		src, raw := sourceLines(data), countLines(data)
 		if waived[rel] {
-			checked[rel] = n
+			checked[rel] = src
+			checkedRaw[rel] = raw
 			return nil
 		}
-		if n > maxFileLines {
+		if src > maxSourceLines {
 			violations = append(violations, fmt.Sprintf(
-				"  %s: %d lines (limit %d)", rel, n, maxFileLines))
+				"  %s: %d source lines (limit %d)", rel, src, maxSourceLines))
+		}
+		if raw > maxRawLines {
+			violations = append(violations, fmt.Sprintf(
+				"  %s: %d lines to read (limit %d)", rel, raw, maxRawLines))
 		}
 		return nil
 	})
@@ -193,10 +228,13 @@ func CheckFileLength(waivers []string, skips ...Skip) error {
 	for w := range waived {
 		n, measured := checked[w]
 		switch {
-		case measured && n <= maxFileLines:
+		// A waiver is stale only when the file clears BOTH ceilings.
+		// Reporting it stale while it still breaches the other would ask
+		// for a deletion that immediately turns the gate red.
+		case measured && n <= maxSourceLines && checkedRaw[w] <= maxRawLines:
 			violations = append(violations, fmt.Sprintf(
-				"  waiver %q: file is now %d lines, at or under the limit %d - delete the waiver",
-				w, n, maxFileLines))
+				"  waiver %q: file is now %d source lines, at or under the limit %d - delete the waiver",
+				w, n, maxSourceLines))
 		case !measured:
 			violations = append(violations, fmt.Sprintf(
 				"  waiver %q: %s - delete the waiver", w, waiverMiss(w)))
@@ -251,4 +289,45 @@ func countLines(data []byte) int {
 		n++
 	}
 	return n
+}
+
+// sourceLines counts lines carrying at least one NON-COMMENT token.
+//
+// A CALCULATION, NOT A FILTER, AND THE ENTRY INSISTS ON THAT FOR A
+// REASON. Any regex reaching for `^\s*//` gets two cases wrong: a "//"
+// inside a STRING LITERAL is not a comment, and a /* */ BLOCK spanning
+// lines is one without any line starting that way. go/scanner tokenises
+// the file, so both fall out of the language's own definition rather
+// than out of a pattern somebody hoped was equivalent.
+//
+// A raw string literal spanning lines counts as source throughout: those
+// lines are data the program carries, and a reader holding the file has
+// to hold them.
+func sourceLines(data []byte) int {
+	fset := token.NewFileSet()
+	file := fset.AddFile("f", fset.Base(), len(data))
+	var s scanner.Scanner
+	// Errors are ignored deliberately: this gate measures length, and a
+	// file that does not parse is a compiler's problem rather than a
+	// reason to report no violation.
+	s.Init(file, data, func(token.Position, string) {}, scanner.ScanComments)
+
+	lines := make(map[int]bool)
+	for {
+		pos, tok, lit := s.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.COMMENT {
+			continue
+		}
+		p := fset.Position(pos)
+		lines[p.Line] = true
+		if tok == token.STRING && strings.Contains(lit, "\n") {
+			for i := 0; i < strings.Count(lit, "\n"); i++ {
+				lines[p.Line+i+1] = true
+			}
+		}
+	}
+	return len(lines)
 }

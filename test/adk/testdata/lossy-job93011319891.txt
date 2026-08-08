@@ -1,0 +1,13 @@
+# EXCERPT of gapi CI job 93011319891, the run GAPI-DIV-125 was filed on.
+# Every line the delivery audit parses is here and nothing else: each
+# client publish and each transport receive, in file order. The full
+# capture is ~146K; the entry's finding is that the published id
+# 019fde51-95de-7332-9ca7-b5b11196bc72 appears EXACTLY ONCE in the whole
+# job log, on its publish line, and never in a receive record.
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2607637Z         Output: 2026/08/07 22:21:56 INFO structured event module=eventbus event=publish event_id=019fde51-95de-7332-9ca7-b5b11196bc72 source=client topic=agents/ payload_type=*anypb.Any
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2608782Z         2026/08/07 22:22:00 INFO structured event module=transport event=receive event_id=019fde51-a6d6-7485-b638-dea5d0543109 source=test_simple_service topic=agent/heartbeat
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2610106Z         2026/08/07 22:22:05 INFO structured event module=transport event=receive event_id=019fde51-ba5e-762d-b19d-ec87221151d8 source=test_simple_service topic=agent/heartbeat
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2611210Z         2026/08/07 22:22:10 INFO structured event module=transport event=receive event_id=019fde51-cde6-779d-925b-11b520d7d494 source=test_simple_service topic=agent/heartbeat
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2612299Z         2026/08/07 22:22:15 INFO structured event module=transport event=receive event_id=019fde51-e16e-7999-bc22-a65cdf07d17f source=test_simple_service topic=agent/heartbeat
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2613385Z         2026/08/07 22:22:20 INFO structured event module=transport event=receive event_id=019fde51-f4f6-7b23-ba39-4381566145c6 source=test_simple_service topic=agent/heartbeat
+Full Build and Test	Execute System Tests	2026-08-07T22:22:57.2614464Z         2026/08/07 22:22:25 INFO structured event module=transport event=receive event_id=019fde52-087e-714f-99ce-0b6bd4116916 source=test_simple_service topic=agent/heartbeat

@@ -131,6 +131,8 @@ var pingCmd = &cobra.Command{
 			return fmt.Errorf("failed to init client: %w", err)
 		}
 
+		defer closeControlClient(c)
+
 		fmt.Print("pinging... ")
 		ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 		defer cancel()
@@ -163,6 +165,8 @@ var agentReloadCmd = &cobra.Command{
 			log.Fatalf("failed to init client: %v", err)
 		}
 
+		defer closeControlClient(c)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -191,6 +195,8 @@ var agentStatusCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("failed to init client: %v", err)
 		}
+
+		defer closeControlClient(c)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -250,6 +256,8 @@ var tuiCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("failed to init client: %w", err)
 		}
+
+		defer closeControlClient(c)
 
 		ctrl := &LocalController{client: c}
 		return tui.Run(ctrl)
