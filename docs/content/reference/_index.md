@@ -3,8 +3,6 @@ title: "Reference"
 weight: 20
 ---
 
-# Reference
-
 Generated reference for the kernel's operator-facing surface. Nothing in
 this section is hand-written.
 

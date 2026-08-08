@@ -1,9 +1,8 @@
 ---
-title: "Library Usage"
+title: "gapi as a Library"
+menuTitle: "Library Usage"
 weight: 70
 ---
-
-# gapi as a Library
 
 The kernel is the product; `gapid` is a thin wrapper around it. Embed
 the supervisor in your own Go binary and you get local agent

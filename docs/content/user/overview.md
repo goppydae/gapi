@@ -1,9 +1,8 @@
 ---
-title: "Overview"
+title: "gapi"
+menuTitle: "Overview"
 weight: 1
 ---
-
-# gapi
 
 gapi supervises agents on a single machine. It runs either as a standalone
 init system, holding PID 1 and bringing up userspace, or embedded inside a

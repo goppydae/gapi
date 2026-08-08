@@ -3,8 +3,6 @@ title: "Agent Metadata"
 weight: 50
 ---
 
-# Agent Metadata
-
 How an agent declares what it is, and what the supervisor hands it at
 exec. Both are read by code the configuration schema does not describe,
 so neither appears in the generated

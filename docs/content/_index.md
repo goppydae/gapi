@@ -2,8 +2,6 @@
 title: "gapi"
 ---
 
-# gapi
-
 GoPPydae Agent Process Infrastructure: a single-node agent supervision
 kernel. It runs as PID 1, supervises agents through their lifecycle, and
 carries the transport, configuration and cryptographic mechanisms the rest
