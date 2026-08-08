@@ -86,6 +86,12 @@ func newTimerAgent(id, path, schedule, lang, pyRunner string, lbus *lifecycle.Ty
 
 	// Create controller with proper signature
 	ta.ctrl = lifecycle.NewController(id, host, ta, lbus, nil)
+	// A timer agent knows its language too, and must narrow the
+	// budgets like the other two runners do (GAPI-DIV-107). Skipping it
+	// here would leave a GO timer holding the unmeasured-language
+	// default - python's, the most generous the table has - which is a
+	// silent 3.7x loosening of a deadline nobody asked to loosen.
+	applyLanguageBudgets(ta.ctrl, lang)
 
 	return ta
 }

@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/goppydae/gapi/core/budget"
 	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/internal/logattr"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
@@ -51,9 +52,31 @@ type Controller struct {
 	bus       *TypedBus
 	deps      DependencyResolver
 	GraceStop time.Duration
-	WaitStart time.Duration
 	WaitStop  time.Duration
 	stateCh   chan statusEvt // single, long-lived feed
+
+	// WaitStart WAS ONE FIELD DOING THREE JOBS, and GAPI-DIV-107 is the
+	// entry for the first two. It was 10s for every agent of every
+	// language, read at three call sites, and each site was bounding a
+	// different phenomenon:
+	//
+	//   - the spawn call itself (fork, exec, pipes, sockets)
+	//   - first frame to RUNNING, the agent's own start()
+	//   - the post-RELOAD wait, which is not a start at all
+	//
+	// Splitting them is the point of the entry. Naming them separately
+	// is what stops the next change from moving one and silently taking
+	// the other two with it - twice in one day this project moved a
+	// value to where it belonged and removed a job it had been doing in
+	// secret (STARTING was also the concurrency guard; WaitStart was
+	// also the silence budget).
+	//
+	// ReadinessBudget is per-agent and is the one a descriptor can
+	// declare. SilenceBudget and SpawnBudget are supervisor policy and
+	// are not declarable; see core/budget for why.
+	ReadinessBudget time.Duration
+	SilenceBudget   time.Duration
+	SpawnBudget     time.Duration
 
 	// startMu/starting are the re-entrancy guard for ActionStart.
 	//
@@ -114,9 +137,22 @@ func NewController(id, host string, r Runner, bus *TypedBus, deps DependencyReso
 		bus:       bus,
 		deps:      deps,
 		GraceStop: 3 * time.Second,
-		WaitStart: 10 * time.Second,
 		WaitStop:  5 * time.Second,
 		stateCh:   make(chan statusEvt, 64),
+
+		// THE CONTROLLER DOES NOT KNOW THE AGENT'S LANGUAGE, so these
+		// are the derivation's answer for a language it has never
+		// measured - the most generous one it has. A runner that knows
+		// its language narrows them immediately after construction
+		// (core/agentmgr), and discovery narrows ReadinessBudget again
+		// if the descriptor declared one.
+		//
+		// Generous rather than absent: a zero here would be a deadline
+		// that fires instantly, and a controller built by a caller that
+		// forgets to narrow them should be slow, not broken.
+		ReadinessBudget: budget.DefaultReadinessBudget(""),
+		SilenceBudget:   budget.SilenceBudget(""),
+		SpawnBudget:     budget.Spawn,
 	}
 
 	_ = c.bus.Subscribe("system", "", eventbus.TopicAgentLifecycleStatus, func(ev eventbus.Event[*anypb.Any]) {
@@ -259,7 +295,20 @@ func (c *Controller) ApplyWithContext(ctx context.Context, a Action) error {
 			// process is as small as the language allows - and Runner
 			// implementations must not tie a spawned process to it at all
 			// (GAPI-DIV-028). Readiness has its own deadline below.
-			startCtx, cancel := context.WithTimeout(ctx, c.WaitStart)
+			//
+			// SPAWN, NOT READINESS, AND DELIBERATELY NOT THE DECLARED
+			// BUDGET. This site read WaitStart, but the comment above it
+			// already said what it was for - "this context bounds the
+			// Start call and nothing else" - so WaitStart was doing a
+			// second job here, and repointing it at the per-agent
+			// readiness budget would have handed a descriptor the power
+			// to time out its own fork/exec. An agent declaring 500ms is
+			// asking for its start() to be judged sooner, not for the
+			// kernel to be given less time to exec it, and the failure
+			// it would have produced is a raw context deadline from
+			// Start rather than a StartTimeout - a different error shape
+			// out of a field move nobody asked for.
+			startCtx, cancel := context.WithTimeout(ctx, c.SpawnBudget)
 			err := c.runner.Start(startCtx)
 			cancel()
 			if err != nil {
@@ -276,7 +325,12 @@ func (c *Controller) ApplyWithContext(ctx context.Context, a Action) error {
 			return err
 		}
 
-		if err := c.awaitRunningWithRunIDSince(c.WaitStart, runID, cutover); err != nil {
+		// THE READINESS BUDGET IN PLACE OF WaitStart (GAPI-DIV-107).
+		// This is the only one of the three sites that was bounding
+		// first-frame-to-RUNNING, which is what the entry is about and
+		// what a descriptor may declare. The silence budget rides along
+		// because it bounds a strictly earlier part of the same wait.
+		if err := c.awaitRunningWithRunIDSince(c.ReadinessBudget, c.SilenceBudget, runID, cutover); err != nil {
 			_ = c.sm.TransitionTo(StateError)
 			// A DEADLINE THAT EXPIRES IS REPORTED, NOT ONLY RETURNED.
 			// The caller gets the error, but nothing on the bus said the
@@ -329,7 +383,15 @@ func (c *Controller) ApplyWithContext(ctx context.Context, a Action) error {
 			_ = c.sm.TransitionTo(StateError)
 			return err
 		}
-		if err := c.awaitTarget(c.WaitStart, anyEnumToString(protopkg.AgentState_AGENT_STATE_RUNNING)); err != nil {
+		// A RELOAD IS NOT A START, and this site was the third job
+		// WaitStart was doing. The interval is genuinely the readiness
+		// one - an agent re-reading its config is running its own code,
+		// which is exactly what the readiness budget is generous for -
+		// so the declared budget is the right answer here. What it is
+		// NOT is the silence budget: the child has been speaking for as
+		// long as it has been running, so there is no silence question
+		// to ask and awaitTarget is not asked it.
+		if err := c.awaitTarget(c.ReadinessBudget, anyEnumToString(protopkg.AgentState_AGENT_STATE_RUNNING)); err != nil {
 			_ = c.sm.TransitionTo(StateError)
 			return fmt.Errorf("reload: %w", err)
 		}
@@ -369,87 +431,6 @@ func (c *Controller) publishStatus(state protopkg.AgentState, message string) {
 	if err := c.bus.Publish(eventbus.NewEvent("system", "", eventbus.TopicAgentLifecycleStatus, c.id, anyMsg)); err != nil {
 		slog.Default().LogAttrs(context.Background(), slog.LevelError, "failed to publish lifecycle status event", logattr.Module("lifecycle"), logattr.AgentID(c.id), logattr.Err(err))
 	}
-}
-
-func (c *Controller) awaitTarget(d time.Duration, want string) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	want = strings.ToLower(strings.TrimSpace(want))
-	for {
-		select {
-		case got := <-c.stateCh:
-			if strings.EqualFold(got.state, want) {
-				return nil
-			}
-		case <-timer.C:
-			return fmt.Errorf("timeout waiting for agent state=%s", want)
-		}
-	}
-}
-
-func (c *Controller) awaitRunningWithRunIDSince(d time.Duration, wantRunID string, since time.Time) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	for {
-		select {
-		case ev := <-c.stateCh:
-			if ev.when.Before(since) {
-				continue
-			}
-			if ev.state == "running" && ev.runID == wantRunID {
-				return nil
-			}
-		case <-timer.C:
-			return c.startTimeout(d, wantRunID)
-		}
-	}
-}
-
-// StartTimeout is the start deadline expiring, as data rather than as a
-// sentence (GAPI-DIV-104).
-//
-// Silent is the discriminator the old bare timeout could not express: a
-// child that has written nothing is hung before its first report or was
-// built against an ADK that never opened the control descriptor, while
-// one that has spoken and not reached RUNNING is merely slow. Those want
-// different operator responses, and a caller must be able to branch on
-// the difference without matching on a message.
-//
-// SilenceKnown is separate from Silent because "the runner cannot answer
-// this question" is a third state, not a quiet false. An in-process
-// runner has no control channel at all.
-type StartTimeout struct {
-	AgentID      string
-	RunID        string
-	Waited       time.Duration
-	Silent       bool
-	SilenceKnown bool
-}
-
-func (e *StartTimeout) Error() string {
-	switch {
-	case e.SilenceKnown && e.Silent:
-		return fmt.Sprintf(
-			"agent %s was spawned and wrote no control frame within %s (run_id=%s): hung before its first report, or its ADK never opened the control descriptor",
-			e.AgentID, e.Waited, e.RunID)
-	case e.SilenceKnown:
-		return fmt.Sprintf(
-			"agent %s spoke but did not reach running within %s (run_id=%s)",
-			e.AgentID, e.Waited, e.RunID)
-	default:
-		return fmt.Sprintf(
-			"timeout waiting for agent %s state=running after %s (run_id=%s)",
-			e.AgentID, e.Waited, e.RunID)
-	}
-}
-
-func (c *Controller) startTimeout(d time.Duration, runID string) error {
-	e := &StartTimeout{AgentID: c.id, RunID: runID, Waited: d}
-	if sr, ok := c.runner.(SpeechReporter); ok {
-		e.SilenceKnown = true
-		e.Silent = !sr.HasSpoken()
-	}
-	return e
 }
 
 // publishFailed announces a supervisor-observed failure on the status
