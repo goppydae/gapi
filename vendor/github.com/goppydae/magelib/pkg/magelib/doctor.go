@@ -34,6 +34,24 @@ type DoctorConfig struct {
 	// SharedTools extends the hermetic-resolution tool list beyond the base
 	// compiler set (linters, buf, docs toolchain, ...).
 	SharedTools []string
+	// DeclaredTools is the WHOLE hermetic-resolution tool list, inheriting
+	// nothing. It is the DoctorConfig counterpart to CheckHermeticTools.
+	//
+	// WITHOUT IT THE DOCTOR STILL FORCED A COMPILER SET ON A REPO THAT
+	// COMPILES NOTHING (MAGELIB-DIV-015). CheckHermeticTools gave the LINT
+	// path a way to declare its own set, and this check kept prepending
+	// baseTools regardless - so goppydae-docs dropped gcc and protobuf
+	// from its flake, watched `mage lint` pass, and got `FAIL
+	// hermetic-resolution  protoc not found. Run 'nix develop'` from
+	// `mage doctor` in the same shell. Half a mechanism, which is the
+	// shape this repository's ledger keeps catching.
+	//
+	// Mutually exclusive with SharedTools, and setting both is a config
+	// ERROR rather than a precedence rule: SharedTools EXTENDS the base
+	// set and DeclaredTools REPLACES it, so a caller setting both has
+	// stated a contradiction about which it meant. Same call the file-
+	// length gate makes for a path claimed as both a waiver and a skip.
+	DeclaredTools []string
 	// Out receives the per-check report lines. Nil means os.Stdout, which
 	// is what every Magefile caller wants; tests set it to capture the
 	// output contract.
@@ -66,7 +84,7 @@ func Doctor(cfg DoctorConfig) error {
 	}
 
 	// 1. Hermetic resolution: every ecosystem tool from the pinned store.
-	report("hermetic-resolution", checkHermeticResolution(cfg.SharedTools), "")
+	report("hermetic-resolution", checkHermeticResolution(cfg), "")
 
 	// 2. Pin agreement: shell go version matches the toolchain directive.
 	report("pin-agreement", CheckToolchainPin("go.mod"), "")
@@ -93,14 +111,39 @@ func Doctor(cfg DoctorConfig) error {
 	return nil
 }
 
-func checkHermeticResolution(extra []string) error {
-	tools := append(append([]string{}, baseTools...), extra...)
+func checkHermeticResolution(cfg DoctorConfig) error {
+	tools, err := hermeticResolutionTools(cfg)
+	if err != nil {
+		return err
+	}
 	for _, tool := range tools {
 		if err := checkStorePath(tool); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// hermeticResolutionTools decides which list the check runs over.
+//
+// The empty-DeclaredTools case falls through to the additive form rather
+// than checking nothing, which matters because a check over an empty
+// tool set passes without resolving anything - the failure
+// CheckHermeticTools rejects outright. Here the fall-through is the
+// safer default: a repo that sets neither field gets the base compiler
+// set, which is what every caller before MAGELIB-DIV-015 got.
+func hermeticResolutionTools(cfg DoctorConfig) ([]string, error) {
+	if len(cfg.DeclaredTools) == 0 {
+		return append(append([]string{}, baseTools...), cfg.SharedTools...), nil
+	}
+	if len(cfg.SharedTools) > 0 {
+		return nil, fmt.Errorf(
+			"doctor config: SharedTools and DeclaredTools are both set; "+
+				"SharedTools extends the base compiler set %v and DeclaredTools "+
+				"replaces it, so setting both states a contradiction about which "+
+				"was meant - declare one list", baseTools)
+	}
+	return cfg.DeclaredTools, nil
 }
 
 func checkWorkspaceShape(targets []string) error {
