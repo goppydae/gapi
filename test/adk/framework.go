@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,16 @@ type TestHarness struct {
 	// readiness stall that still ended in a pass, so a number only kept
 	// on failure would never have shown it (GAPI-DIV-120).
 	readyAfter time.Duration
+
+	// The two halves of GAPI-DIV-125's join. See logcapture.go: both were
+	// being produced and discarded, which is why a lost request could
+	// only ever be reconstructed by hand from a CI job log.
+	daemonLog   logRecorder
+	clientLog   logRecorder
+	clientCalls int
+	// ready gates the delivery audit. Stop runs on Start's failure path
+	// too, and a daemon that never answered a ping has nothing to audit.
+	ready bool
 }
 
 // NewHarness creates a harness over the whole fixtures tree.
@@ -122,9 +133,11 @@ func (h *TestHarness) Start() error {
 		"GAPI_CGROUPS_DISABLE=1",
 	)
 
-	// Capture output for debugging
-	h.gapidCmd.Stdout = os.Stdout
-	h.gapidCmd.Stderr = os.Stderr
+	// TEED, not redirected. The output still reaches the test's stdout so
+	// a CI log reads exactly as it did before; it is ALSO retained, so
+	// the teardown audit can ask whether a published request arrived.
+	h.gapidCmd.Stdout = io.MultiWriter(os.Stdout, &h.daemonLog)
+	h.gapidCmd.Stderr = io.MultiWriter(os.Stderr, &h.daemonLog)
 
 	// Own process group: Stop kills the whole group, or gapid's agent
 	// children (which inherit the test binary's stdout) outlive the kill
@@ -142,6 +155,8 @@ func (h *TestHarness) Start() error {
 		}
 		return fmt.Errorf("gapid failed to become ready: %w", err)
 	}
+
+	h.ready = true
 
 	// PRINTED, not merely recorded. A field nothing reads is the defect
 	// this repo keeps producing, and the number is only useful if a CI
@@ -178,13 +193,18 @@ func (h *TestHarness) Stop() error {
 		h.gapidCmd = nil
 	}
 
-	return nil
+	// THE DELIVERY GATE RIDES Stop's RETURN VALUE (GAPI-DIV-125). Every
+	// caller already fails its test on a non-nil Stop, so the gate needs
+	// no opt-in and cannot be forgotten by a new test.
+	return h.checkDelivery()
 }
 
 // GetAgentState returns the current state of an agent
 func (h *TestHarness) GetAgentState(id string) (string, error) {
 	cmd := exec.Command(h.gapictl, "agent", "status")
 	output, err := cmd.CombinedOutput()
+	h.clientCalls++
+	h.clientLog.record(string(output))
 	if err != nil {
 		return "", fmt.Errorf("gapictl status failed: %w\nOutput: %s", err, output)
 	}
@@ -214,6 +234,8 @@ func (h *TestHarness) GetAgentState(id string) (string, error) {
 func (h *TestHarness) SendLifecycleAction(id, action string) error {
 	cmd := exec.Command(h.gapictl, "lifecycle", action, id)
 	output, err := cmd.CombinedOutput()
+	h.clientCalls++
+	h.clientLog.record(string(output))
 	if err != nil {
 		return fmt.Errorf("lifecycle %s %s failed: %w\nOutput: %s", action, id, err, output)
 	}
