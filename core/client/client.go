@@ -26,6 +26,18 @@ import (
 // Client provides a programmatic interface to interact with a running GAPI daemon.
 type Client struct {
 	bus *eventbus.EventBus[*anypb.Any]
+	// ownsBus decides whether Close may shut the bus down.
+	//
+	// EXPLICIT BECAUSE THE TWO CONSTRUCTORS HAND OUT DIFFERENT
+	// OWNERSHIP. New dials a transport this Client alone holds, so
+	// closing it is the whole point. NewFromBus wraps a bus the CALLER
+	// built and may still be using, and a Close that shut it down would
+	// destroy a daemon's own event bus from a helper that merely
+	// borrowed it. No caller does that today - NewFromBus has no
+	// non-test users - but it is exported, and an exported constructor
+	// whose result cannot safely be closed is the kind of surprise this
+	// repository has spent a great deal of time removing.
+	ownsBus bool
 }
 
 // Result represents the outcome of a lifecycle action on a specific agent.
@@ -42,12 +54,35 @@ func New(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("failed to init transport: %w", err)
 	}
 	bus := eventbus.NewEventBus[*anypb.Any](t)
-	return &Client{bus: bus}, nil
+	return &Client{bus: bus, ownsBus: true}, nil
 }
 
 // NewFromBus creates a new Client using an existing EventBus (for in-process use).
+//
+// The returned Client does NOT own the bus: Close is a no-op on it, and
+// the caller that built the bus remains responsible for shutting it down.
 func NewFromBus(bus *eventbus.EventBus[*anypb.Any]) *Client {
 	return &Client{bus: bus}
+}
+
+// Close releases the daemon connection this Client dialled.
+//
+// WITHOUT IT EVERY INVOCATION LEFT A DEAD PEER IN THE DAEMON FOR A FULL
+// MINUTE (GAPI-DIV-124). A gapictl process exited without a graceful
+// QUIC close, so the daemon learned of it only when MaxIdleTimeout
+// expired - config.QUICIdleTimeout, 60 seconds - at which point
+// handleConn's AcceptStream returned and the deferred delete removed the
+// peer. The daemon therefore carried every control invocation of the
+// last minute in its peer set, and fanned every reply out to all of
+// them.
+//
+// Idempotent, because callers defer it and some paths also close
+// explicitly: EventBus.Close guards on its own closed flag.
+func (c *Client) Close() error {
+	if !c.ownsBus || c.bus == nil {
+		return nil
+	}
+	return c.bus.Close()
 }
 
 // Ping sends a ping to the daemon and waits for a pong.

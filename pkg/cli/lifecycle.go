@@ -48,6 +48,8 @@ func sendLifecycleCommand(agentIDs []string, action protopkg.LifecycleControl_Ac
 		return fmt.Errorf("init client: %w", err)
 	}
 
+	defer closeControlClient(c)
+
 	// Long timeout for lifecycle
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
