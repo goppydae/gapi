@@ -211,6 +211,7 @@ func (q *QUIC) acceptLoop(ln *quic.Listener) {
 
 		// Reset temporary delay on success
 		tempDelay = 0
+		traceAccept(conn)
 		go q.handleConn(conn)
 	}
 }
@@ -237,6 +238,7 @@ func (q *QUIC) handleConn(conn *quic.Conn) {
 			slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "accept stream failed", logattr.Err(err))
 			return
 		}
+		traceAcceptStream(conn, s)
 		go q.handleStream(s)
 	}
 }
