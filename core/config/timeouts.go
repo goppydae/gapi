@@ -46,7 +46,29 @@ var (
 // Test Timeouts (more generous for CI environments)
 var (
 	// TestAgentStartTimeout is the max time to wait for agent start in tests.
-	// Rationale: CI environments may be slow; 2-minute buffer covers edge cases.
+	//
+	// RE-STATED AGAINST THE DERIVED BUDGETS, AND DELIBERATELY SLACK
+	// (GAPI-DIV-107 task 6). Nothing used to explain its 12x gap from
+	// core/lifecycle's 10s WaitStart; it is now expressible, and the
+	// relationship is the point rather than the number:
+	//
+	//	2x  core/budget.Ceiling (60s) - the MOST any descriptor may
+	//	    declare, so this harness can never be the thing that fails
+	//	    an agent the supervisor would have admitted
+	//	3.2x the slowest derived default (python, 37.2s)
+	//
+	// IT IS HARNESS POLICY, NOT SUPERVISOR POLICY, so it stays a
+	// literal rather than becoming budget.Ceiling * 2. A test waiting
+	// on gapictl reaching the daemon is waiting on more than the
+	// agent's readiness, and deriving it would claim a relationship the
+	// harness does not have.
+	//
+	// DO NOT SHRINK IT. GAPI-DIV-120 is open against this exact suite:
+	// its failing hop is gapictl dialling the daemon, and its measured
+	// signature is a SECOND MODE - 552s against a passing distribution
+	// of median 189s, sd 14s, max 245s - not a thin margin. Tightening
+	// a harness timeout while an unexplained second mode is live
+	// converts a diagnosable flake into a faster red.
 	TestAgentStartTimeout = 120 * time.Second
 
 	// TestAgentStopTimeout is the max time to wait for agent stop in tests.
