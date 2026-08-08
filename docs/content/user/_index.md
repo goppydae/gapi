@@ -3,8 +3,6 @@ title: "Using gapi"
 weight: 10
 ---
 
-# Using gapi
-
 Operator-facing prose about the kernel: what it supervises, how it is
 brought up, and what it guarantees.
 

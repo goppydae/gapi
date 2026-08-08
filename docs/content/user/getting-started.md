@@ -3,8 +3,6 @@ title: "Getting Started"
 weight: 20
 ---
 
-# Getting Started
-
 Create, build and run your first agent.
 
 ## Setup
