@@ -67,10 +67,10 @@ var envDocWaivers = map[string]string{}
 // then be wrong in the opposite direction. This is the mirror of the
 // waiver list and it fails the same way.
 var envKnownAbsent = map[string]bool{
-	"GAPI_AGENTS_DIR":   true, // docs/configuration.md, nix/tests/module-boot.nix
+	"GAPI_AGENTS_DIR":   true, // docs/content/user/configuration-examples.md, nix/tests/module-boot.nix
 	"GAPI_LOG_LEVEL":    true, // goppydae-docs, develop section
 	"GAPI_TRACE_EVENTS": true, // goppydae-docs, develop section
-	"GAPI_SOCKET":       true, // docs/configuration.md
+	"GAPI_SOCKET":       true, // docs/content/user/agent-metadata.md
 }
 
 var (
@@ -109,7 +109,8 @@ func readsEnv(body, name string) bool {
 // unavoidable residual - "a literal-scanning test cannot see a name
 // built by concatenation at runtime". It can, if it composes the same
 // names from the same struct rather than scanning for them:
-// docs/config-example.md documents GAPI_LOGGING_FORMAT and
+// docs/content/user/configuration-examples.md documents
+// GAPI_LOGGING_FORMAT and
 // GAPI_METRICS_ENABLED, which no literal anywhere spells and the loader
 // nonetheless binds.
 //

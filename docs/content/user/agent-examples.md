@@ -1,4 +1,12 @@
+---
+title: "Agent Examples"
+weight: 60
+---
+
 # Agent Examples
+
+Every field these blocks declare is catalogued on the
+[agent metadata](../agent-metadata/) page.
 
 Worked examples for each agent type. Every metadata block here is a real
 module-level assignment: metadata is read with `getattr` on the imported

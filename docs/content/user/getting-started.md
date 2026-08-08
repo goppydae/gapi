@@ -1,10 +1,15 @@
-# Getting Started with GAPI
+---
+title: "Getting Started"
+weight: 20
+---
+
+# Getting Started
 
 Create, build and run your first agent.
 
 ## Setup
 
-GAPI builds inside a Nix dev shell, which pins the whole toolchain.
+gapi builds inside a Nix dev shell, which pins the whole toolchain.
 
 ```bash
 cd gapi
@@ -93,14 +98,18 @@ def stop():
 ## Running the supervisor
 
 ```bash
-./bin/gapid
+./bin/gapid start
 ```
 
-`gapid` binds `127.0.0.1:29979` and discovers agents from its search
-paths. To point it at a specific directory:
+`start` is the verb that runs the daemon. The root carries no action of
+its own, so a bare `./bin/gapid` prints help and exits non-zero rather
+than starting anything.
+
+It binds the default control address and discovers agents from its
+search paths. To point it at a specific directory:
 
 ```bash
-GAPI_AGENT_PATH=./agents ./bin/gapid
+GAPI_AGENT_PATH=./agents ./bin/gapid start
 ```
 
 In another shell:
@@ -190,7 +199,10 @@ mage python:build
 
 ## Next steps
 
-- [Configuration](configuration.md) - every config key and metadata field
-- [Agent examples](agent-examples.md) - services, timers, sockets
-- Working on GAPI itself is documented in the goppydae-docs repository
-- [Installation](installation.md) - deploying beyond a dev shell
+- [Configuration reference](../../reference/configuration/) - every key,
+  its default and its environment override, generated from the schema
+- [Configuration examples](../configuration-examples/) - worked setups
+- [Agent metadata](../agent-metadata/) - every field an agent declares
+- [Agent examples](../agent-examples/) - services, timers, sockets
+- [Installation](../installation/) - deploying beyond a dev shell
+- Working on gapi itself is documented in the goppydae-docs repository

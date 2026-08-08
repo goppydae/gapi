@@ -1,6 +1,11 @@
-# Installation Guide
+---
+title: "Installation"
+weight: 30
+---
 
-Deploying GAPI beyond a dev shell.
+# Installation
+
+Deploying gapi beyond a dev shell.
 
 ## Contents
 
@@ -109,7 +114,7 @@ The module puts `cfg.package` on `environment.systemPackages`, so
 With `configFile = null` the module writes `/etc/gapi/config.yaml`,
 which is the one search root a release build consults. Setting
 `configFile` instead exports `GAPI_CONFIG` to the unit - there is no
-`-config` flag on `gapid`.
+`--config` flag on `gapid`.
 
 `openFirewall` opens both the TCP and the UDP port parsed from
 `listenAddress`. QUIC is UDP; opening TCP alone achieves nothing.
@@ -172,7 +177,7 @@ After=network.target
 Type=simple
 User=gapi
 Group=gapi
-ExecStart=/usr/local/bin/gapid
+ExecStart=/usr/local/bin/gapid start
 Restart=on-failure
 RestartSec=5s
 WorkingDirectory=/var/lib/gapi
@@ -204,6 +209,12 @@ WantedBy=multi-user.target
 
 The variables are `GAPI_`-prefixed. `GAPI_AGENTS_DIR` is read by
 nothing.
+
+`ExecStart` names the `start` subcommand. The daemon root has no action
+of its own, so `ExecStart=/usr/local/bin/gapid` leaves the unit exiting
+non-zero with cobra's help text in the journal - which is the same
+mistake as passing a flag to the wrong command level, and it fails the
+same way.
 
 ```bash
 sudo useradd --system --home /var/lib/gapi --create-home gapi
@@ -319,7 +330,7 @@ COPY --from=build /out/gapid /usr/local/bin/gapid
 COPY --from=build /out/gapictl /usr/local/bin/gapictl
 ENV GAPI_AGENT_PATH=/var/lib/gapi/agents
 EXPOSE 29979/udp
-ENTRYPOINT ["/usr/local/bin/gapid"]
+ENTRYPOINT ["/usr/local/bin/gapid", "start"]
 ```
 
 QUIC is UDP. Publishing `29979/tcp` publishes nothing useful.
@@ -331,7 +342,7 @@ docker run -p 29979:29979/udp -v ./agents:/var/lib/gapi/agents gapi
 Running `gapid` as the container's init:
 
 ```bash
-docker run --init=false gapi gapid --pid1 --no-early-mounts
+docker run --init=false gapi gapid start --pid1 --no-early-mounts
 ```
 
 `--no-early-mounts` matters inside a container: the runtime already owns
@@ -361,8 +372,9 @@ nix build .#checks.x86_64-linux.module-boot
 
 ## Configuration
 
-See [configuration.md](configuration.md) for every key, and
-[config-example.md](config-example.md) for worked examples. In brief:
+See the [configuration reference](../../reference/configuration/) for
+every key, and [configuration examples](../configuration-examples/) for
+worked setups. In brief:
 
 - A release build reads `/etc/gapi/config.yaml` and nothing else.
 - `GAPI_CONFIG` points it elsewhere. There is no `--config` flag.
@@ -425,12 +437,21 @@ gapictl agent status
 ## Troubleshooting
 
 **The unit will not start.** `journalctl -u gapi -n 50`. A cobra usage
-error means a flag that does not exist. `gapid` carries nine persistent
-flags on its root - `--id`, `--log-level`, `--log-format`, `--log-file`,
-`--log-loki-url`, `--metrics-addr`, `--tls-ca`, `--tls-cert` and
-`--tls-key` - and three more on `gapid start`: `--listen-addr`,
-`--pid1` and `--no-early-mounts`. The bind address is `--listen-addr`;
-`--runtime-addr` is an older spelling that cobra now rejects.
+error means either a flag that does not exist or a flag given to the
+wrong command level - the daemon's persistent flags sit on the root and
+the bring-up flags sit on `start`, and cobra rejects a `start` flag
+passed to the root exactly as loudly as an unknown one. The authoritative
+list of both sets is the generated
+[command reference](../../reference/cli/gapid/gapid/), which is walked
+from the cobra tree the binary actually runs; this page deliberately does
+not repeat it, because a second copy is what drifted last time.
+
+Two spellings are worth naming here anyway, because knowing them changes
+what an operator does with a unit file they inherited. The bind address
+is `--listen-addr`: `--runtime-addr` is an older spelling that cobra now
+rejects outright, so a unit carrying it fails at exec rather than
+starting on the wrong address. And `ExecStart` must name `start`; the
+root has no action.
 
 **`gapictl` cannot reach the daemon.** Check the address. The default is
 `127.0.0.1:29979`, and the transport is QUIC over UDP - a TCP-only
@@ -457,7 +478,9 @@ process gets a capability error even with the binary present.
 
 ## Next steps
 
-- [Getting started](getting-started.md) - build and run your first agent
-- [Configuration](configuration.md) - every config key and metadata field
-- Working on GAPI itself, and running it as init, are documented in the
+- [Getting started](../getting-started/) - build and run your first agent
+- [Configuration reference](../../reference/configuration/) - every key,
+  its default and its environment override
+- [Configuration examples](../configuration-examples/) - worked setups
+- Working on gapi itself, and running it as init, are documented in the
   goppydae-docs repository
