@@ -288,6 +288,20 @@ jobs:
       - name: Build the Flake Package
         run: nix build .# --no-link --print-build-logs
 
+      # GAPI-DIV-126, and it belongs to THIS job rather than to the lint
+      # gate because it is the only job that builds nix artifacts. The
+      # gate runs the version surface of all four shipped binaries - two
+      # from mage, two from nix - and fails naming any row the contract
+      # gives a source that came back a placeholder.
+      #
+      # BOTH PATHS OR NEITHER. They differ in exactly the way that hid
+      # the defect: the derivation has no VCS data and must stamp, mage
+      # has it and derives. A gate covering one certifies the other by
+      # accident, which is what left five of eleven rows placeholders in
+      # every build ever made while every check stayed green.
+      - name: Verify the Version Stamps Reached the Artifacts
+        run: nix develop -c mage -v checkVersionStamps
+
       # --all-systems is load-bearing rather than thoroughness. A plain
       # check PASSES on outputs that cannot evaluate for a declared
       # system: it omits the incompatible ones, says so in a warning, and
