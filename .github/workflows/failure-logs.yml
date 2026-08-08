@@ -1,0 +1,131 @@
+name: Failure Logs
+
+# CI-GOALS goal 1: a red run is diagnosable a week later, by someone who
+# did not watch it happen.
+#
+# THE FORGE'S OWN HISTORY ACTIVELY MISLEADS. `gh run rerun` REPLACES a
+# job's conclusion, so a run that was red and then passed on a second
+# attempt reports `attempts=2 conclusion=success` forever. On 2026-08-07
+# five occurrences of one defect were attributed to three different
+# causes across three pull requests, and the only reason any red log
+# survived at all is that a human copied one to /tmp by hand. The
+# `evidence/` directory in the silo exists precisely because this
+# workflow did not.
+#
+# WHY THIS IS A SEPARATE WORKFLOW AND NOT A STEP IN EACH JOB. GitHub
+# does not write step output to the filesystem, so the literal "upload
+# the failing job's logs" means tee-ing every principal command in every
+# job. That change has already produced a defect in this repository: a
+# `tee` gives the STEP the pipeline's exit status, and `vm-checks.yml`
+# carried a job named for the parity suite that could not fail for its
+# entire existence. A `workflow_run` collector needs no edit to any job,
+# and covers jobs added later without anyone remembering to wire them.
+#
+# THE ARTIFACT IS KEYED BY run_attempt, which is the whole point. A
+# rerun overwrites the conclusion but cannot overwrite an artifact
+# belonging to a different attempt, so attempt 1's red log outlives the
+# green that replaced it.
+#
+# KNOWN LIMIT, stated because it is the shape this silo keeps finding:
+# `workflow_run` fires only from the DEFAULT BRANCH's copy of this file.
+# It therefore cannot be demonstrated working on the pull request that
+# introduces it - the first honest proof is a deliberately failed run on
+# main after merge. Until that proof exists this workflow is unverified,
+# not working.
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Integration
+      - Documentation
+      - Release Guard
+      - VM Checks
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  collect:
+    # Only failures. A cancelled run has no diagnosis to preserve, and a
+    # green one costs an artifact nobody reads.
+    if: github.event.workflow_run.conclusion == 'failure'
+    name: Collect Failure Logs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the failed run's logs
+        # EVERY INTERPOLATION IS BOUND TO AN ENVIRONMENT VARIABLE AND
+        # NONE IS EXPANDED INSIDE THE SCRIPT. `head_branch` is a branch
+        # name, which on a fork's pull request is chosen by the person
+        # opening it; substituted into the shell by `${{ }}` it is
+        # command injection into a job that holds a token. The values
+        # below are quoted shell variables, which the runner never
+        # parses.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          WF_NAME: ${{ github.event.workflow_run.name }}
+          WF_EVENT: ${{ github.event.workflow_run.event }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p failure-logs
+
+          # A manifest first, so the artifact names its own subject. An
+          # archive of step logs with no run identity is the same
+          # problem one layer down.
+          {
+            printf 'workflow:   %s\n' "$WF_NAME"
+            printf 'run id:     %s\n' "$RUN_ID"
+            printf 'attempt:    %s\n' "$RUN_ATTEMPT"
+            printf 'event:      %s\n' "$WF_EVENT"
+            printf 'branch:     %s\n' "$HEAD_BRANCH"
+            printf 'commit:     %s\n' "$HEAD_SHA"
+            printf 'url:        %s\n' "$RUN_URL"
+          } > failure-logs/manifest.txt
+
+          # Which jobs failed, and which steps within them. The zip
+          # below carries everything; this names the part that matters
+          # without unpacking it.
+          gh api --paginate \
+            "repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
+            > failure-logs/jobs.json
+          jq -r '
+            .jobs[] | select(.conclusion == "failure")
+            | "FAILED JOB: \(.name)",
+              (.steps[]? | select(.conclusion == "failure")
+               | "    step: \(.name)")
+          ' failure-logs/jobs.json > failure-logs/failed-steps.txt
+
+          # The logs endpoint answers 410 once GitHub has expired them,
+          # which must be a loud failure rather than an empty artifact.
+          if ! gh api "repos/$REPO/actions/runs/$RUN_ID/logs" > failure-logs/logs.zip; then
+            echo "::error::could not download logs for run $RUN_ID (expired, or actions: read missing)"
+            exit 1
+          fi
+
+          unzip -q failure-logs/logs.zip -d failure-logs/logs
+          rm failure-logs/logs.zip
+
+          {
+            echo "## Failure logs captured"
+            echo
+            cat failure-logs/manifest.txt
+            echo
+            cat failure-logs/failed-steps.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the failure logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs-${{ github.event.workflow_run.id }}-attempt-${{ github.event.workflow_run.run_attempt }}
+          path: failure-logs/
+          # 30 days rather than the 7 used for binaries: a binary is
+          # rebuildable and a replaced conclusion is not.
+          retention-days: 30
+          if-no-files-found: error
