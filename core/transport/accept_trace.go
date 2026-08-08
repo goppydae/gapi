@@ -14,7 +14,9 @@ import (
 	"net"
 
 	quic "github.com/quic-go/quic-go"
+	"google.golang.org/protobuf/types/known/anypb"
 
+	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/internal/logattr"
 )
 
@@ -80,6 +82,38 @@ func traceAccept(conn *quic.Conn) {
 	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "structured event",
 		logattr.Module("transport"), logattr.Event("accept_conn"),
 		logattr.Addr(conn.RemoteAddr().String()), tracePort(conn.RemoteAddr()))
+}
+
+// traceSendStart records that a publish goroutine actually RAN.
+//
+// It tests one hypothesis and it is worth stating so the next reader can
+// discard it cleanly if the log refutes it: PublishRemote spawns a
+// goroutine per peer and returns nil immediately, so "Publish returned
+// nil" may mean not merely that the bytes have not gone out yet, but
+// that the send NEVER STARTED. If the client gives up and exits before
+// that goroutine is scheduled, OpenStreamSync never runs, no frame is
+// ever written, and every observation we have is explained:
+//
+//	no error logged        the goroutine reached no error path
+//	accept_conn present    the dial happened synchronously in New
+//	accept_stream absent   nothing was ever sent
+//	rate tracks load       goroutine scheduling, not peer count
+//
+// THE PREDICTION IS EXACT: for a request whose port has accept_conn and
+// no accept_stream, this line is ABSENT. If it is PRESENT, the goroutine
+// ran and the loss is downstream of it - the hypothesis dies and the
+// next place to look is quic-go's stream lifecycle.
+//
+// A CAVEAT THAT MAY YET KILL IT: this explains the 2s
+// ClientPendingTimeout failures well, and explains the 60s poll-loop
+// failures badly, since a goroutine has an implausibly long time to be
+// scheduled in 60 seconds. Either those are a different path or the
+// hypothesis is incomplete. Do not read a confirmation on the short
+// cases as covering the long ones.
+func traceSendStart(e eventbus.Event[*anypb.Any]) {
+	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "structured event",
+		logattr.Module("transport"), logattr.Event("send_start"),
+		logattr.EventID(e.ID), logattr.Topic(e.Topic))
 }
 
 // traceDial records the local endpoint a client dialled from.

@@ -362,12 +362,12 @@ func (q *QUIC) PublishRemote(ctx context.Context, e eventbus.Event[*anypb.Any]) 
 // The sends stay ASYNCHRONOUS and PublishRemote still returns nil:
 // making the caller wait would let one unresponsive peer block every
 // other publisher, which is what the peer-set fan-out exists to prevent.
-// Only the silence changes. Turning a lost send into a RETURNED error is
-// a larger change with a real behavioural cost and wants its own
-// evidence.
+// Only the silence changes. Turning a lost send into a RETURNED error
+// is a larger change with a real cost and wants its own evidence.
 func (q *QUIC) publishTo(ctx context.Context, conn *quic.Conn, e eventbus.Event[*anypb.Any]) {
 	// Async publish to prevent blocking on dead clients
 	go func() {
+		traceSendStart(e)
 		timeoutCtx, cancel := context.WithTimeout(ctx, config.QUICStreamTimeout)
 		defer cancel()
 		s, err := conn.OpenStreamSync(timeoutCtx)
