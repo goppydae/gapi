@@ -45,6 +45,8 @@ var shutdownCmd = &cobra.Command{
 			return fmt.Errorf("init client: %w", err)
 		}
 
+		defer closeControlClient(c)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := c.Shutdown(ctx, action); err != nil {

@@ -263,6 +263,20 @@ func (q *QUIC) handleConn(conn *quic.Conn) {
 	for {
 		s, err := conn.AcceptStream(context.Background())
 		if err != nil {
+			// A PEER HANGING UP IS NOT A FAILURE, AND UNTIL NOW EVERY
+			// CONTROL INVOCATION ENDED HERE AT WARN (GAPI-DIV-124).
+			// gapictl had no Close, so a connection's normal end was an
+			// idle timeout 60 seconds later and this line was the routine
+			// terminus of every command - an error level on the happy
+			// path, which trains a reader to ignore the one time it means
+			// something. Now that clients close gracefully, the two cases
+			// are distinguishable and are logged as what they are.
+			var appErr *quic.ApplicationError
+			if errors.As(err, &appErr) && appErr.ErrorCode == 0 {
+				slog.Default().LogAttrs(context.Background(), slog.LevelDebug, "peer disconnected",
+					logattr.Module("transport"), logattr.Addr(conn.RemoteAddr().String()))
+				return
+			}
 			slog.Default().LogAttrs(context.Background(), slog.LevelWarn, "accept stream failed", logattr.Err(err))
 			return
 		}
