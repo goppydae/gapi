@@ -204,5 +204,5 @@ otherwise displace the protocol.
 ## See also
 
 - [Agent tree layout](../README.md)
-- [Agent examples](../../docs/agent-examples.md)
-- [Getting started](../../docs/getting-started.md)
+- [Agent examples](../../docs/content/user/agent-examples.md)
+- [Getting started](../../docs/content/user/getting-started.md)
