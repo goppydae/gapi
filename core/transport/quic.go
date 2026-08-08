@@ -117,11 +117,39 @@ func NewQUICClient(addr string, cert *tls.Certificate, tlsConfig TLSConfig) (*QU
 	if err != nil {
 		return nil, err
 	}
-	// The client does not seed the set itself: handleConn adds the
-	// connection and removes it when it dies, so a client's own peer has
-	// exactly the lifecycle a server's does and there is one place that
-	// owns membership.
-	q := &QUIC{peers: make(map[*quic.Conn]struct{})}
+	// THE CLIENT SEEDS ITS OWN PEER, AND THE COMMENT THAT SAID IT MUST NOT
+	// WAS WRONG IN A WAY THAT COST FIVE OCCURRENCES OF A FLAKE.
+	//
+	// It used to read: handleConn adds the connection and removes it when
+	// it dies, so a client's own peer has exactly the lifecycle a server's
+	// does and there is one place that owns membership. The symmetry is
+	// real and the conclusion did not follow. handleConn runs in a
+	// GOROUTINE, so between this constructor returning and that goroutine
+	// being scheduled the peer set is EMPTY - and a caller that dials and
+	// immediately publishes gets ErrNoPeer for a daemon that is right
+	// there on the other end of a live connection.
+	//
+	// A SERVER CANNOT HAVE THIS BUG AND A CLIENT CANNOT AVOID IT, which is
+	// why the symmetry misled. acceptLoop learns of a connection and hands
+	// it to handleConn with nothing in between that could publish to it; a
+	// client's caller holds the transport the instant New returns and its
+	// very first act is usually a request.
+	//
+	// MEASURED on gapi #136 job 93050924850: `gapictl status` published
+	// one event on topic agents/ whose id appears exactly once in the
+	// entire run - no send_start, no error, no receipt - and then timed
+	// out 30s later. ErrNoPeer is the only path with that signature, and
+	// eventbus demoted it to a debug line, so the loss was invisible.
+	// Joining the send fan-out does not help here: there was no peer to
+	// send to, so no goroutine was ever spawned to join.
+	//
+	// REMOVAL STILL BELONGS TO handleConn ALONE. Seeding here does not
+	// split ownership: this adds the entry the constructor already holds
+	// the connection for, and handleConn's defer remains the single place
+	// a peer is evicted, on the AcceptStream error that IS the
+	// connection's death. handleConn's own add becomes a no-op on the same
+	// key rather than a race, which is what a set gives us for free.
+	q := &QUIC{peers: map[*quic.Conn]struct{}{conn: {}}}
 	traceDial(conn)
 	go q.handleConn(conn)
 	return q, nil
