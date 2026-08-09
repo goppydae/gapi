@@ -254,6 +254,7 @@ func (s *Supervisor) setupAgents() {
 			Language:     desc["language"],
 			Version:      desc["version"],
 			Hash:         desc["hash"],
+			SchemaHash:   desc["schema_hash"],
 			Tags:         splitCSV(desc["tags"]),
 			Requires:     splitCSV(desc["requires"]),
 			Wants:        splitCSV(desc["wants"]),

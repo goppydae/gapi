@@ -36,6 +36,11 @@ import (
 )
 
 type PythonAgent struct {
+	// schemaHash is the protobuf contract this agent reported at
+	// --describe. Empty from an agent predating the field, which the
+	// daemon reads as "cannot answer" rather than as skew.
+	schemaHash string
+
 	// enabled is the resolved ENABLED metadata. Default true:
 	// a runner constructed without discovery (tests, direct use)
 	// must not be silently un-startable.
@@ -177,6 +182,7 @@ func (a *PythonAgent) Dependencies() []string {
 func (a *PythonAgent) Controller() *lifecycle.Controller { return a.ctrl }
 func (a *PythonAgent) Describe() map[string]string {
 	return map[string]string{
+		"schema_hash":   a.schemaHash,
 		"id":            a.id,
 		"type":          a.typ,
 		"language":      "python",
@@ -853,3 +859,6 @@ func (a *PythonAgent) Enabled() bool {
 	defer a.mu.RUnlock()
 	return a.enabled
 }
+
+// setSchemaHash records the contract the agent reported at --describe.
+func (a *PythonAgent) setSchemaHash(h string) { a.schemaHash = h }

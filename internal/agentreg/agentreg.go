@@ -23,12 +23,18 @@ import (
 )
 
 type AgentDescription struct {
-	ID           string   `json:"id"`
-	Path         string   `json:"path"`
-	Type         string   `json:"type"`
-	Language     string   `json:"language"`
-	Version      string   `json:"version"`
-	Hash         string   `json:"hash"`
+	ID       string `json:"id"`
+	Path     string `json:"path"`
+	Type     string `json:"type"`
+	Language string `json:"language"`
+	Version  string `json:"version"`
+	Hash     string `json:"hash"`
+	// SchemaHash is the protobuf contract the agent was compiled
+	// against (GAPI-DIV-127). DISTINCT FROM Hash, which is the binary's
+	// own digest: two agents built from the same source against
+	// different contracts share neither, and an agent rebuilt from
+	// unchanged source against a new contract changes only this one.
+	SchemaHash   string   `json:"schema_hash"`
 	Capabilities []string `json:"capabilities"`
 	Requires     []string `json:"requires"`
 	Wants        []string `json:"wants"`
