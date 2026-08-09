@@ -130,12 +130,24 @@ func TestKernelRootsOmitTheRuntimeCoreRow(t *testing.T) {
 // TestVersionBlockSharesOneColumnWidth pins the contract's layout rule.
 // The block previously carried four different hardcoded paddings, so
 // "Protobuf Schema Hash:" at 21 characters aligned with nothing.
+//
+// THE WIDTH IS ASSERTED ACROSS GROUPS, NOT WITHIN THEM, which is the
+// part GAPI-DIV-126's grouping could have quietly broken. A per-group
+// width would let the columns step as the block goes down and every
+// group would still be internally consistent - so a check that reset at
+// each blank line would pass on exactly the layout the contract forbids.
 func TestVersionBlockSharesOneColumnWidth(t *testing.T) {
 	root, _, _ := NewGapidRoot(noopStart)
 	block := renderSurface(t, root, "version")
 
+	trimmed := strings.TrimRight(block, "\n")
 	width := -1
-	for _, line := range strings.Split(strings.TrimRight(block, "\n"), "\n") {
+	separators := 0
+	for _, line := range strings.Split(trimmed, "\n") {
+		if line == "" {
+			separators++
+			continue
+		}
 		colon := strings.Index(line, ":")
 		if colon < 0 {
 			t.Fatalf("version line has no label: %q", line)
@@ -149,6 +161,19 @@ func TestVersionBlockSharesOneColumnWidth(t *testing.T) {
 		if valueAt != width {
 			t.Errorf("value column starts at %d on %q, want %d for every row", valueAt, line, width)
 		}
+	}
+
+	// Four groups - identity, embedded components, build provenance,
+	// platform - so three separators. Asserted by COUNT because the
+	// grouping is the contract's only structure: there are no headings,
+	// so if the blank lines go, nothing else records that the block had
+	// groups at all.
+	if separators != 3 {
+		t.Errorf("want 3 blank separators for the contract's four groups, got %d:\n%s",
+			separators, block)
+	}
+	if strings.HasPrefix(trimmed, "\n") || strings.Contains(trimmed, "\n\n\n") {
+		t.Errorf("block has a leading or doubled separator:\n%q", block)
 	}
 }
 

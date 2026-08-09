@@ -163,8 +163,40 @@ var licenseSkips = []magelib.Skip{
 
 // versionLdflags stamps the resolved version into core/version, the shared
 // injection point read by both binaries (VERSION file is the source of truth).
+//
+// IT STAMPS ONLY WHAT THIS BUILD PATH CAN SUPPLY THAT THE BINARY CANNOT
+// DERIVE (GAPI-DIV-126). A mage build runs in a git checkout, so
+// vcs.revision and vcs.time are recorded in the binary's build info for
+// free and core/version reads them - stamping Commit and Source Date
+// here would add two hand-maintained ldflags that can drift from the
+// module actually built, which is the defect class MAGELIB-DIV-006 spent
+// a release closing. The nix derivation stamps both because it has no
+// repository to read.
+//
+// What only the build knows: which tool ran it, and whether the ref is a
+// release.
 func versionLdflags() string {
-	return "-X github.com/goppydae/gapi/core/version.GAPIVersion=" + magelib.Version()
+	const pkg = "github.com/goppydae/gapi/core/version."
+	return strings.Join([]string{
+		"-X " + pkg + "GAPIVersion=" + magelib.Version(),
+		"-X " + pkg + "BuiltBy=mage",
+		"-X " + pkg + "BuildTag=" + buildChannel(),
+	}, " ")
+}
+
+// buildChannel is the build channel: `release` from a tag ref, `dev`
+// otherwise (cli-contract.md).
+//
+// Recorded because Build Tag had no definition when GAPI-DIV-126 was
+// filed, and a field whose semantics nobody can state cannot be given a
+// correct value. The ref variables are the ones the forge sets and the
+// ones release-guard already reads, so a local build is `dev` by
+// construction rather than by a check that could be forgotten.
+func buildChannel() string {
+	if os.Getenv("GITHUB_REF_TYPE") == "tag" {
+		return "release"
+	}
+	return "dev"
 }
 
 func Build() error {

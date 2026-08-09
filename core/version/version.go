@@ -17,7 +17,25 @@ import (
 	"sync"
 )
 
-// Injected at build time via -ldflags
+// Stamp points. A field is STAMPED at build time where the build can
+// supply it and DERIVED where it cannot; a concrete stamp always wins
+// (cli-contract.md, Field sources).
+//
+// THE OLD COMMENT HERE SAID "Injected at build time via -ldflags" AND
+// EVERY INJECTION SITE SET EXACTLY ONE OF THESE (GAPI-DIV-126). The
+// Magefile and both nix derivations passed a single -X for GAPIVersion,
+// so five of eleven rows were placeholders in every build ever made.
+// GoADKVersion and PythonADKVersion survived only because adkVersion
+// falls back to KernelVersion - the two fields WITH a fallback were
+// right in every build and the five without one were wrong in every
+// build, which is what makes this one defect rather than five.
+//
+// THE TWO BUILD PATHS DIFFER IN WHAT THEY CAN SUPPLY AND NEITHER COVERS
+// THE OTHER. A mage build has vcs.revision and vcs.time for free. A nix
+// build has neither: the derivation builds from a source copy with no
+// .git, under -trimpath, so the main module records "(devel)" and there
+// are no vcs settings at all. A design using only one mechanism leaves
+// one path reporting placeholders, which is the state this replaced.
 var (
 	GAPIVersion      = "dev"
 	GoADKVersion     = "dev"
@@ -25,9 +43,21 @@ var (
 	BuildTag         = "dev"
 	SchemaHash       = "unknown"
 	Commit           = "unknown"
-	Date             = "unknown"
-	BuiltBy          = "unknown"
+
+	// SourceDate is the commit's time, not a wall clock. A build time
+	// would make the nix derivation non-reproducible, so the value comes
+	// from a fixed input - and a row holding the commit's time under a
+	// label saying "built" is a quieter version of this same defect,
+	// which is why the row is Source Date.
+	SourceDate = "unknown"
+
+	BuiltBy = "unknown"
 )
+
+// unknownValue is the placeholder a derivation must reject as an answer.
+// Paired with devVersion below: the block keeps a constant shape, so an
+// unresolvable field reads `unknown` rather than vanishing.
+const unknownValue = "unknown"
 
 // THESE TWO CONSTANTS SPELL THE SAME STRING AND MUST NOT BE MERGED
 // BACK (GAPI-DIV-128). One is a display name, the other was a
@@ -237,12 +267,70 @@ var (
 
 func init() {
 	active = Info{
-		Commit:    Commit,
-		BuildDate: Date,
+		Commit:    resolveCommit(),
+		BuildDate: resolveSourceDate(),
 		BuiltBy:   BuiltBy,
 		GoVersion: runtime.Version(),
 		Platform:  fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	}
+}
+
+// vcsSetting reads one build setting, which is present only when the
+// build had a repository to read.
+//
+// It goes through buildInfoReader rather than debug.ReadBuildInfo for
+// the reason that seam already exists: a TEST binary's build info does
+// not resemble a shipped one, so a resolution reachable only through the
+// real function is a resolution no test can drive.
+func vcsSetting(key string) string {
+	info, ok := buildInfoReader()
+	if !ok || info == nil {
+		return ""
+	}
+	for _, s := range info.Settings {
+		if s.Key == key {
+			return s.Value
+		}
+	}
+	return ""
+}
+
+// resolveCommit answers the Commit row.
+//
+// Precedence is adkVersion's shape, deliberately: a concrete stamp wins
+// and the derivation answers otherwise, so ONE resolution serves both
+// build paths rather than two code paths that can disagree. The nix
+// derivation stamps because it has no VCS data; mage does not need to.
+func resolveCommit() string {
+	if isConcreteValue(Commit) {
+		return Commit
+	}
+	if rev := vcsSetting("vcs.revision"); rev != "" {
+		return rev
+	}
+	return unknownValue
+}
+
+// resolveSourceDate answers the Source Date row, on the same precedence.
+func resolveSourceDate() string {
+	if isConcreteValue(SourceDate) {
+		return SourceDate
+	}
+	if t := vcsSetting("vcs.time"); t != "" {
+		return t
+	}
+	return unknownValue
+}
+
+// isConcreteValue rejects BOTH placeholders as answers.
+//
+// Two spellings rather than one because the stamp points do not agree on
+// which they use - a version reads "dev" while a commit reads "unknown" -
+// and a resolution that knew only one of them would accept the other as
+// a real value and skip the derivation that had the answer.
+func isConcreteValue(s string) bool {
+	s = strings.TrimSpace(s)
+	return s != "" && s != devVersion && s != unknownValue
 }
 
 // BinaryVersion returns the registered version string for the current binary.
@@ -320,13 +408,21 @@ func Summary() string {
 	schemaHash := truncate16(SchemaHash)
 	commit := truncate16(active.Commit)
 
-	// Rows first, then one column width taken from the longest label
-	// (cli-contract.md). The block used to carry four different hardcoded
-	// paddings - %-11s for the name, and separate widths for the ADK
-	// row,
-	// Platform and a 21-character "Protobuf Schema Hash:" that aligned
-	// with nothing - so adding a field meant re-guessing the alignment.
-	rows := [][2]string{{name, version}}
+	// GROUPED BY RELATIONSHIP, SEPARATED BY BLANK LINES (cli-contract.md):
+	// the binary's own identity, the components it embeds, the provenance
+	// of the build, and the platform it was built on. No headings -
+	// grouping is whitespace, so the block stays greppable and
+	// line-oriented.
+	//
+	// One column width across EVERY group, taken from the longest label
+	// anywhere in the block. The width is computed over all groups rather
+	// than per group, or the columns would step as the block goes down.
+	// This block used to carry four different hardcoded paddings - %-11s
+	// for the name, separate widths for the ADK rows and Platform, and a
+	// 21-character "Protobuf Schema Hash:" that aligned with nothing - so
+	// adding a field meant re-guessing the alignment.
+	embedded := [][2]string{}
+
 	// The embedded-kernel row is emitted only by a binary that both
 	// identified itself and did not declare that it ships the kernel.
 	//
@@ -337,30 +433,46 @@ func Summary() string {
 	// the fallback name and the row label are the same string, and that
 	// coincidence is precisely what must not drive a branch.
 	if identified && !shipsKernel {
-		rows = append(rows, [2]string{embeddedKernelRowLabel, KernelVersion()})
+		embedded = append(embedded, [2]string{embeddedKernelRowLabel, KernelVersion()})
 	}
-	rows = append(rows,
+	embedded = append(embedded,
 		[2]string{"Go ADK", adkVersion(GoADKVersion)},
 		[2]string{"Python ADK", adkVersion(PythonADKVersion)},
 		[2]string{"Protobuf Schema Hash", schemaHash},
-		[2]string{"Go Version", active.GoVersion},
-		[2]string{"Platform", active.Platform},
-		[2]string{"Commit", commit},
-		[2]string{"Build Tag", BuildTag},
-		[2]string{"Built Date", active.BuildDate},
-		[2]string{"Built By", active.BuiltBy},
 	)
 
+	groups := [][][2]string{
+		{{name, version}},
+		embedded,
+		{
+			{"Commit", commit},
+			{"Build Tag", BuildTag},
+			{"Source Date", active.BuildDate},
+			{"Built By", active.BuiltBy},
+		},
+		{
+			{"Built With Go", active.GoVersion},
+			{"Platform", active.Platform},
+		},
+	}
+
 	width := 0
-	for _, r := range rows {
-		if n := len(r[0]) + 1; n > width { // +1 for the colon
-			width = n
+	for _, g := range groups {
+		for _, r := range g {
+			if n := len(r[0]) + 1; n > width { // +1 for the colon
+				width = n
+			}
 		}
 	}
 
 	var out strings.Builder
-	for _, r := range rows {
-		fmt.Fprintf(&out, "%-*s %s\n", width, r[0]+":", r[1])
+	for i, g := range groups {
+		if i > 0 {
+			out.WriteString("\n")
+		}
+		for _, r := range g {
+			fmt.Fprintf(&out, "%-*s %s\n", width, r[0]+":", r[1])
+		}
 	}
 	return out.String()
 }

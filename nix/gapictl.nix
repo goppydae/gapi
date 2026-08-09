@@ -42,7 +42,16 @@
 # is buildable at all is a separate question this file does not open,
 # and it closes by gapi gaining that output rather than by this file
 # guessing at one.
-{ lib, buildGoModule }:
+
+# The stamp arguments are optional for the same reason nix/package.nix
+# gives at length: a required argument is an evaluation failure of every
+# caller, and `nix build` does not reach the ones `nix flake check` does.
+# The defaults are the placeholders core/version renders (GAPI-DIV-126).
+{ lib, buildGoModule
+, rev ? "unknown"
+, sourceDate ? "unknown"
+, buildChannel ? "dev"
+}:
 
 buildGoModule rec {
   pname = "gapictl";
@@ -67,6 +76,10 @@ buildGoModule rec {
     "-s"
     "-w"
     "-X github.com/goppydae/gapi/core/version.GAPIVersion=${version}"
+    "-X github.com/goppydae/gapi/core/version.Commit=${rev}"
+    "-X github.com/goppydae/gapi/core/version.SourceDate=${sourceDate}"
+    "-X github.com/goppydae/gapi/core/version.BuildTag=${buildChannel}"
+    "-X github.com/goppydae/gapi/core/version.BuiltBy=nix"
   ];
 
   meta = with lib; {

@@ -43,6 +43,41 @@
         # Mac rather than simply find nothing to do.
         onLinux = pkgs.stdenv.hostPlatform.isLinux;
 
+        # GAPI-DIV-126. The three fields a nix build cannot derive, taken
+        # from the flake's own source info.
+        #
+        # A derivation builds from a source copy with no .git, under
+        # -trimpath, so debug.BuildInfo carries no vcs settings and the
+        # main module reads `(devel)`. Every one of these is a FIXED
+        # INPUT of the evaluation rather than a wall clock, which is what
+        # keeps the derivation reproducible - and is why the row is
+        # `Source Date` and not `Built Date`.
+        #
+        # `self.rev` exists only for a clean git tree; a dirty tree has
+        # `dirtyRev` instead, and a tarball or path source has neither.
+        # Falling through to the placeholder core/version already renders
+        # is deliberate: a build that cannot know its commit must say so,
+        # not report a neighbouring one.
+        stamps =
+          let
+            inherit (self) sourceInfo;
+            d = sourceInfo.lastModifiedDate or "";
+            # lastModifiedDate is YYYYMMDDHHMMSS; the contract renders an
+            # RFC3339 instant, so it is reassembled rather than printed raw.
+            iso =
+              if builtins.stringLength d == 14 then
+                "${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}"
+                + "T${builtins.substring 8 2 d}:${builtins.substring 10 2 d}:${builtins.substring 12 2 d}Z"
+              else "unknown";
+          in
+          {
+            rev = self.rev or self.dirtyRev or "unknown";
+            sourceDate = iso;
+            # A flake build is not a tag ref. `release` is the forge's
+            # answer on a tag, which is the mage path's job.
+            buildChannel = "dev";
+          };
+
         # The image formats nix/generators/README.md already documents.
         # Formats every Linux host can produce.
         imageFormats = [
@@ -219,9 +254,9 @@
           # before advertising it - see nix/gapictl.nix - since offering
           # a package for an unchecked platform is what
           # GAPI-DIV-068's --all-systems flag exists to catch.
-          gapictl = pkgs.callPackage ./nix/gapictl.nix { };
+          gapictl = pkgs.callPackage ./nix/gapictl.nix { inherit (stamps) rev sourceDate buildChannel; };
         } // pkgs.lib.optionalAttrs onLinux {
-          default = pkgs.callPackage ./nix/package.nix { };
+          default = pkgs.callPackage ./nix/package.nix { inherit (stamps) rev sourceDate buildChannel; };
           gapi = self.packages.${system}.default;
         };
 

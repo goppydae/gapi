@@ -20,6 +20,29 @@
   # packaged extension and the one a developer runs are one derivation
   # rather than two that happen to agree.
 , gopy ? callPackage ./gopy.nix { }
+
+  # GAPI-DIV-126. The three fields a nix build cannot derive.
+  #
+  # OPTIONAL for the reason the gopy comment above gives: this file has
+  # more than one caller, and nix/module.nix does a bare
+  # `pkgs.callPackage ./package.nix {}`. A required argument there is an
+  # EVALUATION failure of the NixOS module, which `nix build .#default`
+  # never reaches - it surfaces only in `nix flake check`, which is how
+  # GAPI-DIV-068 was found.
+  #
+  # A derivation builds from a source copy with no .git, under
+  # -trimpath, so debug.BuildInfo records no vcs settings and the main
+  # module reads `(devel)`. These must be stamped. The mage path derives
+  # the same two fields for free and stamps neither, which is why the
+  # resolution in core/version takes a concrete stamp first and falls
+  # back to build info: one resolution, two build paths, no second code
+  # path that can disagree.
+  #
+  # The defaults are the placeholders core/version already renders, so a
+  # caller that supplies nothing gets an honest `unknown`.
+, rev ? "unknown"
+, sourceDate ? "unknown"
+, buildChannel ? "dev"
 }:
 
 let
@@ -83,6 +106,10 @@ buildGoModule rec {
     "-s"
     "-w"
     "-X github.com/goppydae/gapi/core/version.GAPIVersion=${version}"
+    "-X github.com/goppydae/gapi/core/version.Commit=${rev}"
+    "-X github.com/goppydae/gapi/core/version.SourceDate=${sourceDate}"
+    "-X github.com/goppydae/gapi/core/version.BuildTag=${buildChannel}"
+    "-X github.com/goppydae/gapi/core/version.BuiltBy=nix"
   ];
   
   # BUILD THE EXTENSION BEFORE ANYTHING COPIES adk/python.
