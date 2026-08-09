@@ -29,6 +29,7 @@ import (
 	"github.com/goppydae/gapi/core/lifecycle"
 	"github.com/goppydae/gapi/core/metrics"
 	"github.com/goppydae/gapi/core/product"
+	"github.com/goppydae/gapi/core/schemaskew"
 	shutdownpkg "github.com/goppydae/gapi/core/shutdown"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/core/transport"
@@ -52,6 +53,11 @@ type Supervisor struct {
 	// the system.shutdown bus topic); buffered so the first request
 	// wins and repeats are absorbed.
 	shutdownReq chan shutdownpkg.Action
+
+	// skew remembers which agent incarnations have already had a
+	// contract mismatch reported, so a per-transition message does not
+	// repeat one (GAPI-DIV-127).
+	skew *schemaskew.Seen
 }
 
 // New creates a new Supervisor instance.
@@ -130,6 +136,7 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		host:        host,
 		clock:       clock.RealClock{},
 		shutdownReq: make(chan shutdownpkg.Action, 1),
+		skew:        schemaskew.NewSeen(),
 	}
 
 	// Initialize build info metrics and create server if enabled

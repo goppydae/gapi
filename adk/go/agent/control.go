@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/goppydae/gapi/core/schemahash"
 	gapiv1 "github.com/goppydae/gapi/pkg/proto"
 )
 
@@ -114,6 +115,12 @@ func (c *control) status(state, message string) {
 				Message: message,
 				Time:    timestamppb.Now(),
 				RunId:   c.runID,
+				// The contract this binary was compiled against
+				// (GAPI-DIV-127). The Python path sets it too; a field one
+				// language populates and the other does not is the state
+				// that entry was filed against, and it had reappeared here
+				// one message below where it was first found.
+				SchemaHash: schemahash.Contract(),
 			},
 		},
 	})

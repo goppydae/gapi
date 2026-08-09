@@ -18,85 +18,10 @@ import (
 	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/core/product"
 	"github.com/goppydae/gapi/core/schemahash"
+	"github.com/goppydae/gapi/core/schemaskew"
 	"github.com/goppydae/gapi/internal/agentreg"
 	"google.golang.org/protobuf/types/known/anypb"
 )
-
-// TestSkewReportNamesBothHashes. The value of the report IS the two
-// values side by side; a message saying only "schema mismatch" sends the
-// reader back to the two binaries to find out what differed, which is
-// the work the report exists to remove.
-func TestSkewReportNamesBothHashes(t *testing.T) {
-	msg, isSkew := skewReport("weather", "run-7", "aaa", "bbb")
-	if !isSkew {
-		t.Fatal("differing hashes were not reported as skew")
-	}
-	for _, want := range []string{"weather", "run-7", "aaa", "bbb"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("report omits %q: %s", want, msg)
-		}
-	}
-}
-
-// TestSkewReportOmitsAnAbsentRun. Registration has no run id - the agent
-// has not started - so the report must not print an empty one. `run ""`
-// in a log line reads as a run whose id is the empty string, which is a
-// different and wrong claim.
-func TestSkewReportOmitsAnAbsentRun(t *testing.T) {
-	msg, isSkew := skewReport("weather", "", "aaa", "bbb")
-	if !isSkew {
-		t.Fatal("differing hashes were not reported as skew")
-	}
-	if strings.Contains(msg, "run ") {
-		t.Errorf("report invents a run id at registration: %s", msg)
-	}
-	if !strings.Contains(msg, "weather") {
-		t.Errorf("report omits the agent: %s", msg)
-	}
-}
-
-// TestSkewReportIsSilentWhenTheyMatch is the ordinary case, and the one
-// that must produce nothing at all.
-func TestSkewReportIsSilentWhenTheyMatch(t *testing.T) {
-	if _, isSkew := skewReport("weather", "run-7", "same", "same"); isSkew {
-		t.Fatal("matching hashes reported as skew")
-	}
-}
-
-// TestSkewReportIsSilentWhenTheAgentPredatesTheField.
-//
-// An agent built before schema_hash existed reports "". Calling that a
-// mismatch would flag EVERY older agent in a fleet on the first upgrade,
-// and a diagnostic that fires on everything is noise - which is how a
-// signal gets filtered and then lost.
-func TestSkewReportIsSilentWhenTheAgentPredatesTheField(t *testing.T) {
-	if _, isSkew := skewReport("weather", "run-7", "", "bbb"); isSkew {
-		t.Fatal("an agent with no schema_hash was reported as skewed")
-	}
-}
-
-// TestSkewReportIsSilentWhenTheDaemonCannotAnswer guards the direction
-// nobody thinks to test. If the daemon's own hash were ever empty, every
-// agent on the node would be reported as skewed against nothing.
-func TestSkewReportIsSilentWhenTheDaemonCannotAnswer(t *testing.T) {
-	if _, isSkew := skewReport("weather", "run-7", "aaa", ""); isSkew {
-		t.Fatal("skew reported against an empty daemon hash")
-	}
-}
-
-// TestSkewReportSaysTheAgentIsNotRefused pins operator decision 71 into
-// the artifact an operator actually reads.
-//
-// The decision is that the hash is a diagnostic and never an enforcement
-// input. An operator meeting this line at 3am must not have to go and
-// find out whether their agent was just refused, and a future change
-// that starts refusing will have to edit this text - which is the point.
-func TestSkewReportSaysTheAgentIsNotRefused(t *testing.T) {
-	msg, _ := skewReport("weather", "run-7", "aaa", "bbb")
-	if !strings.Contains(msg, "NOT refused") {
-		t.Errorf("report does not say the agent still runs: %s", msg)
-	}
-}
 
 // captureLogs returns a logger writing structured records into buf.
 func captureLogs(buf *bytes.Buffer) *slog.Logger {
@@ -120,7 +45,7 @@ func TestReportSchemaSkewWarnsAndPublishes(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 
 	got := make(chan string, 4)
-	if err := bus.Subscribe("system", "", TopicSchemaSkew,
+	if err := bus.Subscribe("system", "", schemaskew.TopicSchemaSkew,
 		func(e eventbus.Event[*anypb.Any]) { got <- e.Topic }); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -144,8 +69,8 @@ func TestReportSchemaSkewWarnsAndPublishes(t *testing.T) {
 
 	select {
 	case topic := <-got:
-		if topic != TopicSchemaSkew {
-			t.Errorf("published on %q, want %q", topic, TopicSchemaSkew)
+		if topic != schemaskew.TopicSchemaSkew {
+			t.Errorf("published on %q, want %q", topic, schemaskew.TopicSchemaSkew)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("no event was published; the seam GOBLIN-DIV-080 tracks is dead")
@@ -165,7 +90,7 @@ func TestReportSchemaSkewIsSilentForAMatchingAgent(t *testing.T) {
 	bus := eventbus.NewInprocBus[*anypb.Any]()
 
 	got := make(chan string, 4)
-	if err := bus.Subscribe("system", "", TopicSchemaSkew,
+	if err := bus.Subscribe("system", "", schemaskew.TopicSchemaSkew,
 		func(e eventbus.Event[*anypb.Any]) { got <- e.Topic }); err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}
@@ -183,5 +108,72 @@ func TestReportSchemaSkewIsSilentForAMatchingAgent(t *testing.T) {
 	case topic := <-got:
 		t.Fatalf("a matching agent published %q", topic)
 	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestStatusSkewReportsOncePerRun. Status is per-transition; a skewed
+// agent that transitions ten times must not produce ten warnings, or
+// operators filter the topic and the signal is gone.
+//
+// Keyed on run_id and NOT on agent id: a restarted agent is a new
+// process that may carry a different binary, so suppressing its report
+// because its predecessor was reported would hide exactly the case a
+// redeploy creates.
+func TestStatusSkewReportsOncePerRun(t *testing.T) {
+	seen := schemaskew.NewSeen()
+
+	if !seen.First("run-1") {
+		t.Fatal("the first sighting of a run must report")
+	}
+	if seen.First("run-1") {
+		t.Fatal("the second sighting of the same run reported again")
+	}
+	if !seen.First("run-2") {
+		t.Fatal("a new incarnation must report - it is a new process")
+	}
+}
+
+// TestReportStatusSkewWarnsOnceAcrossTransitions drives the real path
+// rather than the counter: a skewed agent announcing four transitions
+// within one run must produce exactly one warning.
+func TestReportStatusSkewWarnsOnceAcrossTransitions(t *testing.T) {
+	product.Set("gapi")
+
+	var buf bytes.Buffer
+	s := &Supervisor{
+		logger: captureLogs(&buf),
+		bus:    eventbus.NewInprocBus[*anypb.Any](),
+		skew:   schemaskew.NewSeen(),
+	}
+
+	for _, state := range []string{"INITIALIZING", "STARTING", "RUNNING", "STOPPING"} {
+		_ = state
+		s.reportStatusSkew("weather", "run-1", "not-the-daemons-hash")
+	}
+
+	if n := strings.Count(buf.String(), "WARN"); n != 1 {
+		t.Fatalf("four transitions in one run produced %d warnings, want 1:\n%s",
+			n, buf.String())
+	}
+}
+
+// TestReportStatusSkewWarnsAgainForANewRun is the other half of the
+// dedupe, and the one a naive implementation gets wrong by keying on the
+// agent: a redeployed binary is a new run and must be reported.
+func TestReportStatusSkewWarnsAgainForANewRun(t *testing.T) {
+	product.Set("gapi")
+
+	var buf bytes.Buffer
+	s := &Supervisor{
+		logger: captureLogs(&buf),
+		bus:    eventbus.NewInprocBus[*anypb.Any](),
+		skew:   schemaskew.NewSeen(),
+	}
+
+	s.reportStatusSkew("weather", "run-1", "not-the-daemons-hash")
+	s.reportStatusSkew("weather", "run-2", "not-the-daemons-hash")
+
+	if n := strings.Count(buf.String(), "WARN"); n != 2 {
+		t.Fatalf("two runs produced %d warnings, want 2:\n%s", n, buf.String())
 	}
 }
