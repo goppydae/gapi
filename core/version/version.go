@@ -15,6 +15,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+
+	"github.com/goppydae/gapi/core/schemahash"
 )
 
 // Stamp points. A field is STAMPED at build time where the build can
@@ -41,7 +43,6 @@ var (
 	GoADKVersion     = "dev"
 	PythonADKVersion = "dev"
 	BuildTag         = "dev"
-	SchemaHash       = "unknown"
 	Commit           = "unknown"
 
 	// SourceDate is the commit's time, not a wall clock. A build time
@@ -405,7 +406,19 @@ func Summary() string {
 		version = KernelVersion()
 	}
 
-	schemaHash := truncate16(SchemaHash)
+	// DERIVED, NEVER STAMPED (GAPI-DIV-127).
+	//
+	// This was an -ldflags variable NO BUILD INJECTED. The Magefile and
+	// both nix derivations set exactly one -X, for GAPIVersion, so the
+	// row read "unknown" in every build ever made - GAPI-DIV-126's
+	// sharpest case, and the one it left exempted by name because what
+	// the value should CONTAIN was unsettled.
+	//
+	// It is the digest of the linked descriptor set, from the same
+	// implementation both ADKs use. A stamp would be a fourth point that
+	// can drift from the code actually linked; this cannot, and it makes
+	// `gapid version` directly comparable with an agent's --describe.
+	schemaHash := truncate16(schemahash.Contract())
 	commit := truncate16(active.Commit)
 
 	// GROUPED BY RELATIONSHIP, SEPARATED BY BLANK LINES (cli-contract.md):
