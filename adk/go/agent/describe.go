@@ -8,7 +8,11 @@
 
 package agent
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/goppydae/gapi/core/schemahash"
+)
 
 // SchemaVersion matches the Python runner's SCHEMA_VERSION. The two ADKs
 // describe into ONE schema because discovery has one decoder for both
@@ -42,6 +46,14 @@ type describePayload struct {
 	CPULimit     string `json:"cpu_limit"`
 	MemoryLimit  string `json:"memory_limit"`
 	Schedule     string `json:"schedule"`
+
+	// SchemaHash is the protobuf contract this agent was compiled
+	// against (GAPI-DIV-127). It rides on describe rather than only on
+	// the wire because discovery reads it at REGISTRATION - before the
+	// agent runs as a workload - and because that is also the
+	// `gapictl agent reload` path, which is where an operator who has
+	// just dropped in a rebuilt agent looks.
+	SchemaHash string `json:"schema_hash"`
 }
 
 type describeEnvelope struct {
@@ -122,6 +134,7 @@ func (s *Spec) describe() describeEnvelope {
 		CPULimit:      s.CPULimit,
 		MemoryLimit:   s.MemoryLimit,
 		Schedule:      s.Schedule,
+		SchemaHash:    schemahash.Contract(),
 	}}
 }
 

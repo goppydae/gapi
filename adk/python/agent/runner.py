@@ -417,6 +417,11 @@ def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
         "cpu_limit": str(get_meta(mod, "cpu_limit", "")),
         "memory_limit": str(get_meta(mod, "memory_limit", "")),
         "schedule": str(get_meta(mod, "schedule", "")),
+        # The protobuf contract this process was compiled against, from
+        # the ADK, which computes it at import (GAPI-DIV-127). Emitted
+        # here because discovery reads describe at REGISTRATION - and
+        # that is the `gapictl agent reload` path too.
+        "schema_hash": adk.SchemaHash(),
     }
     if ivl is not None:
         describe_data["interval"] = ivl

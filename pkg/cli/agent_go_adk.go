@@ -52,6 +52,20 @@ const sharedModulePath = "github.com/goppydae/gapi"
 // not write.
 const protobufModulePath = "google.golang.org/protobuf"
 
+// blake3ModulePath is the digest core/schemahash uses.
+//
+// IT IS THE SECOND THIRD-PARTY MODULE IN THE STAGE, and the comment
+// above deliberately still calls protobuf the one GENUINE third-party
+// dependency: protobuf is on the wire and unavoidable, while this is a
+// hash function chosen to match the kernel's. Keeping the algorithm
+// identical on both sides is worth one more staged tree; computing a
+// different digest in the agent would be a detector that never matches
+// (GAPI-DIV-127).
+const blake3ModulePath = "github.com/zeebo/blake3"
+
+// cpuidModulePath is blake3's one transitive dependency.
+const cpuidModulePath = "github.com/klauspost/cpuid/v2"
+
 // The staged subdirectory names. Named by ROLE, never by the vendor
 // (operator decision 2): goblind links this code and its operators have
 // never heard of gapi, so a directory called "gapi" would put the
@@ -61,6 +75,8 @@ const protobufModulePath = "google.golang.org/protobuf"
 const (
 	sharedStageDir   = "sdk"
 	protobufStageDir = "protobuf"
+	blake3StageDir   = "blake3"
+	cpuidStageDir    = "cpuid"
 )
 
 // The three trees inside a shared module root. They are the SAME in a
@@ -72,6 +88,25 @@ var (
 	adkRelDir      = filepath.Join("adk", "go", "agent")
 	protoRelDir    = filepath.Join("pkg", "proto")
 	protobufRelDir = filepath.Join("vendor", "google.golang.org", "protobuf")
+
+	// GAPI-DIV-127. The ADK runtime reports the protobuf contract it was
+	// compiled against, and it must do so with the SAME implementation
+	// the daemon uses or the two can never match - which is why this is
+	// staged rather than reimplemented here.
+	//
+	// It cannot come from adk/go: gopy binds every exported symbol there
+	// into the Python ADK's native module, which is why the runtime is
+	// adk/go/agent and never adk/go. core/schemahash is a leaf both
+	// sides import instead.
+	schemahashRelDir = filepath.Join("core", "schemahash")
+	blake3RelDir     = filepath.Join("vendor", "github.com", "zeebo", "blake3")
+
+	// blake3 is not self-contained, unlike protobuf: it selects a
+	// compression path at init from CPU feature detection. Measured
+	// rather than assumed - `go list -deps` puts exactly one external
+	// module in its closure, and protobuf's closure outside itself is
+	// empty.
+	cpuidRelDir = filepath.Join("vendor", "github.com", "klauspost", "cpuid", "v2")
 )
 
 // goADK is a located shared module root holding the Go ADK runtime.
@@ -293,6 +328,34 @@ func assembleGoAgent(srcPath, dir string, adk goADK) error {
 // runtime is COPIED rather than referenced in place, because a replace
 // pointing outside the stage would make the stage depend on a path that
 // outlives it and would drop the runtime out of the provenance hash.
+// placeholderVersion is the version a local replace always satisfies.
+//
+// v0.0.0 IS NOT ALWAYS LEGAL. Go requires a module path ending in /vN to
+// carry a matching major, so `require github.com/klauspost/cpuid/v2
+// v0.0.0` is refused outright - "version v0.0.0 invalid: should be v2,
+// not v0". Derived from the path rather than written per module, so a
+// dependency that goes to /v3 does not reintroduce the same error.
+//
+// Nothing resolves these, so no version here can be wrong - and none can
+// be silently right either, which is why identity is carried by the
+// provenance hash and not by these lines.
+func placeholderVersion(modulePath string) string {
+	i := strings.LastIndex(modulePath, "/v")
+	if i < 0 {
+		return "v0.0.0"
+	}
+	major := modulePath[i+2:]
+	if major == "" || strings.ContainsAny(major, "/.") {
+		return "v0.0.0"
+	}
+	for _, r := range major {
+		if r < '0' || r > '9' {
+			return "v0.0.0"
+		}
+	}
+	return "v" + major + ".0.0"
+}
+
 func stageADK(dir string, adk goADK) error {
 	sharedRoot := filepath.Join(dir, sharedStageDir)
 
@@ -304,8 +367,20 @@ func stageADK(dir string, adk goADK) error {
 		filepath.Join(sharedRoot, protoRelDir), adk.Dir); err != nil {
 		return err
 	}
+	if err := copyGoPackage(filepath.Join(adk.Dir, schemahashRelDir),
+		filepath.Join(sharedRoot, schemahashRelDir), adk.Dir); err != nil {
+		return err
+	}
 	if err := copyTree(filepath.Join(adk.Dir, protobufRelDir),
 		filepath.Join(dir, protobufStageDir)); err != nil {
+		return err
+	}
+	if err := copyTree(filepath.Join(adk.Dir, blake3RelDir),
+		filepath.Join(dir, blake3StageDir)); err != nil {
+		return err
+	}
+	if err := copyTree(filepath.Join(adk.Dir, cpuidRelDir),
+		filepath.Join(dir, cpuidStageDir)); err != nil {
 		return err
 	}
 
@@ -320,17 +395,33 @@ func stageADK(dir string, adk goADK) error {
 	// no reader's benefit.
 	mods := map[string]string{
 		filepath.Join(dir, "go.mod"): fmt.Sprintf(
-			"module agentbuild.local/agent\n\ngo %s\n\nrequire (\n\t%s v0.0.0\n\t%s v0.0.0\n)\n\nreplace %s => ./%s\n\nreplace %s => ./%s\n",
-			adk.GoDirective, sharedModulePath, protobufModulePath,
-			sharedModulePath, sharedStageDir, protobufModulePath, protobufStageDir),
+			"module agentbuild.local/agent\n\ngo %s\n\nrequire (\n\t%s %s\n\t%s %s\n\t%s %s\n\t%s %s\n)\n\nreplace %s => ./%s\n\nreplace %s => ./%s\n\nreplace %s => ./%s\n\nreplace %s => ./%s\n",
+			adk.GoDirective,
+			sharedModulePath, placeholderVersion(sharedModulePath),
+			protobufModulePath, placeholderVersion(protobufModulePath),
+			blake3ModulePath, placeholderVersion(blake3ModulePath),
+			cpuidModulePath, placeholderVersion(cpuidModulePath),
+			sharedModulePath, sharedStageDir, protobufModulePath, protobufStageDir,
+			blake3ModulePath, blake3StageDir, cpuidModulePath, cpuidStageDir),
 
 		filepath.Join(sharedRoot, "go.mod"): fmt.Sprintf(
-			"module %s\n\ngo %s\n\nrequire %s v0.0.0\n",
-			sharedModulePath, adk.GoDirective, protobufModulePath),
+			"module %s\n\ngo %s\n\nrequire (\n\t%s %s\n\t%s %s\n)\n",
+			sharedModulePath, adk.GoDirective,
+			protobufModulePath, placeholderVersion(protobufModulePath),
+			blake3ModulePath, placeholderVersion(blake3ModulePath)),
 
 		filepath.Join(dir, protobufStageDir, "go.mod"): fmt.Sprintf(
 			"module %s\n\ngo %s\n",
 			protobufModulePath, adk.GoDirective),
+
+		filepath.Join(dir, blake3StageDir, "go.mod"): fmt.Sprintf(
+			"module %s\n\ngo %s\n\nrequire %s %s\n",
+			blake3ModulePath, adk.GoDirective,
+			cpuidModulePath, placeholderVersion(cpuidModulePath)),
+
+		filepath.Join(dir, cpuidStageDir, "go.mod"): fmt.Sprintf(
+			"module %s\n\ngo %s\n",
+			cpuidModulePath, adk.GoDirective),
 	}
 	for path, body := range mods {
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {

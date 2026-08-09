@@ -227,6 +227,23 @@ func copyADKWithMarker(t *testing.T, from goADK) goADK {
 		t.Fatalf("copy protobuf runtime: %v", err)
 	}
 
+	// The contract hash and its digest (GAPI-DIV-127). This helper
+	// reproduces whatever stageADK CONSUMES, so a tree missing one of
+	// these is not a stale fixture - it is the half-finished install
+	// loadGoADK exists to reject, and the stage would fail on it.
+	if err := copyGoPackage(filepath.Join(from.Dir, schemahashRelDir),
+		filepath.Join(root, schemahashRelDir), from.Dir); err != nil {
+		t.Fatalf("copy schema hash: %v", err)
+	}
+	if err := copyTree(filepath.Join(from.Dir, blake3RelDir),
+		filepath.Join(root, blake3RelDir)); err != nil {
+		t.Fatalf("copy blake3: %v", err)
+	}
+	if err := copyTree(filepath.Join(from.Dir, cpuidRelDir),
+		filepath.Join(root, cpuidRelDir)); err != nil {
+		t.Fatalf("copy cpuid: %v", err)
+	}
+
 	mod := "module " + sharedModulePath + "\n\ngo " + from.GoDirective + "\n"
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte(mod), 0600); err != nil {
 		t.Fatalf("write go.mod: %v", err)

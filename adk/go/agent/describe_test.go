@@ -26,11 +26,16 @@ import (
 // the agent declares one, and Go has no interval declaration.
 // Sorted, because the assertion sorts what it collects from the JSON.
 // Note "required_by" precedes "requires": '_' sorts before 's'.
+// "schema_hash" was added by GAPI-DIV-127 and BOTH runners emit it. It
+// is listed here rather than exempted for the reason this list exists at
+// all: a key one language emits and the other does not is a contract the
+// ecosystem does not actually share, and that entry was filed against
+// exactly that state.
 var pythonDescribeKeys = []string{
 	"capabilities", "cpu_limit", "description", "enabled", "id",
 	"language", "listen_stream", "memory_limit", "name", "required_by",
-	"requires", "schedule", "schema_version", "type", "version",
-	"wanted_by", "wants",
+	"requires", "schedule", "schema_hash", "schema_version", "type",
+	"version", "wanted_by", "wants",
 }
 
 func TestDescribe_EmitsThePythonKeySet(t *testing.T) {
