@@ -273,6 +273,24 @@ jobs:
     # half, and it is cheap: measured at 6s and 20s locally.
     name: Flake Build
     runs-on: ubuntu-latest
+    # GOWORK off, as every other job here that runs mage already sets.
+    #
+    # THIS JOB DID NOT NEED IT UNTIL A STEP RAN MAGE. `nix build` and
+    # `nix flake check` never read go.work - the derivations set
+    # env.GOWORK = "off" themselves - so the job ran for its whole
+    # existence without one. The version-stamp step below is the first
+    # thing here to COMPILE THE MAGEFILES, which import magelib, and
+    # gapi's committed go.work names ../magelib. This job checks out
+    # gapi alone, so that path does not exist and the compile dies with
+    # `cannot load module ../magelib listed in go.work file`.
+    #
+    # Vendored magelib answers instead, which is the same resolution the
+    # No-Replace job proves works from published tags. The failure is
+    # worth recording because it is only visible in CI: a developer's
+    # tree HAS the sibling, so the gate passes locally in a mode no CI
+    # job runs.
+    env:
+      GOWORK: "off"
     steps:
       - name: Checkout Workspace
         uses: actions/checkout@v4
