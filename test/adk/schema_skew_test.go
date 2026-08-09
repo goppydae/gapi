@@ -88,11 +88,28 @@ func TestSchemaSkewIsReportedAtRegistration(t *testing.T) {
 	// "agent X was built against"; the status path renders
 	// "agent X (run <uuid>) was built against". Requiring the id and the
 	// verb to be ADJACENT makes only the registration site match.
-	m := registrationReportRE.FindStringSubmatch(out)
-	if m == nil {
+	line := findLine(out, registrationReportRE)
+	if line == "" {
 		t.Fatalf("no registration-time skew report for skew_agent; "+
 			"setupAgents' call to reportSchemaSkew did not fire.\n"+
 			"(a report carrying a run id is the status path, not this one)\n%s", out)
+	}
+	m := registrationReportRE.FindStringSubmatch(line)
+
+	// EXACTLY ONE "module", ASSERTED ON THE REAL DAEMON'S RECORD. The
+	// supervisor's logger is scoped With(Module("supervisor")) and the
+	// Reporter adds a module naming the detection site, so handing the
+	// reporter that logger emitted the key TWICE. Duplicate keys are legal
+	// JSON and every consumer resolves them differently, so the record
+	// stayed parseable and stopped meaning one thing.
+	//
+	// IT IS ASSERTED HERE RATHER THAN IN core/supervisor's UNIT TESTS
+	// BECAUSE THOSE CANNOT SEE IT. They build a Reporter directly with an
+	// unscoped logger, which is not what New does - so they were green
+	// throughout. Only a record produced by the real daemon carries the
+	// wiring under test.
+	if n := strings.Count(line, `"module":`); n != 1 {
+		t.Errorf("the skew report carries %d \"module\" keys, want 1:\n%s", n, line)
 	}
 
 	// ASSERTED ON CONTENT, NOT ON A COUNT. The report is only useful if
@@ -181,6 +198,20 @@ func stageSkewAgent(t *testing.T, dir string) string {
 		t.Fatalf("stage %s: %v", dst, err)
 	}
 	return "skew_agent"
+}
+
+// findLine returns the single log line want matches, or "".
+//
+// The daemon writes one JSON record per line, and an assertion about a
+// record's KEYS has to be scoped to that record: counting "module"
+// across the whole log would count every other line's.
+func findLine(out string, want *regexp.Regexp) string {
+	for _, line := range strings.Split(out, "\n") {
+		if want.MatchString(line) {
+			return line
+		}
+	}
+	return ""
 }
 
 // discoveryDone is the last line setupAgents writes. Once it appears, a

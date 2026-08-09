@@ -138,10 +138,20 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		shutdownReq: make(chan shutdownpkg.Action, 1),
 	}
 
-	// The skew reporter, after the struct so it can take the same logger
-	// and bus. Source DERIVED from core/product: goblind links this code
-	// and must not emit "gapid" (GAPI-DIV-061).
-	s.skew = schemaskew.NewReporter(logger, bus, product.Daemon, "discovery")
+	// The skew reporter, after the struct so it can take the bus. Source
+	// DERIVED from core/product: goblind links this code and must not
+	// emit "gapid" (GAPI-DIV-061).
+	//
+	// slog.Default() AND NOT `logger`, WHICH IS THE POINT. logger is
+	// already scoped With(Module("supervisor")) and the Reporter adds a
+	// module of its own naming the detection site, so passing it emitted
+	// a record carrying "module" TWICE - JSON that parses, whose meaning
+	// then depends on whether the reader keeps the first or the last.
+	// The reporter's module is the more specific of the two: "discovery"
+	// says which of the daemon's two detectors fired, where "supervisor"
+	// only says which package it lives in. core/agentmgr passes an
+	// unscoped logger for the same reason and printed one key all along.
+	s.skew = schemaskew.NewReporter(slog.Default(), bus, product.Daemon, "discovery")
 
 	// Initialize build info metrics and create server if enabled
 	if cfg.Metrics.Enabled {
