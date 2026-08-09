@@ -12,6 +12,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+
+	"github.com/goppydae/gapi/core/schemahash"
 )
 
 // stubBuildInfo installs a fake reader and restores the real one. The
@@ -379,5 +381,40 @@ func TestSummary_ADKRowsKeepExplicitStamp(t *testing.T) {
 
 	if !strings.Contains(got, "0.1.0-proto2f.1") {
 		t.Fatalf("an explicitly stamped ADK version was overwritten by the fallback:\n%s", got)
+	}
+}
+
+// TestSummaryReportsARealSchemaHash closes the row GAPI-DIV-126 left
+// exempted by name.
+//
+// SchemaHash was an -ldflags variable NO BUILD INJECTED - the Magefile
+// and both nix derivations set exactly one -X, for GAPIVersion - so the
+// row read "unknown" in every build ever made. It is derived now, so
+// there is no build that can fail to supply it and no fourth stamp
+// point that can drift from the code actually linked.
+func TestSummaryReportsARealSchemaHash(t *testing.T) {
+	stubIdentity(t, "gapid", "0.1.0", true)
+
+	got := Summary()
+	if strings.Contains(got, "Protobuf Schema Hash: unknown") {
+		t.Fatalf("the schema hash row is still a placeholder:\n%s", got)
+	}
+	if want := truncate16(schemahash.Contract()); !strings.Contains(got, want) {
+		t.Fatalf("the row does not carry the linked contract digest %q:\n%s", want, got)
+	}
+}
+
+// TestSummarySchemaHashMatchesWhatAgentsReport is the property the whole
+// mechanism rests on, asserted at the daemon's own surface.
+//
+// An operator comparing `gapid version` against an agent's --describe is
+// doing the comparison by hand; if these two ever came from different
+// implementations that comparison would mislead rather than inform.
+func TestSummarySchemaHashMatchesWhatAgentsReport(t *testing.T) {
+	if truncate16(schemahash.Contract()) == "unknown" {
+		t.Fatal("the daemon cannot compute its own contract digest")
+	}
+	if len(schemahash.Contract()) != 64 {
+		t.Fatalf("contract digest is %d chars, want 64", len(schemahash.Contract()))
 	}
 }

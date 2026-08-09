@@ -19,10 +19,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/goppydae/gapi/core/schemahash"
 	"github.com/goppydae/gapi/internal/logattr"
-	"github.com/goppydae/gapi/internal/safeio"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
-	"github.com/zeebo/blake3"
 	"google.golang.org/protobuf/encoding/protodelim"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -95,24 +94,47 @@ func Initialize(name, version, typeStr string) {
 	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "initialized agent", logattr.Component("gapi-adk"), logattr.AgentID(name), logattr.Version(version), logattr.Type(typeStr))
 }
 
-// SetSchemaHash sets the schema hash for the agent.
+// schemaHash defaults to the protobuf contract this binary was compiled
+// against.
+//
+// COMPUTED AT INIT AND NOT BY A CALLER, which is the structural half of
+// GAPI-DIV-127. The Python runner called SetSchemaHash and Go agents had
+// no equivalent startup hook, so a Go agent reported the EMPTY STRING and
+// any comparison was one the ecosystem's two agent kinds answered
+// differently - the shape of gate that gets disabled rather than fixed.
+//
+// Adding a Go call site would have fixed that symptom and kept the
+// mechanism that produced it: two languages, two opt-ins. Computing here
+// removes the opt-in from both at once, because the Python ADK IS this
+// package through gopy. There is one code path, so the two cannot
+// disagree.
+func init() {
+	mu.Lock()
+	defer mu.Unlock()
+	schemaHash = schemahash.Contract()
+}
+
+// SchemaHash reports the protobuf contract this agent was compiled
+// against. It is set before any agent code runs.
+func SchemaHash() string {
+	mu.Lock()
+	defer mu.Unlock()
+	return schemaHash
+}
+
+// SetSchemaHash overrides the computed contract hash.
+//
+// RETAINED ONLY AS A SEAM, and deliberately not called by either ADK.
+// GAPI-DIV-127 closes on a DELIBERATE mismatch being detected, and a
+// test that can only produce matching hashes passes when both sides
+// compute nothing - so something has to be able to lie. A caller in
+// shipping code would be reintroducing the defect: whatever it set would
+// no longer be the contract the binary was built against.
 func SetSchemaHash(hash string) {
 	mu.Lock()
 	defer mu.Unlock()
 	schemaHash = hash
 	slog.Default().LogAttrs(context.Background(), slog.LevelInfo, "schema hash set", logattr.Component("gapi-adk"), logattr.Hash(hash))
-}
-
-// ComputeSchemaHash reads a file and returns its BLAKE3 hash as a hex string.
-// Returns empty string on error to simplify binding logic.
-func ComputeSchemaHash(path string) string {
-	data, err := safeio.ReadFile(path)
-	if err != nil {
-		slog.Default().LogAttrs(context.Background(), slog.LevelError, "failed to read file for hashing", logattr.Component("gapi-adk"), logattr.Path(path), logattr.Err(err))
-		return ""
-	}
-	hash := blake3.Sum256(data)
-	return fmt.Sprintf("%x", hash)
 }
 
 // SendEvent reports one lifecycle transition.

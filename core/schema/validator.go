@@ -65,6 +65,18 @@ type AgentDescribe struct {
 	RequiredBy    []string `json:"required_by"`
 	Capabilities  []string `json:"capabilities"`
 
+	// SchemaHash is the protobuf contract the agent was compiled against
+	// (GAPI-DIV-127). Both ADKs emit it from one implementation, so a
+	// value here that differs from the daemon's means the two were built
+	// from different contract sources.
+	//
+	// NOT A POINTER, unlike Enabled and ReadinessBudget, because absence
+	// carries no instruction: an agent predating the field reports the
+	// empty string, and empty already means "cannot answer". The daemon
+	// treats that as unknown rather than as skew, so an older agent is
+	// never reported and never refused.
+	SchemaHash string `json:"schema_hash"`
+
 	// POINTER, so ABSENT is distinguishable from an explicit false. Go
 	// agents do not emit this field at all, and a plain bool would
 	// unmarshal their silence as disabled - turning every Go agent off

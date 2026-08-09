@@ -42,6 +42,7 @@ import (
 // LISTED BY NAME RATHER THAN COUNTED. A gate reporting "5 placeholder
 // rows" passes the day someone adds a sixth, and the failure message
 // would not say which row to go and look at.
+//
 // `Build Tag` carries an `enum` because `dev` is its ANSWER, not its
 // absence. The contract's table gives `dev` as the derived value - the
 // build channel of a ref that is not a tag - so checking it against the
@@ -58,6 +59,10 @@ var versionRowSources = []versionRow{
 	{name: "Platform"},
 	{name: "Go ADK"},
 	{name: "Python ADK"},
+
+	// Joined the list when GAPI-DIV-127 settled what it contains: the
+	// digest of the linked descriptor set, derived rather than stamped.
+	{name: "Protobuf Schema Hash"},
 }
 
 // versionRow is one contract-sourced row and how it is judged.
@@ -68,17 +73,19 @@ type versionRow struct {
 	enum []string
 }
 
-// versionRowExempt is the one row the contract deliberately leaves
-// unresolved, and it is spelled out rather than skipped silently.
+// versionRowExempt names any row the contract deliberately leaves
+// unresolved, with the bound that will remove it.
 //
-// AN EXEMPTION IS A CLAIM ABOUT SCOPE. This one is bounded by a ledger
-// entry that is open: the schema hash reads `unknown` by design until
-// GAPI-DIV-127 settles what the value should CONTAIN. When that entry
-// closes, this map should empty and the row joins the list above -
-// which is a thing to check when closing it, not a thing to discover.
-var versionRowExempt = map[string]string{
-	"Protobuf Schema Hash": "GAPI-DIV-127 (what the value contains is unsettled)",
-}
+// AN EXEMPTION IS A CLAIM ABOUT SCOPE, so it is spelled out rather than
+// skipped silently. It is EMPTY as of GAPI-DIV-127: it held exactly one
+// row, Protobuf Schema Hash, bounded by that entry - and emptying it was
+// a thing to CHECK when the entry closed rather than to discover
+// afterwards.
+//
+// Kept rather than deleted. The next row with an unsettled value should
+// be named here with its bound, not quietly dropped from
+// versionRowSources where nothing records why it is missing.
+var versionRowExempt = map[string]string{}
 
 // placeholders are the two spellings the stamp points use. Both, because
 // the block mixes them and a check knowing one would pass on the other.

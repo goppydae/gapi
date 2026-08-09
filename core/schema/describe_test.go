@@ -43,7 +43,8 @@ func TestDescribeEnvelopeParsesEveryDeclaredField(t *testing.T) {
 	    "wanted_by": ["dep_c"],
 	    "required_by": ["dep_d"],
 	    "capabilities": ["cap_a"],
-	    "enabled": false
+	    "enabled": false,
+	    "schema_hash": "abc123"
 	  }
 	}`
 
@@ -68,6 +69,7 @@ func TestDescribeEnvelopeParsesEveryDeclaredField(t *testing.T) {
 		{"memory_limit", d.MemoryLimit, "100MB"},
 		{"schedule", d.Schedule, "OnUnitActiveSec=30s"},
 		{"listen_stream", d.ListenStream, "0.0.0.0:8080"},
+		{"schema_hash", d.SchemaHash, "abc123"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.field, tc.got, tc.want)
@@ -121,5 +123,43 @@ func TestParsedDescribeValidatesDirectly(t *testing.T) {
 	}
 	if err := ValidateAgentDescribe(env.Describe); err != nil {
 		t.Fatalf("ValidateAgentDescribe on the parsed struct: %v", err)
+	}
+}
+
+// TestDescribeEnvelopeCarriesTheSchemaHash covers GAPI-DIV-127's
+// registration path. Both ADKs emit the key and discovery has ONE
+// decoder for both, so a field that fails to survive parsing here is a
+// mismatch detector that receives nothing - which is indistinguishable
+// from a fleet with no skew in it.
+func TestDescribeEnvelopeCarriesTheSchemaHash(t *testing.T) {
+	const raw = `{"describe":{"schema_version":"1.0.0","id":"a","type":"service",` +
+		`"schema_hash":"abc123"}}`
+
+	var env DescribeEnvelope
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if env.Describe.SchemaHash != "abc123" {
+		t.Fatalf("schema_hash = %q, want %q", env.Describe.SchemaHash, "abc123")
+	}
+}
+
+// TestDescribeEnvelopeToleratesNoSchemaHash is the compatibility floor,
+// and it is a contract requirement rather than politeness.
+//
+// An agent built before this field existed must still register.
+// Operator decision 71 makes the hash a diagnostic and never an
+// enforcement input, and refusing to parse an agent that cannot answer
+// would be enforcement wearing a parser's clothes - it would also flag
+// every older agent in a fleet on the first upgrade.
+func TestDescribeEnvelopeToleratesNoSchemaHash(t *testing.T) {
+	const raw = `{"describe":{"schema_version":"1.0.0","id":"a","type":"service"}}`
+
+	var env DescribeEnvelope
+	if err := json.Unmarshal([]byte(raw), &env); err != nil {
+		t.Fatalf("an agent predating schema_hash must still parse: %v", err)
+	}
+	if env.Describe.SchemaHash != "" {
+		t.Fatalf("absent schema_hash = %q, want empty", env.Describe.SchemaHash)
 	}
 }

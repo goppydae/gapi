@@ -61,16 +61,16 @@ class TestRunner(unittest.TestCase):
         
         # Access the ADK mock
         adk_mock = runner.adk
-        adk_mock.ComputeSchemaHash.return_value = "deadbeef"
-        
-        # We need to simulate the main execution flow or just the hash part?
-        # The hash logic is in main() which is hard to test directly without refactoring.
-        # But we can verify that the runner *would* call it if we could separate it.
-        # Given current runner.py structure, main() does everything.
-        # Let's verify that describe() returns valid structure at least.
-        
+        adk_mock.SchemaHash.return_value = "deadbeef"
+
+        # THIS CASE USED TO ASSERT ONLY schema_version, and said so: the
+        # hash was computed inside main(), which the test could not
+        # reach, so a case named for hash logic checked none of it. The
+        # hash now rides on describe (GAPI-DIV-127), which is reachable,
+        # so the assertion is the one the name always promised.
         meta = runner.describe(mod)
         self.assertEqual(meta["describe"]["schema_version"], "1.0.0")
+        self.assertEqual(meta["describe"]["schema_hash"], "deadbeef")
 
 if __name__ == '__main__':
     unittest.main()

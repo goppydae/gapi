@@ -19,6 +19,9 @@ import (
 
 	"google.golang.org/protobuf/encoding/protodelim"
 
+	"github.com/goppydae/gapi/core/product"
+	"github.com/goppydae/gapi/core/schemahash"
+	"github.com/goppydae/gapi/core/schemaskew"
 	"github.com/goppydae/gapi/internal/logattr"
 	gapiv1 "github.com/goppydae/gapi/pkg/proto"
 )
@@ -71,6 +74,11 @@ type statusPublisher interface {
 	// state, and a status frame this build refuses is still evidence
 	// that the descriptor was opened and written to.
 	noteFrameSeen()
+	// skewBus is where a contract mismatch is published
+	// (GAPI-DIV-127). On the interface rather than derived here because
+	// this reader is handed an agent, not a manager, and the event must
+	// reach the same bus the agent's own status does.
+	skewBus() schemaskew.Publisher
 }
 
 // maxBadControlFrames bounds what one broken agent can cost.
@@ -131,6 +139,13 @@ func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 		return true
 	}
 
+	// ONE REPORTER PER STREAM, so the per-run deduplication spans the
+	// whole conversation with this agent rather than one frame. Status
+	// is per-transition: without it a skewed agent that transitions
+	// often repeats the warning until operators filter the topic, and a
+	// filtered warning is no warning.
+	skew := schemaskew.NewReporter(log, a.skewBus(), product.Daemon, "lifecycle")
+
 	for {
 		var frame gapiv1.AgentControl
 		if err := protodelim.UnmarshalFrom(br, &frame); err != nil {
@@ -187,6 +202,15 @@ func readControl(r io.Reader, a statusPublisher, id string, log *slog.Logger) {
 			// to tell a clean self-stop from an unowned death, and the
 			// process may already be gone by the time the publish returns.
 			a.noteAnnouncedState(st.GetState(), st.GetRunId())
+
+			// The contract the agent reports IN FLIGHT, which
+			// registration cannot see: a binary replaced after discovery
+			// when nobody ran `gapictl agent reload`. Reported, never
+			// enforced - operator decision 71 - so this neither refuses
+			// the frame nor stops the agent.
+			skew.ReportOnce(st.GetAgentId(), st.GetRunId(),
+				st.GetSchemaHash(), schemahash.Contract())
+
 			a.publishStatusWithRunID(st.GetState(), st.GetMessage(), st.GetRunId())
 
 		case *gapiv1.AgentControl_Heartbeat:

@@ -33,6 +33,8 @@ func (m *MockAgent) RequiredBy() []string              { return nil }
 func (m *MockAgent) Wants() []string                   { return m.wants }
 func (m *MockAgent) SetRunID(string)                   {}
 func (m *MockAgent) Controller() *lifecycle.Controller { return nil }
+func (m *MockAgent) setSchemaHash(string)              {}
+
 func (m *MockAgent) Describe() map[string]string {
 	return map[string]string{"capabilities": ""} // Simplified
 }

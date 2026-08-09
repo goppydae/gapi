@@ -56,7 +56,7 @@ except ImportError as e:
         def SendEvent(self, agent_id, state, message): pass
         def StartHeartbeat(self, agent_id): pass
         def SetSchemaHash(self, h): pass
-        def ComputeSchemaHash(self, f): return "dummy_hash"
+        def SchemaHash(self): return ""
     
     # Instantiate the dummy ADK
     adk = DummyAdk()
@@ -417,6 +417,11 @@ def describe(mod, agent_id=None, agent_type=None) -> AgentMetadata:
         "cpu_limit": str(get_meta(mod, "cpu_limit", "")),
         "memory_limit": str(get_meta(mod, "memory_limit", "")),
         "schedule": str(get_meta(mod, "schedule", "")),
+        # The protobuf contract this process was compiled against, from
+        # the ADK, which computes it at import (GAPI-DIV-127). Emitted
+        # here because discovery reads describe at REGISTRATION - and
+        # that is the `gapictl agent reload` path too.
+        "schema_hash": adk.SchemaHash(),
     }
     if ivl is not None:
         describe_data["interval"] = ivl
@@ -462,23 +467,22 @@ def main():
         agent_type=(args.type or str(get_meta(mod, "type", "service"))),
     )
 
-    # Compute schema hash using native Go implementation
-    schema_hash = "unknown"
-    try:
-        # We need the absolute path to the module file for hashing
-        # The module spec should have it
-        if getattr(mod, '__file__', None):
-            schema_hash = adk.ComputeSchemaHash(mod.__file__)
-            if not schema_hash:
-                schema_hash = "unknown"
-                print(f"[runner] Warning: Computed empty schema hash for {mod.__file__}", file=sys.stderr)
-        else:
-             print(f"[runner] Warning: Could not determine file path for module {args.module}, skipping hash", file=sys.stderr)
-    except Exception as e:
-        print(f"[runner] Warning: Failed to compute schema hash: {e}", file=sys.stderr)
-
-    # Set the hash in the ADK
-    adk.SetSchemaHash(schema_hash)
+    # The schema hash is the PROTOBUF CONTRACT this process was compiled
+    # against, and the ADK computes it at import. It is deliberately not
+    # set here (GAPI-DIV-127).
+    #
+    # This block used to hash the agent's own source file - BLAKE3 of
+    # mod.__file__ - under a field named schema_hash. That answers "did
+    # this agent's source change" while the field asks "do these two
+    # processes agree on the wire format", and the two come apart in both
+    # directions: editing a comment changed the hash while compatibility
+    # was untouched, and a breaking change to the contract left every
+    # agent's hash identical.
+    #
+    # Setting anything here would also recreate the asymmetry the init
+    # computation removes: whatever Python assigned would no longer be
+    # what the binary was built against, while a Go agent reported the
+    # real value.
 
     # Initialize binding
     adk.Initialize(agent.agent_id, "1.0.0", agent.agent_type)

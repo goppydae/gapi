@@ -29,6 +29,7 @@ import (
 	"github.com/goppydae/gapi/core/lifecycle"
 	"github.com/goppydae/gapi/core/metrics"
 	"github.com/goppydae/gapi/core/product"
+	"github.com/goppydae/gapi/core/schemaskew"
 	shutdownpkg "github.com/goppydae/gapi/core/shutdown"
 	"github.com/goppydae/gapi/core/store"
 	"github.com/goppydae/gapi/core/transport"
@@ -52,6 +53,11 @@ type Supervisor struct {
 	// the system.shutdown bus topic); buffered so the first request
 	// wins and repeats are absorbed.
 	shutdownReq chan shutdownpkg.Action
+
+	// skew remembers which agent incarnations have already had a
+	// contract mismatch reported, so a per-transition message does not
+	// repeat one (GAPI-DIV-127).
+	skew *schemaskew.Reporter
 }
 
 // New creates a new Supervisor instance.
@@ -131,6 +137,21 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		clock:       clock.RealClock{},
 		shutdownReq: make(chan shutdownpkg.Action, 1),
 	}
+
+	// The skew reporter, after the struct so it can take the bus. Source
+	// DERIVED from core/product: goblind links this code and must not
+	// emit "gapid" (GAPI-DIV-061).
+	//
+	// slog.Default() AND NOT `logger`, WHICH IS THE POINT. logger is
+	// already scoped With(Module("supervisor")) and the Reporter adds a
+	// module of its own naming the detection site, so passing it emitted
+	// a record carrying "module" TWICE - JSON that parses, whose meaning
+	// then depends on whether the reader keeps the first or the last.
+	// The reporter's module is the more specific of the two: "discovery"
+	// says which of the daemon's two detectors fired, where "supervisor"
+	// only says which package it lives in. core/agentmgr passes an
+	// unscoped logger for the same reason and printed one key all along.
+	s.skew = schemaskew.NewReporter(slog.Default(), bus, product.Daemon, "discovery")
 
 	// Initialize build info metrics and create server if enabled
 	if cfg.Metrics.Enabled {
@@ -254,6 +275,7 @@ func (s *Supervisor) setupAgents() {
 			Language:     desc["language"],
 			Version:      desc["version"],
 			Hash:         desc["hash"],
+			SchemaHash:   desc["schema_hash"],
 			Tags:         splitCSV(desc["tags"]),
 			Requires:     splitCSV(desc["requires"]),
 			Wants:        splitCSV(desc["wants"]),
@@ -264,6 +286,13 @@ func (s *Supervisor) setupAgents() {
 		if len(ad.Requires) == 0 && desc["deps"] != "" {
 			ad.Requires = splitCSV(desc["deps"])
 		}
+		// Report a contract mismatch, never refuse one (GAPI-DIV-127,
+		// operator decision 71). Ahead of Register so the report is
+		// emitted even when the registry rejects the entry for an
+		// unrelated reason - the skew is a fact about the agent on disk,
+		// not about whether this daemon managed to store it.
+		s.reportSchemaSkew(ad)
+
 		if err := s.registry.Register(ad); err != nil {
 			s.logger.LogAttrs(context.Background(), slog.LevelError, "failed to register discovered agent", logattr.Err(err), logattr.AgentID(ad.ID))
 		}

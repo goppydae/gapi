@@ -48,6 +48,9 @@ type Discovered struct {
 	Capabilities []string
 	// Enabled is the RESOLVED value: absent metadata means enabled.
 	Enabled bool
+	// SchemaHash is the protobuf contract the agent was compiled
+	// against, empty from an agent predating the field.
+	SchemaHash string
 }
 
 type Agent interface {
@@ -67,6 +70,16 @@ type Agent interface {
 	WantedBy() []string
 	RequiredBy() []string
 	SetRunID(string)
+
+	// setSchemaHash records the protobuf contract the agent reported at
+	// --describe (GAPI-DIV-127).
+	//
+	// ON THE INTERFACE DELIBERATELY, and unexported. The three Describe()
+	// implementations are separate copies of one shape, so a future agent
+	// kind that forgot this would report an empty hash forever and the
+	// daemon would read that as "cannot answer" - silence, not a gap.
+	// Here it is a compile error instead.
+	setSchemaHash(string)
 }
 
 type AgentManager struct {
@@ -279,6 +292,7 @@ func (am *AgentManager) processDiscovered(path string, d schema.AgentDescribe, a
 		RequiredBy:   append([]string(nil), d.RequiredBy...),
 		ListenStream: d.ListenStream,
 		Capabilities: append([]string(nil), d.Capabilities...),
+		SchemaHash:   d.SchemaHash,
 	}
 
 	var a Agent
@@ -326,6 +340,16 @@ func (am *AgentManager) processDiscovered(path string, d schema.AgentDescribe, a
 			depView{am},
 		)
 	}
+
+	// The reported contract, UNCONDITIONALLY (GAPI-DIV-127).
+	//
+	// setSchemaHash is on the Agent interface rather than an optional
+	// capability like the two below, so there is no `ok` here that could
+	// quietly not fire. The difference matters: an agent kind missing an
+	// optional setter reports an empty hash, the daemon reads empty as
+	// "cannot answer", and the gap looks exactly like a fleet with no
+	// skew in it.
+	a.setSchemaHash(meta.SchemaHash)
 
 	// Carry the resolved flag onto the agent. Post-construction rather
 	// than a fourth positional argument on three already-long
