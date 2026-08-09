@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -59,13 +58,15 @@ func TestCrossADKParity(t *testing.T) {
 			PyAgent:     "fixtures/python/capabilities_agent.py",
 			TestFunc:    testCapabilityDetection,
 		},
-		{
-			Name:        "SchemaHashing",
-			Description: "Verify BLAKE3 schema hashing",
-			GoAgent:     "fixtures/go/hash_agent/main.go",
-			PyAgent:     "fixtures/python/hash_agent.py",
-			TestFunc:    testSchemaHashing,
-		},
+		// "SchemaHashing" was here and is now schema_skew_test.go. It
+		// hashed an arbitrary temp file with BLAKE3 in Go and SHA-256 in
+		// Python - the fixture's own comment said SHA-256 was chosen
+		// because it "also produces 64-char hex" - ran each language
+		// against itself, compared neither to the other, and asserted
+		// only 64 hex characters and stability across two runs. Every
+		// one of those holds for two implementations that share nothing,
+		// which is why it passed unchanged through all of GAPI-DIV-127's
+		// implementation while both ADKs reported no contract at all.
 	}
 
 	for _, suite := range suites {
@@ -292,68 +293,6 @@ func testCapabilityDetection(t *testing.T, lang string, agentPath string) {
 
 	if diff := cmp.Diff(expectedCaps, actualCaps); diff != "" {
 		t.Errorf("Capabilities mismatch (-want +got):\n%s", diff)
-	}
-}
-
-// testSchemaHashing verifies BLAKE3 hash computation
-func testSchemaHashing(t *testing.T, lang string, agentPath string) {
-	// Create a test file with known content
-	testContent := []byte("test content for hashing")
-	testFile := filepath.Join(t.TempDir(), "test.txt")
-	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
-		t.Fatalf("Failed to write test file: %v", err)
-	}
-
-	var cmd *exec.Cmd
-
-	switch lang {
-	case "go":
-		// For Go, we'll build a simple hash utility
-		tmpBin := filepath.Join(t.TempDir(), "hasher")
-		buildCmd := exec.Command("go", "build", "-o", tmpBin, agentPath)
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go hasher: %v", err)
-		}
-		cmd = exec.Command(tmpBin, testFile)
-	case "python":
-		// For Python, call the hash agent directly
-		cmd = exec.Command("python3", agentPath, testFile)
-	}
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Failed to compute hash: %v", err)
-	}
-
-	hash := strings.TrimSpace(string(output))
-
-	// Verify hash is 64 hex characters (BLAKE3 256-bit)
-	if len(hash) != 64 {
-		t.Errorf("Expected 64-character hash, got %d: %s", len(hash), hash)
-	}
-
-	// Verify hash is consistent (run twice with new command)
-	var cmd2 *exec.Cmd
-	switch lang {
-	case "go":
-		tmpBin := filepath.Join(t.TempDir(), "hasher")
-		buildCmd := exec.Command("go", "build", "-o", tmpBin, agentPath)
-		if err := buildCmd.Run(); err != nil {
-			t.Fatalf("Failed to build Go hasher: %v", err)
-		}
-		cmd2 = exec.Command(tmpBin, testFile)
-	case "python":
-		cmd2 = exec.Command("python3", agentPath, testFile)
-	}
-
-	output2, err := cmd2.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Failed to compute hash (second run): %v", err)
-	}
-	hash2 := strings.TrimSpace(string(output2))
-
-	if hash != hash2 {
-		t.Errorf("Hash not deterministic: %s != %s", hash, hash2)
 	}
 }
 
