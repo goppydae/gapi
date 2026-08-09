@@ -57,7 +57,7 @@ type Supervisor struct {
 	// skew remembers which agent incarnations have already had a
 	// contract mismatch reported, so a per-transition message does not
 	// repeat one (GAPI-DIV-127).
-	skew *schemaskew.Seen
+	skew *schemaskew.Reporter
 }
 
 // New creates a new Supervisor instance.
@@ -136,8 +136,12 @@ func New(cfg *config.Config) (*Supervisor, error) {
 		host:        host,
 		clock:       clock.RealClock{},
 		shutdownReq: make(chan shutdownpkg.Action, 1),
-		skew:        schemaskew.NewSeen(),
 	}
+
+	// The skew reporter, after the struct so it can take the same logger
+	// and bus. Source DERIVED from core/product: goblind links this code
+	// and must not emit "gapid" (GAPI-DIV-061).
+	s.skew = schemaskew.NewReporter(logger, bus, product.Daemon, "discovery")
 
 	// Initialize build info metrics and create server if enabled
 	if cfg.Metrics.Enabled {

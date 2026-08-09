@@ -16,7 +16,10 @@ import (
 
 	"google.golang.org/protobuf/encoding/protodelim"
 
+	"github.com/goppydae/gapi/core/eventbus"
+	"github.com/goppydae/gapi/core/schemaskew"
 	gapiv1 "github.com/goppydae/gapi/pkg/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 // readControl is the kernel's most exposed parser: it eats whatever a
@@ -208,3 +211,13 @@ func TestReadControlPreservesFrameOrder(t *testing.T) {
 		t.Fatalf("frames arrived %v, want %v", got, want)
 	}
 }
+
+// skewBus satisfies statusPublisher. A nil bus is correct here: the
+// fuzz corpus drives frame PARSING, and a publish would measure the bus
+// rather than the reader.
+func (r *recordingPublisher) skewBus() schemaskew.Publisher { return nopPublisher{} }
+
+// nopPublisher accepts and discards.
+type nopPublisher struct{}
+
+func (nopPublisher) Publish(eventbus.Event[*anypb.Any]) error { return nil }

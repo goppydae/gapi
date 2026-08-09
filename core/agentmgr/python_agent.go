@@ -31,6 +31,7 @@ import (
 	"github.com/goppydae/gapi/core/cgroups"
 	"github.com/goppydae/gapi/core/eventbus"
 	"github.com/goppydae/gapi/core/lifecycle"
+	"github.com/goppydae/gapi/core/schemaskew"
 	"github.com/goppydae/gapi/internal/logattr"
 	protopkg "github.com/goppydae/gapi/pkg/proto"
 )
@@ -862,3 +863,8 @@ func (a *PythonAgent) Enabled() bool {
 
 // setSchemaHash records the contract the agent reported at --describe.
 func (a *PythonAgent) setSchemaHash(h string) { a.schemaHash = h }
+
+// skewBus is where this agent's contract mismatch is published
+// (GAPI-DIV-127). The agent's own bus, so the event travels the same
+// path its status does.
+func (a *PythonAgent) skewBus() schemaskew.Publisher { return a.bus }

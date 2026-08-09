@@ -50,7 +50,12 @@ func TestReportSchemaSkewWarnsAndPublishes(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 
-	s := &Supervisor{logger: captureLogs(&buf), bus: bus}
+	log := captureLogs(&buf)
+	s := &Supervisor{
+		logger: log,
+		bus:    bus,
+		skew:   schemaskew.NewReporter(log, bus, product.Daemon, "discovery"),
+	}
 	s.reportSchemaSkew(&agentreg.AgentDescription{
 		ID:         "weather",
 		SchemaHash: "not-the-daemons-hash",
@@ -95,7 +100,12 @@ func TestReportSchemaSkewIsSilentForAMatchingAgent(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 
-	s := &Supervisor{logger: captureLogs(&buf), bus: bus}
+	log := captureLogs(&buf)
+	s := &Supervisor{
+		logger: log,
+		bus:    bus,
+		skew:   schemaskew.NewReporter(log, bus, product.Daemon, "discovery"),
+	}
 	s.reportSchemaSkew(&agentreg.AgentDescription{
 		ID:         "weather",
 		SchemaHash: schemahash.Contract(),
@@ -111,69 +121,6 @@ func TestReportSchemaSkewIsSilentForAMatchingAgent(t *testing.T) {
 	}
 }
 
-// TestStatusSkewReportsOncePerRun. Status is per-transition; a skewed
-// agent that transitions ten times must not produce ten warnings, or
-// operators filter the topic and the signal is gone.
-//
-// Keyed on run_id and NOT on agent id: a restarted agent is a new
-// process that may carry a different binary, so suppressing its report
-// because its predecessor was reported would hide exactly the case a
-// redeploy creates.
-func TestStatusSkewReportsOncePerRun(t *testing.T) {
-	seen := schemaskew.NewSeen()
-
-	if !seen.First("run-1") {
-		t.Fatal("the first sighting of a run must report")
-	}
-	if seen.First("run-1") {
-		t.Fatal("the second sighting of the same run reported again")
-	}
-	if !seen.First("run-2") {
-		t.Fatal("a new incarnation must report - it is a new process")
-	}
-}
-
-// TestReportStatusSkewWarnsOnceAcrossTransitions drives the real path
-// rather than the counter: a skewed agent announcing four transitions
-// within one run must produce exactly one warning.
-func TestReportStatusSkewWarnsOnceAcrossTransitions(t *testing.T) {
-	product.Set("gapi")
-
-	var buf bytes.Buffer
-	s := &Supervisor{
-		logger: captureLogs(&buf),
-		bus:    eventbus.NewInprocBus[*anypb.Any](),
-		skew:   schemaskew.NewSeen(),
-	}
-
-	for _, state := range []string{"INITIALIZING", "STARTING", "RUNNING", "STOPPING"} {
-		_ = state
-		s.reportStatusSkew("weather", "run-1", "not-the-daemons-hash")
-	}
-
-	if n := strings.Count(buf.String(), "WARN"); n != 1 {
-		t.Fatalf("four transitions in one run produced %d warnings, want 1:\n%s",
-			n, buf.String())
-	}
-}
-
-// TestReportStatusSkewWarnsAgainForANewRun is the other half of the
-// dedupe, and the one a naive implementation gets wrong by keying on the
-// agent: a redeployed binary is a new run and must be reported.
-func TestReportStatusSkewWarnsAgainForANewRun(t *testing.T) {
-	product.Set("gapi")
-
-	var buf bytes.Buffer
-	s := &Supervisor{
-		logger: captureLogs(&buf),
-		bus:    eventbus.NewInprocBus[*anypb.Any](),
-		skew:   schemaskew.NewSeen(),
-	}
-
-	s.reportStatusSkew("weather", "run-1", "not-the-daemons-hash")
-	s.reportStatusSkew("weather", "run-2", "not-the-daemons-hash")
-
-	if n := strings.Count(buf.String(), "WARN"); n != 2 {
-		t.Fatalf("two runs produced %d warnings, want 2:\n%s", n, buf.String())
-	}
-}
+// The status path's cases live in core/agentmgr, where the frame is
+// decoded, and the pure decision's live in core/schemaskew. This file
+// keeps only what the SUPERVISOR does: registration-time reporting.
