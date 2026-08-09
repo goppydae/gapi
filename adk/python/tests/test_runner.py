@@ -61,7 +61,7 @@ class TestRunner(unittest.TestCase):
         
         # Access the ADK mock
         adk_mock = runner.adk
-        adk_mock.ComputeSchemaHash.return_value = "deadbeef"
+        adk_mock.SchemaHash.return_value = "deadbeef"
         
         # We need to simulate the main execution flow or just the hash part?
         # The hash logic is in main() which is hard to test directly without refactoring.
