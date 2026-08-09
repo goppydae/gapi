@@ -265,6 +265,13 @@ func (s *Supervisor) setupAgents() {
 		if len(ad.Requires) == 0 && desc["deps"] != "" {
 			ad.Requires = splitCSV(desc["deps"])
 		}
+		// Report a contract mismatch, never refuse one (GAPI-DIV-127,
+		// operator decision 71). Ahead of Register so the report is
+		// emitted even when the registry rejects the entry for an
+		// unrelated reason - the skew is a fact about the agent on disk,
+		// not about whether this daemon managed to store it.
+		s.reportSchemaSkew(ad)
+
 		if err := s.registry.Register(ad); err != nil {
 			s.logger.LogAttrs(context.Background(), slog.LevelError, "failed to register discovered agent", logattr.Err(err), logattr.AgentID(ad.ID))
 		}
